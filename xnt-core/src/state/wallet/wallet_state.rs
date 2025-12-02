@@ -607,6 +607,19 @@ impl WalletState {
         (incoming, outgoing)
     }
 
+    pub fn confirmed_total_balance(&self, wallet_status: &WalletStatus) -> NativeCurrencyAmount {
+        wallet_status.total_confirmed()
+    }
+
+    pub fn confirmed_available_balance(
+        &self,
+        wallet_status: &WalletStatus,
+        timestamp: Timestamp,
+    ) -> NativeCurrencyAmount {
+        wallet_status.available_confirmed(timestamp)
+    }
+
+
     /// returns unconfirmed, available balance (excludes timelocked utxos)
     pub fn unconfirmed_available_balance(
         &self,

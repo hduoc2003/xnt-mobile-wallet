@@ -10,10 +10,13 @@ pub mod encrypted_utxo_notification;
 pub mod generation_address;
 mod receiving_address;
 pub mod symmetric_key;
+pub mod view_key;
 
 pub use addressable_key::KeyType;
 pub use addressable_key::SpendingKey;
 pub use receiving_address::ReceivingAddress;
+
+pub use common::receiver_identifier_from_announcement;
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]

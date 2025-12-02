@@ -3,9 +3,47 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::json_rpc::core::api::rpc::RpcApi;
+use crate::application::json_rpc::core::api::rpc::{RpcApi, RpcResult};
 use crate::application::json_rpc::core::model::json::JsonError;
 use crate::application::json_rpc::core::model::json::JsonResult;
+use crate::application::json_rpc::core::model::message::*;
+
+/// Helper trait to convert RpcResult<T> or T to JsonResult<T>
+pub trait ToJsonResult<T> {
+    fn to_json_result(self) -> JsonResult<T>;
+}
+
+impl<T> ToJsonResult<T> for RpcResult<T> {
+    fn to_json_result(self) -> JsonResult<T> {
+        self.map_err(JsonError::from)
+    }
+}
+
+// Implement ToJsonResult for response types that are returned directly (not wrapped in RpcResult)
+macro_rules! impl_to_json_result_direct {
+    ($($ty:ty),*) => {
+        $(
+            impl ToJsonResult<$ty> for $ty {
+                fn to_json_result(self) -> JsonResult<$ty> {
+                    Ok(self)
+                }
+            }
+        )*
+    };
+}
+
+impl_to_json_result_direct!(
+    GetUtxosFromViewKeyResponse,
+    GetBalanceFromViewKeyResponse,
+    GetArchivalMutatorSetResponse,
+    GetUtxoCreationBlockResponse,
+    GenerateMembershipProofResponse,
+    GenerateUtxoWithProofResponse,
+    GetStateResponse,
+    SubmitTransactionResponse,
+    GetCurrentFeeResponse,
+    GetUtxoInfoResponse
+);
 
 type HandlerFn = Box<
     dyn Fn(serde_json::Value) -> Pin<Box<dyn Future<Output = JsonResult<serde_json::Value>> + Send>>

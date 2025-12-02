@@ -1,15 +1,10 @@
-use xnt_rpc_macros::Router;
-use xnt_rpc_macros::Routes;
 use serde::Deserialize;
 use serde::Serialize;
 use strum::EnumString;
+use xnt_rpc_macros::Router;
 
-use crate::application::json_rpc::core::api::client::transport::Transport;
-use crate::application::json_rpc::core::api::rpc::RpcApi;
-use crate::application::json_rpc::core::api::rpc::RpcResult;
-use crate::application::json_rpc::core::api::server::router::RpcRouter;
-use crate::application::json_rpc::core::model::json::JsonError;
 use crate::application::json_rpc::core::model::message::*;
+
 
 /// API version.
 pub const RPC_API_VERSION: u16 = 1;
@@ -27,7 +22,7 @@ pub enum Namespace {
     Wallet,
 }
 
-#[derive(Router, Routes, Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Router, Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RpcMethods {
     #[namespace(Namespace::Node)]
@@ -95,6 +90,36 @@ pub enum RpcMethods {
 
     #[namespace(Namespace::Archival)]
     FindUtxoOrigin,
+
+    #[namespace(Namespace::Mempool)]
+    SubmitTransaction,
+
+    #[namespace(Namespace::Archival)]
+    GetArchivalMutatorSet,
+
+    #[namespace(Namespace::Archival)]
+    GetUtxoCreationBlock,
+
+    #[namespace(Namespace::Archival)]
+    GenerateMembershipProof,
+
+    #[namespace(Namespace::Archival)]
+    GenerateUtxoWithProof,
+
+    #[namespace(Namespace::Wallet)]
+    GetUtxosFromViewKey,
+
+    #[namespace(Namespace::Wallet)]
+    GetBalanceFromViewKey,
+
+    #[namespace(Namespace::Node)]
+    GetState,
+
+    #[namespace(Namespace::Mempool)]
+    GetCurrentFee,
+
+    #[namespace(Namespace::Wallet)]
+    GetUtxoInfo,
 }
 
 #[cfg(test)]

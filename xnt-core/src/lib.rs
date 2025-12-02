@@ -31,6 +31,8 @@ pub mod protocol;
 pub mod state;
 pub mod util_types;
 
+pub mod utxo_index;
+
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub mod tests;
@@ -68,6 +70,7 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tracing::debug;
 use tracing::info;
+use tracing::log::warn;
 use triton_vm::prelude::BFieldElement;
 
 use crate::application::config::data_directory::DataDirectory;
@@ -84,6 +87,7 @@ use crate::application::rpc::server::RPC;
 use crate::state::archival_state::ArchivalState;
 use crate::state::wallet::wallet_state::WalletState;
 use crate::state::GlobalStateLock;
+use crate::state::wallet::address::receiver_identifier_from_announcement;
 
 pub const SUCCESS_EXIT_CODE: i32 = 0;
 pub const COMPOSITION_FAILED_EXIT_CODE: i32 = 159;
@@ -240,6 +244,181 @@ pub async fn initialize(cli_args: cli_args::Args) -> Result<MainLoopHandler> {
         task_join_handles.push(miner_join_handle);
         info!("Started mining task");
     }
+
+    // Start UTXO index building task
+    // Uses spawn_blocking since LevelDB operations are blocking and don't need to be Send
+    let mut index_state_lock = global_state_lock.clone();
+    tokio::task::spawn_blocking(move || {
+        tokio::runtime::Handle::current().block_on(async move {
+            use crate::utxo_index::UtxoLocation;
+
+            info!("Starting UTXO index initialization...");
+
+            // Check if databases are available
+            {
+                let state = index_state_lock.lock_guard().await;
+                let has_index = state.utxo_index.is_some();
+                let has_metadata = state.utxo_index_metadata.is_some();
+
+                info!("Database availability check: index={}, metadata={}", has_index, has_metadata);
+
+                if !has_index || !has_metadata {
+                    warn!("UTXO index databases not available, skipping index build");
+                    return;
+                }
+
+                info!("Both databases available, proceeding with initialization");
+            }
+
+            // Determine if we need to build/update the index
+            let (start_height, current_height) = {
+                let mut state = index_state_lock.lock_guard_mut().await;
+                let current_height = state.chain.light_state().header().height.value();
+
+                info!("Current blockchain height: {}", current_height);
+
+                let metadata_db = state.utxo_index_metadata.as_mut().unwrap();
+                let needs_build = match metadata_db.get_metadata().await {
+                    Ok(metadata) => {
+                        info!(
+                            "Found existing index metadata: indexed_height={}, total_utxos={}, total_receivers={}",
+                            metadata.indexed_height, metadata.total_utxos, metadata.total_receivers
+                        );
+                        if metadata.indexed_height < current_height {
+                            info!(
+                                "UTXO index is stale (indexed to {}, current height {}), updating...",
+                                metadata.indexed_height, current_height
+                            );
+                            Some(metadata.indexed_height + 1)
+                        } else {
+                            info!(
+                                "UTXO index is up-to-date (indexed to height {}), skipping build",
+                                metadata.indexed_height
+                            );
+                            None
+                        }
+                    }
+                    Err(e) => {
+                        info!("UTXO index metadata not found ({}), building from scratch...", e);
+                        Some(0)
+                    }
+                };
+
+                match needs_build {
+                    Some(start) => {
+                        info!("Starting index build from height {} to {}", start, current_height);
+                        (start, current_height)
+                    },
+                    None => {
+                        info!("No index build needed, exiting task");
+                        return; // Index is up-to-date, nothing to do
+                    }
+                }
+            };
+
+            // Now build the index
+            let mut total_utxos = 0;
+            let mut unique_receivers = std::collections::HashSet::new();
+
+            for height in start_height..=current_height {
+                // Progress logging every 1000 blocks
+                if height % 1000 == 0 {
+                    info!("UTXO indexing progress: {}/{} blocks", height, current_height);
+                }
+
+                // Get block
+                let block = {
+                    let state = index_state_lock.lock_guard().await;
+                    let archival_state = state.chain.archival_state();
+
+                    // Get block digest
+                    let Some(block_digest) = archival_state
+                        .archival_block_mmr
+                        .ammr()
+                        .try_get_leaf(height)
+                        .await
+                    else {
+                        warn!("Block at height {} not found, stopping index build", height);
+                        break;
+                    };
+
+                    // Get block
+                    match archival_state.get_block(block_digest).await {
+                        Ok(Some(block)) => block,
+                        Ok(None) => {
+                            warn!("Block {} not found, skipping", block_digest);
+                            continue;
+                        }
+                        Err(e) => {
+                            warn!("Error reading block {}: {}, skipping", block_digest, e);
+                            continue;
+                        }
+                    }
+                };
+
+                // Get transaction kernel
+                let tx_kernel = block.kernel.body.transaction_kernel();
+
+                // Skip blocks with no outputs
+                if tx_kernel.outputs.is_empty() {
+                    continue;
+                }
+
+                // Scan each announcement to extract receiver_identifier and add to index
+                for (output_index, announcement) in tx_kernel.announcements.iter().enumerate() {
+                    let Ok(receiver_id_bfe) = receiver_identifier_from_announcement(announcement) else {
+                        continue;
+                    };
+
+                    if let Ok(receiver_id) = receiver_id_bfe.value().try_into() {
+                        // Add to index
+                        let mut state = index_state_lock.lock_guard_mut().await;
+                        let index_db = state.utxo_index.as_mut().unwrap();
+
+                        if let Err(e) = index_db
+                            .add_utxo(
+                                receiver_id,
+                                UtxoLocation {
+                                    block_height: height,
+                                    output_index: output_index as u16,
+                                },
+                            )
+                            .await
+                        {
+                            warn!("Failed to add UTXO to index: {}", e);
+                            continue;
+                        }
+
+                        total_utxos += 1;
+                        unique_receivers.insert(receiver_id);
+                    }
+                }
+            }
+
+            // Save metadata
+            {
+                let mut state = index_state_lock.lock_guard_mut().await;
+                let metadata_db = state.utxo_index_metadata.as_mut().unwrap();
+
+                let metadata = crate::utxo_index::UtxoIndexMetadata {
+                    indexed_height: current_height,
+                    total_utxos,
+                    total_receivers: unique_receivers.len() as u64,
+                };
+
+                if let Err(e) = metadata_db.set_metadata(metadata).await {
+                    warn!("Failed to save UTXO index metadata: {}", e);
+                } else {
+                    info!(
+                        "UTXO index built successfully: {} UTXOs indexed across {} blocks, {} unique receivers",
+                        total_utxos,
+                        current_height - start_height + 1,
+                        unique_receivers.len()
+                    );
+                }
+            }
+        })
+    });
 
     #[cfg(feature = "rest")]
     if global_state_lock.cli().rest_api_enable == true {

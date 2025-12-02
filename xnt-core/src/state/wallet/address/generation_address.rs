@@ -229,6 +229,42 @@ impl GenerationSpendingKey {
         // convert plaintext to utxo and digest
         Ok(bincode::deserialize(&plaintext)?)
     }
+    pub fn decrypt_with_key(
+        decryption_key: lattice::kem::SecretKey,
+        ciphertext: &[BFieldElement],
+    ) -> Result<(Utxo, Digest)> {
+        // parse ciphertext
+        ensure!(
+            ciphertext.len() > CIPHERTEXT_SIZE_IN_BFES,
+            "Ciphertext does not have nonce.",
+        );
+        let (kem_ctxt, remainder_ctxt) = ciphertext.split_at(CIPHERTEXT_SIZE_IN_BFES);
+        ensure!(
+            remainder_ctxt.len() > 1,
+            "Ciphertext does not have payload.",
+        );
+        let (nonce_ctxt, dem_ctxt) = remainder_ctxt.split_at(1);
+        let kem_ctxt_array: [BFieldElement; CIPHERTEXT_SIZE_IN_BFES] = kem_ctxt.try_into().unwrap();
+
+        // decrypt
+        let Some(shared_key) = lattice::kem::dec(decryption_key, kem_ctxt_array.into()) else {
+            bail!("Could not establish shared secret key.");
+        };
+        let cipher = Aes256Gcm::new(&shared_key.into());
+        let nonce_as_bytes = [nonce_ctxt[0].value().to_be_bytes().to_vec(), vec![0u8; 4]].concat();
+        let nonce = Nonce::from_slice(&nonce_as_bytes); // almost 64 bits; unique per message
+        let ciphertext_bytes = common::bfes_to_bytes(dem_ctxt)?;
+        let plaintext = cipher
+            .decrypt(nonce, ciphertext_bytes.as_ref())
+            .map_err(|_| anyhow!("Failed to decrypt symmetric payload."))?;
+
+        // convert plaintext to utxo and digest
+        Ok(bincode::deserialize(&plaintext)?)
+    }
+
+    pub fn decryption_key(&self) -> lattice::kem::SecretKey {
+        self.decryption_key
+    }
 
     fn generate_spending_lock(&self) -> Digest {
         self.unlock_key_preimage.hash()

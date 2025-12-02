@@ -610,6 +610,12 @@ pub struct GlobalState {
     /// The `mining_state` can be updated by main task, mining task, or RPC server.
     pub mining_state: MiningState,
 
+    /// UTXO index for fast lookups by receiver_identifier
+    pub utxo_index: Option<crate::utxo_index::UtxoIndexDatabase>,
+
+    /// UTXO index metadata for tracking index state
+    pub utxo_index_metadata: Option<crate::utxo_index::UtxoIndexMetadataDb>,
+
     /// Force wallet to maintain its own membership proofs. These membership
     /// proofs will otherwise be read from the archival mutator set.
     #[cfg(test)]
@@ -686,7 +692,42 @@ impl GlobalState {
             chain.light_state(),
         );
 
-        Ok(Self::new(wallet_state, chain, net, cli, mempool))
+        // Initialize UTXO index databases
+        let index_db_path = data_directory.utxo_index_database_dir_path();
+        let metadata_db_path = data_directory.utxo_index_database_dir_path().join("metadata");
+
+        // Create directories if they don't exist
+        if let Err(e) = std::fs::create_dir_all(&index_db_path) {
+            warn!("Failed to create UTXO index directory: {}, continuing without index", e);
+        }
+        if let Err(e) = std::fs::create_dir_all(&metadata_db_path) {
+            warn!("Failed to create UTXO index metadata directory: {}, continuing without index", e);
+        }
+
+        let utxo_index = match crate::utxo_index::UtxoIndexDatabase::new(&index_db_path).await {
+            Ok(db) => {
+                debug!("UTXO index database initialized");
+                Some(db)
+            }
+            Err(e) => {
+                warn!("Failed to open UTXO index database: {}, continuing without index", e);
+                None
+            }
+        };
+
+        let utxo_index_metadata = match crate::utxo_index::UtxoIndexMetadataDb::new(&metadata_db_path).await {
+            Ok(db) => {
+                debug!("UTXO index metadata database initialized");
+                Some(db)
+            }
+            Err(e) => {
+                warn!("Failed to open UTXO index metadata database: {}, continuing without index", e);
+                None
+            }
+        };
+
+
+        Ok(Self::new(wallet_state, chain, net, cli, mempool, utxo_index, utxo_index_metadata))
     }
 
     pub fn new(
@@ -695,6 +736,8 @@ impl GlobalState {
         net: NetworkingState,
         cli: cli_args::Args,
         mempool: Mempool,
+        utxo_index: Option<crate::utxo_index::UtxoIndexDatabase>,
+        utxo_index_metadata: Option<crate::utxo_index::UtxoIndexMetadataDb>,
     ) -> Self {
         Self {
             wallet_state,
@@ -702,9 +745,12 @@ impl GlobalState {
             net,
             cli,
             mempool,
+            utxo_index,
+            utxo_index_metadata,
             mining_state: MiningState::default(),
             #[cfg(test)]
             force_wallet_membership_proof_maintance: false,
+
         }
     }
 

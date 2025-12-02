@@ -39,11 +39,11 @@ pub struct Args {
     ///
     /// The default varies by operating system, and includes the network, e.g.
     ///
-    /// Linux:   /home/alice/.config/neptune/core/main
+    /// Linux:   /home/alice/.config/xnt/xnt/main
     ///
-    /// Windows: C:\Users\Alice\AppData\Roaming\neptune\core\main
+    /// Windows: C:\Users\Alice\AppData\Roaming\xnt\xnt\main
     ///
-    /// macOS:   /Users/Alice/Library/Application Support/neptune/main
+    /// macOS:   /Users/Alice/Library/Application Support/xnt/xnt/main
     #[clap(long, value_name = "DIR")]
     pub data_dir: Option<PathBuf>,
 
@@ -566,7 +566,7 @@ pub struct Args {
         long,
         value_parser = clap::value_parser!(Namespace),
         use_value_delimiter = true,
-        default_value = "Node,Chain",
+        default_value = "Node,Chain,Mempool,Archival,Wallet",
         value_name = "NAMESPACES"
     )]
     pub rpc_modules: Vec<Namespace>,

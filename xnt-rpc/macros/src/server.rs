@@ -40,9 +40,12 @@ pub fn json_router_derive(input: TokenStream) -> TokenStream {
         inserts.push(quote! {
             if namespaces.contains(&#namespace) {
                 router.insert(#method_name, |api, params| async move {
+                    use crate::application::json_rpc::core::api::server::router::ToJsonResult;
+                    use crate::application::json_rpc::core::model::json::JsonError;
                     let req: #req_type = serde_json::from_value(params)
                         .map_err(|_| JsonError::InvalidParams)?;
-                    let resp: #res_type = api.#call_fn(req).await.map_err(JsonError::from)?;
+                    let result = api.#call_fn(req).await;
+                    let resp: #res_type = ToJsonResult::to_json_result(result)?;
                     serde_json::to_value(resp).map_err(|_| JsonError::InternalError)
                 });
             }
@@ -52,9 +55,10 @@ pub fn json_router_derive(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         impl #enum_name {
             pub fn new_router(
-                api: std::sync::Arc<dyn RpcApi>,
+                api: std::sync::Arc<dyn crate::application::json_rpc::core::api::rpc::RpcApi>,
                 namespaces: std::collections::HashSet<Namespace>
-            ) -> RpcRouter {
+            ) -> crate::application::json_rpc::core::api::server::router::RpcRouter {
+                use crate::application::json_rpc::core::api::server::router::RpcRouter;
                 let mut router = RpcRouter::new(api);
                 #(#inserts)*
                 router
