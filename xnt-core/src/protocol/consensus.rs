@@ -2,6 +2,7 @@ pub mod block;
 pub mod consensus_rule_set;
 pub mod transaction;
 pub mod type_scripts;
+pub mod shared;
 
 #[cfg(test)]
 #[cfg_attr(coverage_nightly, coverage(off))]

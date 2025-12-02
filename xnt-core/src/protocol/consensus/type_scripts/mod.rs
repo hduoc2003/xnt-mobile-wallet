@@ -95,7 +95,11 @@ impl TypeScriptAndWitness {
         }
     }
 
-    pub(crate) fn nondeterminism(&self) -> NonDeterminism {
+    /// Build the Triton VM nondeterminism for this type script witness.
+    ///
+    /// Note: made public so external wallet UIs can generate proofs by
+    /// reusing the same nondeterminism construction.
+    pub fn nondeterminism(&self) -> NonDeterminism {
         NonDeterminism::new(self.nd_tokens.clone())
             .with_digests(self.nd_digests.clone())
             .with_ram(self.nd_memory.iter().copied().collect::<HashMap<_, _>>())

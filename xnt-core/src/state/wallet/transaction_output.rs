@@ -227,9 +227,12 @@ impl TxOutput {
         }
     }
 
-    /// Instantiate a [TxOutput] for native currency intended fro on-chain UTXO
+    /// Instantiate a [TxOutput] for native currency intended for on-chain UTXO
     /// notification.
-    pub(crate) fn onchain_native_currency(
+    ///
+    /// Note: made public so external wallet UIs can construct on-chain outputs
+    /// without duplicating this logic.
+    pub fn onchain_native_currency(
         amount: NativeCurrencyAmount,
         sender_randomness: Digest,
         receiving_address: ReceivingAddress,
@@ -246,9 +249,11 @@ impl TxOutput {
         }
     }
 
-    /// Instantiate a [TxOutput] for native currency intended fro on-chain UTXO
-    /// notification.
-    pub(crate) fn onchain_native_currency_as_change(
+    /// Instantiate a [TxOutput] for native currency intended for on-chain UTXO
+    /// notification and marked as change.
+    ///
+    /// Note: made public so external wallet UIs can construct change outputs.
+    pub fn onchain_native_currency_as_change(
         amount: NativeCurrencyAmount,
         sender_randomness: Digest,
         receiving_address: ReceivingAddress,

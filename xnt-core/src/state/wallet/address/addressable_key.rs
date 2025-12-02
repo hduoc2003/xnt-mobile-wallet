@@ -131,8 +131,12 @@ impl SpendingKey {
         }
     }
 
-    /// Return the lock script and its witness
-    pub(crate) fn lock_script_and_witness(&self) -> LockScriptAndWitness {
+    /// Return the lock script and its witness.
+    ///
+    /// Note: This was originally `pub(crate)` but is now public so that external
+    /// wallet frontends (e.g. xnt-wallet-tauri) can construct lock scripts
+    /// without reimplementing this logic.
+    pub fn lock_script_and_witness(&self) -> LockScriptAndWitness {
         match self {
             SpendingKey::Generation(generation_spending_key) => {
                 generation_spending_key.lock_script_and_witness()

@@ -220,7 +220,10 @@ impl TransactionDetails {
     /// - mutator set membership proofs, must be valid wrt. supplied mutator set
     ///
     /// See also: [Self::new_with_coinbase].
-    pub(crate) fn new_without_coinbase(
+    ///
+    /// Note: made public so external wallet UIs can construct transaction
+    /// details directly when building transactions client-side.
+    pub fn new_without_coinbase(
         tx_inputs: impl Into<TxInputList>,
         tx_outputs: impl Into<TxOutputList>,
         fee: NativeCurrencyAmount,

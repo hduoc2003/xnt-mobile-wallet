@@ -1,0 +1,81 @@
+[package]
+name = "xnt-wallet-tauri"
+version = "0.1.0"
+description = "XNT Wallet - Tauri Desktop Application"
+authors = ["XNT Team"]
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace]
+
+[lib]
+name = "neptune_wallet_tauri_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Core xnt-core dependency (formerly neptune-core/neptune-cash)
+# Path is relative to this Cargo.toml (src-tauri), up to workspace root then into xnt-core crate
+neptune-privacy = { path = "../../xnt-core" }
+
+# Utilities
+hex = "0.4"
+bincode = "1.3"
+anyhow = "1.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+reqwest = { version = "0.11", features = ["json", "rustls-tls-webpki-roots"] }
+num-traits = "0.2"
+rand = "0.9"
+itertools = "0.12"
+rayon = "1.9"
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.22"
+log = "0.4"
+libc = "0.2"
+bip39 = { version = "1.0", package = "tiny-bip39" }
+
+# OpenSSL vendored for Android builds
+[target.'cfg(target_os = "android")'.dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
+android_logger = "0.13"
+
+# Optimize Triton VM in dev/test profiles for better performance
+[profile.dev.package.triton-vm]
+opt-level = 3
+debug = false
+incremental = false
+debug-assertions = false
+overflow-checks = false
+
+[profile.test.package.triton-vm]
+opt-level = 3
+debug = false
+incremental = false
+debug-assertions = false
+overflow-checks = false
+
+[profile.release]
+lto = true
+opt-level = 3
+codegen-units = 1
+
+[profile.release.package.triton-vm]
+opt-level = 3
+debug = false
+incremental = false
+debug-assertions = false
+overflow-checks = false
+
+# Patch leveldb-sys with local version that has Android 64-bit fixes
+[patch.crates-io]
+leveldb-sys = { path = "./patches/leveldb-sys-2.0.9" }
+

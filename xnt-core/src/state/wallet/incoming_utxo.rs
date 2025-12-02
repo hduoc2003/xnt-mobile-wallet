@@ -24,7 +24,7 @@ use crate::util_types::mutator_set::addition_record::AdditionRecord;
 /// See [UtxoNotificationPayload], [ExpectedUtxo]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "arbitrary-impls"), derive(Arbitrary))]
-pub(crate) struct IncomingUtxo {
+pub struct IncomingUtxo {
     pub(crate) utxo: Utxo,
     pub(crate) sender_randomness: Digest,
     pub(crate) receiver_preimage: Digest,
@@ -78,7 +78,11 @@ impl IncomingUtxo {
             receiver_digest: self.receiver_preimage.hash(),
         }
     }
-    pub(crate) fn addition_record(&self) -> AdditionRecord {
+    /// Return the mutator set addition record for this incoming UTXO.
+    ///
+    /// Note: made public so external wallets can derive the addition record
+    /// without re-implementing the internal `UtxoTriple` logic.
+    pub fn addition_record(&self) -> AdditionRecord {
         self.utxo_triple().addition_record()
     }
 
