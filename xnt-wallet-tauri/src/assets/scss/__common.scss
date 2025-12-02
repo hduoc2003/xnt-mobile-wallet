@@ -1,0 +1,30 @@
+.flex-center {
+    @include center_flex;
+}
+
+.flex-col-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.card-base {
+    @include card-base;
+}
+
+// ==================== TEXT UTILITIES ====================
+
+.text-primary {
+    color: var(--text-primary);
+}
+
+.text-secondary {
+    color: var(--text-secondary);
+}
+
+.text-muted {
+    color: var(--text-muted);
+}
+.highlight {
+    color: var(--primary-color);
+}
