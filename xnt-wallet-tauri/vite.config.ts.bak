@@ -1,0 +1,51 @@
+import { fileURLToPath, URL } from 'node:url'
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import vueJsx from '@vitejs/plugin-vue-jsx'
+import VueDevTools from 'vite-plugin-vue-devtools'
+import Components from 'unplugin-vue-components/vite'
+import { AntDesignVueResolver } from 'unplugin-vue-components/resolvers'
+import { cspPlugin } from './vite-plugin-csp'
+
+export default defineConfig({
+    server: {
+        port: 3008,
+    },
+    base: './',
+    plugins: [
+        cspPlugin(),
+        vue(),
+        vueJsx(),
+        VueDevTools(),
+        Components({
+            resolvers: [AntDesignVueResolver({ importStyle: false })],
+        }),
+    ],
+    optimizeDeps: {
+        exclude: ['@neptune/native'],
+    },
+    build: {
+        rollupOptions: {
+            external: ['@neptune/native'],
+            output: {
+                format: 'es',
+            },
+        },
+    },
+    css: {
+        preprocessorOptions: {
+            scss: {
+                silenceDeprecations: ['import', 'legacy-js-api'],
+                additionalData: `
+                    @import "@/assets/scss/__variables.scss";
+                    @import "@/assets/scss/__mixin.scss";
+                `,
+            },
+        },
+    },
+    resolve: {
+        alias: {
+            '@': fileURLToPath(new URL('./src', import.meta.url)),
+        },
+    },
+})
