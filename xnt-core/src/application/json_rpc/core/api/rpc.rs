@@ -226,7 +226,7 @@ pub trait RpcApi: Sync + Send {
             end_block,
             max_search_depth,
         })
-            .await
+        .await
     }
     async fn get_utxos_from_view_key_call(
         &self,
@@ -246,7 +246,7 @@ pub trait RpcApi: Sync + Send {
             end_block,
             max_search_depth,
         })
-            .await
+        .await
     }
     async fn get_balance_from_view_key_call(
         &self,
@@ -263,12 +263,11 @@ pub trait RpcApi: Sync + Send {
         addition_record: String,
         max_search_depth: u64,
     ) -> GetUtxoCreationBlockResponse {
-        self
-            .get_utxo_creation_block_call(GetUtxoCreationBlockRequest {
-                addition_record,
-                max_search_depth,
-            })
-            .await
+        self.get_utxo_creation_block_call(GetUtxoCreationBlockRequest {
+            addition_record,
+            max_search_depth,
+        })
+        .await
     }
     async fn get_utxo_creation_block_call(
         &self,
@@ -282,14 +281,13 @@ pub trait RpcApi: Sync + Send {
         receiver_preimage_hex: String,
         aocl_leaf_index: u64,
     ) -> GenerateMembershipProofResponse {
-        self
-            .generate_membership_proof_call(GenerateMembershipProofRequest {
-                item_hex,
-                sender_randomness_hex,
-                receiver_preimage_hex,
-                aocl_leaf_index,
-            })
-            .await
+        self.generate_membership_proof_call(GenerateMembershipProofRequest {
+            item_hex,
+            sender_randomness_hex,
+            receiver_preimage_hex,
+            aocl_leaf_index,
+        })
+        .await
     }
     async fn generate_membership_proof_call(
         &self,
@@ -326,19 +324,15 @@ pub trait RpcApi: Sync + Send {
     async fn get_current_fee(&self) -> GetCurrentFeeResponse {
         self.get_current_fee_call(GetCurrentFeeRequest {}).await
     }
-    async fn get_current_fee_call(
-        &self,
-        request: GetCurrentFeeRequest,
-    ) -> GetCurrentFeeResponse;
+    async fn get_current_fee_call(&self, request: GetCurrentFeeRequest) -> GetCurrentFeeResponse;
 
-    async fn get_utxo_info(
-        &self,
-        request: GetUtxoInfoRequest,
-    ) -> GetUtxoInfoResponse {
+    async fn get_utxo_info(&self, request: GetUtxoInfoRequest) -> GetUtxoInfoResponse {
         self.get_utxo_info_call(request).await
     }
-    async fn get_utxo_info_call(
-        &self,
-        request: GetUtxoInfoRequest,
-    ) -> GetUtxoInfoResponse;
+    async fn get_utxo_info_call(&self, request: GetUtxoInfoRequest) -> GetUtxoInfoResponse;
+
+    async fn get_xnt_price(&self) -> GetXntPriceResponse {
+        self.get_xnt_price_call(GetXntPriceRequest {}).await
+    }
+    async fn get_xnt_price_call(&self, request: GetXntPriceRequest) -> GetXntPriceResponse;
 }

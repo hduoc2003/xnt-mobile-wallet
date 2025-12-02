@@ -94,7 +94,6 @@ impl IncomingUtxo {
         self.receiver_preimage
     }
 
-
     pub(crate) fn from_utxo_notification_payload(
         payload: UtxoNotificationPayload,
         receiver_preimage: Digest,

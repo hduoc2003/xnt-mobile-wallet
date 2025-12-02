@@ -1,13 +1,13 @@
+use super::generation_address::GenerationSpendingKey;
+use super::ReceivingAddress;
+use super::SpendingKey;
+use crate::api::export::Utxo;
+use crate::state::wallet::incoming_utxo::IncomingUtxo;
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use tasm_lib::prelude::Digest;
 use tasm_lib::triton_vm::prelude::BFieldElement;
-use anyhow::{anyhow, Result};
 use tasm_lib::twenty_first::math::lattice;
-use crate::api::export::Utxo;
-use super::ReceivingAddress;
-use super::SpendingKey;
-use super::generation_address::GenerationSpendingKey;
-use crate::state::wallet::incoming_utxo::IncomingUtxo;
 
 /// A view-only key that can decrypt UTXO announcements but cannot spend UTXOs.
 ///
@@ -102,7 +102,9 @@ impl ViewKey {
     ///
     /// This method exists only for backwards compatibility during migration.
     /// New code should use `decrypt()` directly or work with ViewKey-specific methods.
-    #[deprecated(note = "ViewKey should not be converted back to SpendingKey. Use decrypt() or scan_for_announced_utxos() instead.")]
+    #[deprecated(
+        note = "ViewKey should not be converted back to SpendingKey. Use decrypt() or scan_for_announced_utxos() instead."
+    )]
     pub fn to_spending_key(&self) -> Result<SpendingKey> {
         Err(anyhow!("ViewKey cannot be converted back to SpendingKey. The unlock_key_preimage and seed are not stored for security reasons. Use decrypt() or other ViewKey-specific methods instead."))
     }
@@ -131,7 +133,6 @@ impl ViewKey {
         &self,
         tx_kernel: &crate::protocol::consensus::transaction::transaction_kernel::TransactionKernel,
     ) -> Result<Vec<IncomingUtxo>> {
-
         use super::common;
 
         // Deserialize the decryption key once before the loop
@@ -154,10 +155,11 @@ impl ViewKey {
             }
 
             // Check if receiver_identifier matches
-            let announcement_receiver_id = match common::receiver_identifier_from_announcement(announcement) {
-                Ok(id) => id,
-                Err(_) => continue,
-            };
+            let announcement_receiver_id =
+                match common::receiver_identifier_from_announcement(announcement) {
+                    Ok(id) => id,
+                    Err(_) => continue,
+                };
 
             if announcement_receiver_id != self.receiver_identifier {
                 continue;
@@ -170,10 +172,11 @@ impl ViewKey {
             };
 
             // Decrypt the ciphertext (decryption_key is Copy, so we can use it multiple times)
-            let (utxo, sender_randomness) = match GenerationSpendingKey::decrypt_with_key(decryption_key, &ciphertext) {
-                Ok(result) => result,
-                Err(_) => continue, // Decryption failed - not for this key or corrupted
-            };
+            let (utxo, sender_randomness) =
+                match GenerationSpendingKey::decrypt_with_key(decryption_key, &ciphertext) {
+                    Ok(result) => result,
+                    Err(_) => continue, // Decryption failed - not for this key or corrupted
+                };
 
             // Construct IncomingUtxo
             incoming_utxos.push(IncomingUtxo {
@@ -201,8 +204,14 @@ mod tests {
 
         let view_key = ViewKey::from_spending_key(&spending_key_enum).unwrap();
 
-        assert_eq!(view_key.receiver_identifier(), spending_key.receiver_identifier());
-        assert_eq!(view_key.receiver_preimage(), spending_key.receiver_preimage());
+        assert_eq!(
+            view_key.receiver_identifier(),
+            spending_key.receiver_identifier()
+        );
+        assert_eq!(
+            view_key.receiver_preimage(),
+            spending_key.receiver_preimage()
+        );
 
         // Security: ViewKey should NOT be convertible back to SpendingKey
         assert!(view_key.to_spending_key().is_err());

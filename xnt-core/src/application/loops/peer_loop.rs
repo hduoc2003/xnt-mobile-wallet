@@ -2472,13 +2472,12 @@ mod tests {
             let mut block_with_valid_xnt_pow = block.clone();
             block_with_valid_xnt_pow.satisfy_pow(difficulty, ConsensusRuleSet::Xnt);
             assert!(block_with_valid_xnt_pow.is_valid_mock_pow(difficulty.target()));
-            assert!(block_with_valid_xnt_pow
-                .pow_verify(difficulty.target(), ConsensusRuleSet::Xnt));
+            assert!(block_with_valid_xnt_pow.pow_verify(difficulty.target(), ConsensusRuleSet::Xnt));
 
             (
                 invalid_pow,
                 block_with_valid_mock_pow,
-                block_with_valid_xnt_pow
+                block_with_valid_xnt_pow,
             )
         }
 
@@ -2516,11 +2515,8 @@ mod tests {
                 1,
             );
 
-            let (
-                block_without_any_pow,
-                block_with_valid_mock_pow,
-                valid_pow_xnt,
-            ) = pow_related_blocks(network, &genesis).await;
+            let (block_without_any_pow, block_with_valid_mock_pow, valid_pow_xnt) =
+                pow_related_blocks(network, &genesis).await;
             assert!(
                 peer_loop_handler
                     .handle_blocks(vec![block_without_any_pow], genesis.clone())
@@ -2546,7 +2542,6 @@ mod tests {
                     .unwrap(),
                 "Must return Some(1) on valid Pow"
             );
-
         }
 
         #[traced_test]
@@ -2568,11 +2563,9 @@ mod tests {
 
             let (without_any_pow, with_valid_mock_pow, with_valid_xnt_pow) =
                 pow_related_blocks(network, &Block::genesis(network)).await;
-            for block_without_valid_pow in [
-                without_any_pow,
-                with_valid_mock_pow,
-                with_valid_xnt_pow
-            ] {
+            for block_without_valid_pow in
+                [without_any_pow, with_valid_mock_pow, with_valid_xnt_pow]
+            {
                 // Sending an invalid block will not necessarily result in a ban. This depends on the peer
                 // tolerance that is set in the client. For this reason, we include a "Bye" here.
                 let mock = Mock::new(vec![

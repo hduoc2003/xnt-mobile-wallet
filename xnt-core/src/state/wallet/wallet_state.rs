@@ -619,7 +619,6 @@ impl WalletState {
         wallet_status.available_confirmed(timestamp)
     }
 
-
     /// returns unconfirmed, available balance (excludes timelocked utxos)
     pub fn unconfirmed_available_balance(
         &self,

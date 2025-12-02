@@ -30,7 +30,7 @@ pub enum ConsensusRuleSet {
     Reboot,
     HardforkAlpha,
     #[default]
-    Xnt
+    Xnt,
 }
 
 impl ConsensusRuleSet {

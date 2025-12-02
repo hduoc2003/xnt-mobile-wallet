@@ -1,9 +1,3 @@
-use serde::Deserialize;
-use serde::Serialize;
-use serde_tuple::Deserialize_tuple;
-use serde_tuple::Serialize_tuple;
-use tasm_lib::prelude::Digest;
-use tasm_lib::triton_vm::prelude::BFieldElement;
 use crate::api::export::BlockHeight;
 use crate::application::json_rpc::core::model::block::body::*;
 use crate::application::json_rpc::core::model::block::header::*;
@@ -12,6 +6,12 @@ use crate::application::json_rpc::core::model::block::*;
 use crate::application::json_rpc::core::model::common::*;
 use crate::state::wallet::incoming_utxo::IncomingUtxo;
 use crate::util_types::mutator_set::mutator_set_accumulator::MutatorSetAccumulator;
+use serde::Deserialize;
+use serde::Serialize;
+use serde_tuple::Deserialize_tuple;
+use serde_tuple::Serialize_tuple;
+use tasm_lib::prelude::Digest;
+use tasm_lib::triton_vm::prelude::BFieldElement;
 
 #[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
 #[serde(rename_all = "camelCase")]
@@ -481,4 +481,14 @@ pub struct GetUtxoInfoResponse {
     pub utxos: Vec<UtxoInfo>,
     /// Error message if failed
     pub error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
+#[serde(rename_all = "camelCase")]
+pub struct GetXntPriceRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetXntPriceResponse {
+    pub price: String,
 }

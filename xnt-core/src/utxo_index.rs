@@ -8,9 +8,9 @@
 //! Index size: ~10 bytes per UTXO (block_height + output_index)
 //! At 100M UTXOs: ~1.2-1.3 GB on disk
 
-use std::path::Path;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 use crate::application::database::{create_db_if_missing, NeptuneLevelDb};
 
@@ -45,13 +45,13 @@ impl UtxoIndexDatabase {
     }
 
     /// Add a UTXO to the index
-    pub async fn add_utxo(&mut self, receiver_identifier: u64, location: UtxoLocation) -> Result<()> {
+    pub async fn add_utxo(
+        &mut self,
+        receiver_identifier: u64,
+        location: UtxoLocation,
+    ) -> Result<()> {
         // Get existing locations for this receiver
-        let mut locations = self
-            .db
-            .get(receiver_identifier)
-            .await
-            .unwrap_or_default();
+        let mut locations = self.db.get(receiver_identifier).await.unwrap_or_default();
 
         // Add new location
         locations.push(location);
@@ -69,8 +69,7 @@ impl UtxoIndexDatabase {
 }
 
 /// Metadata about the UTXO index
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UtxoIndexMetadata {
     /// Highest block height that has been indexed
     pub indexed_height: u64,
@@ -81,7 +80,6 @@ pub struct UtxoIndexMetadata {
     /// Number of unique receivers
     pub total_receivers: u64,
 }
-
 
 /// Database for UTXO index metadata
 #[derive(Debug, Clone)]
@@ -113,9 +111,7 @@ impl UtxoIndexMetadataDb {
 
     /// Update the metadata
     pub async fn set_metadata(&mut self, metadata: UtxoIndexMetadata) -> Result<()> {
-        self.db
-            .put(Self::METADATA_KEY.to_string(), metadata)
-            .await;
+        self.db.put(Self::METADATA_KEY.to_string(), metadata).await;
         Ok(())
     }
 }
@@ -152,9 +148,36 @@ mod tests {
         let index = UtxoIndexDatabase::new(&db_path).unwrap();
         let receiver_id = 0x1234567890abcdef;
 
-        index.add_utxo(receiver_id, UtxoLocation { block_height: 100, output_index: 0 }).await.unwrap();
-        index.add_utxo(receiver_id, UtxoLocation { block_height: 200, output_index: 3 }).await.unwrap();
-        index.add_utxo(receiver_id, UtxoLocation { block_height: 300, output_index: 1 }).await.unwrap();
+        index
+            .add_utxo(
+                receiver_id,
+                UtxoLocation {
+                    block_height: 100,
+                    output_index: 0,
+                },
+            )
+            .await
+            .unwrap();
+        index
+            .add_utxo(
+                receiver_id,
+                UtxoLocation {
+                    block_height: 200,
+                    output_index: 3,
+                },
+            )
+            .await
+            .unwrap();
+        index
+            .add_utxo(
+                receiver_id,
+                UtxoLocation {
+                    block_height: 300,
+                    output_index: 1,
+                },
+            )
+            .await
+            .unwrap();
 
         let found = index.get_utxos(receiver_id).await.unwrap().unwrap();
         assert_eq!(found.len(), 3);

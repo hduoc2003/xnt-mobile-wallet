@@ -42,7 +42,8 @@ impl_to_json_result_direct!(
     GetStateResponse,
     SubmitTransactionResponse,
     GetCurrentFeeResponse,
-    GetUtxoInfoResponse
+    GetUtxoInfoResponse,
+    GetXntPriceResponse
 );
 
 type HandlerFn = Box<

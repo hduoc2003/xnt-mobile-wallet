@@ -85,9 +85,9 @@ use crate::application::loops::connect_to_peers::call_peer;
 use crate::application::loops::main_loop::MainLoopHandler;
 use crate::application::rpc::server::RPC;
 use crate::state::archival_state::ArchivalState;
+use crate::state::wallet::address::receiver_identifier_from_announcement;
 use crate::state::wallet::wallet_state::WalletState;
 use crate::state::GlobalStateLock;
-use crate::state::wallet::address::receiver_identifier_from_announcement;
 
 pub const SUCCESS_EXIT_CODE: i32 = 0;
 pub const COMPOSITION_FAILED_EXIT_CODE: i32 = 159;
@@ -424,7 +424,8 @@ pub async fn initialize(cli_args: cli_args::Args) -> Result<MainLoopHandler> {
     if global_state_lock.cli().rest_api_enable == true {
         if let Some(rest_port) = global_state_lock.cli().rest_port {
             if let Some(rest_listening_address) = &global_state_lock.cli().rest_listening_address {
-                let rest_listener = TcpListener::bind(format!("{}:{}", rest_listening_address, rest_port)).await?;
+                let rest_listener =
+                    TcpListener::bind(format!("{}:{}", rest_listening_address, rest_port)).await?;
 
                 let rpc_state_lock = global_state_lock.clone();
 
@@ -451,7 +452,10 @@ pub async fn initialize(cli_args: cli_args::Args) -> Result<MainLoopHandler> {
                         .expect("Error in REST server task");
                 });
                 task_join_handles.push(rpc_join_handle);
-                info!("Started REST server on {}:{}",rest_listening_address,rest_port);
+                info!(
+                    "Started REST server on {}:{}",
+                    rest_listening_address, rest_port
+                );
             }
         }
     }

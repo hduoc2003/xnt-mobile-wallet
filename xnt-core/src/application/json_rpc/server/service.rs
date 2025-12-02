@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use crate::api::export::Utxo;
 use crate::application::json_rpc::core::api::rpc::RpcApi;
 use crate::application::json_rpc::core::api::rpc::RpcResult;
@@ -6,10 +5,11 @@ use crate::application::json_rpc::core::model::block::RpcBlock;
 use crate::application::json_rpc::core::model::message::*;
 use crate::application::json_rpc::server::rpc::RpcServer;
 use crate::prelude::twenty_first::prelude::Mmr;
+use crate::protocol::proof_abstractions::timestamp::Timestamp;
 use crate::state::mempool::upgrade_priority::UpgradePriority;
 use crate::state::wallet::address::view_key::ViewKey;
-use crate::protocol::proof_abstractions::timestamp::Timestamp;
 use crate::utxo_index::UtxoLocation;
+use async_trait::async_trait;
 
 #[async_trait]
 impl RpcApi for RpcServer {
@@ -348,7 +348,12 @@ impl RpcApi for RpcServer {
         use tasm_lib::prelude::Tip5;
         use tasm_lib::twenty_first::prelude::Mmr;
 
-        let GetUtxosFromViewKeyRequest { view_key, start_block, end_block, max_search_depth } = request;
+        let GetUtxosFromViewKeyRequest {
+            view_key,
+            start_block,
+            end_block,
+            max_search_depth,
+        } = request;
 
         let view_key_hex = view_key.trim_start_matches("0x");
         let view_key_bytes = match hex::decode(view_key_hex) {
@@ -360,7 +365,6 @@ impl RpcApi for RpcServer {
                 };
             }
         };
-
 
         let view_key: ViewKey = match bincode::deserialize(&view_key_bytes) {
             Ok(vk) => vk,
@@ -391,39 +395,37 @@ impl RpcApi for RpcServer {
             };
         }
 
-
-
         let indexed_locations = if let Some(ref index_db) = state.utxo_index {
             match receiver_identifier.try_into() {
-                Ok(receiver_id_u64) => {
-                    match index_db.get_utxos(receiver_id_u64).await {
-                        Ok(Some(locations)) => {
-                            let filtered: Vec<UtxoLocation> = locations
-                                .into_iter()
-                                .filter(|loc| loc.block_height >= start_block && loc.block_height <= actual_end)
-                                .collect();
+                Ok(receiver_id_u64) => match index_db.get_utxos(receiver_id_u64).await {
+                    Ok(Some(locations)) => {
+                        let filtered: Vec<UtxoLocation> = locations
+                            .into_iter()
+                            .filter(|loc| {
+                                loc.block_height >= start_block && loc.block_height <= actual_end
+                            })
+                            .collect();
 
-                            if !filtered.is_empty() {
-                                tracing::info!(
+                        if !filtered.is_empty() {
+                            tracing::info!(
                                     "Using UTXO index: found {} potential UTXO(s) at specific blocks (fast path)",
                                     filtered.len()
                                 );
-                                Some(filtered)
-                            } else {
-                                tracing::info!("UTXO index: no UTXOs found in specified range");
-                                Some(vec![])
-                            }
-                        }
-                        Ok(None) => {
-                            tracing::info!("UTXO index: no UTXOs found for this receiver");
+                            Some(filtered)
+                        } else {
+                            tracing::info!("UTXO index: no UTXOs found in specified range");
                             Some(vec![])
                         }
-                        Err(e) => {
-                            tracing::warn!("UTXO index query failed: {}, falling back to full scan", e);
-                            None
-                        }
                     }
-                }
+                    Ok(None) => {
+                        tracing::info!("UTXO index: no UTXOs found for this receiver");
+                        Some(vec![])
+                    }
+                    Err(e) => {
+                        tracing::warn!("UTXO index query failed: {}, falling back to full scan", e);
+                        None
+                    }
+                },
                 Err(e) => {
                     tracing::warn!("Failed to convert receiver_identifier to u64: {:?}, falling back to full scan", e);
                     None
@@ -434,12 +436,10 @@ impl RpcApi for RpcServer {
             None
         };
 
-
         let mut discovered_utxos = Vec::new();
         let archival_state = state.chain.archival_state();
 
         let ams = archival_state.archival_mutator_set.ams();
-
 
         let blocks_to_scan: Vec<u64> = if let Some(locations) = indexed_locations {
             let blocks: Vec<u64> = locations.iter().map(|loc| loc.block_height).collect();
@@ -452,12 +452,17 @@ impl RpcApi for RpcServer {
             }
             blocks
         } else {
-            tracing::info!("Performing full blockchain scan from block {} to {}", start_block, actual_end);
+            tracing::info!(
+                "Performing full blockchain scan from block {} to {}",
+                start_block,
+                actual_end
+            );
             (start_block..=actual_end).collect()
         };
 
         for height in blocks_to_scan {
-            let block_digest = match archival_state.archival_block_mmr
+            let block_digest = match archival_state
+                .archival_block_mmr
                 .ammr()
                 .try_get_leaf(height)
                 .await
@@ -487,7 +492,6 @@ impl RpcApi for RpcServer {
                 continue;
             }
 
-
             let incoming_utxos = match view_key.scan_for_announced_utxos(tx_kernel) {
                 Ok(utxos) => utxos,
                 Err(e) => {
@@ -505,7 +509,6 @@ impl RpcApi for RpcServer {
                 incoming_utxos.len(),
                 height
             );
-
 
             let block_msa_after = block
                 .mutator_set_accumulator_after()
@@ -529,7 +532,10 @@ impl RpcApi for RpcServer {
                         != addition_record.canonical_commitment
                     {
                         if haystack <= min_aocl_leaf_index {
-                            tracing::warn!("UTXO addition record not found in block height={}", height);
+                            tracing::warn!(
+                                "UTXO addition record not found in block height={}",
+                                height
+                            );
                             break;
                         }
                         haystack -= 1;
@@ -549,8 +555,12 @@ impl RpcApi for RpcServer {
                         incoming_utxo.receiver_preimage,
                         aocl_leaf_index,
                     )
-                    .await else {
-                    tracing::debug!("Could not restore membership proof for UTXO at height {}", height);
+                    .await
+                else {
+                    tracing::debug!(
+                        "Could not restore membership proof for UTXO at height {}",
+                        height
+                    );
                     continue;
                 };
 
@@ -564,7 +574,6 @@ impl RpcApi for RpcServer {
             }
         }
 
-
         tracing::info!(
             "UTXO scan complete: found {} unspent UTXO(s), scanned blocks {}..={}",
             discovered_utxos.len(),
@@ -572,10 +581,9 @@ impl RpcApi for RpcServer {
             actual_end
         );
 
-
         GetUtxosFromViewKeyResponse {
             utxos: discovered_utxos,
-            error: None
+            error: None,
         }
     }
 
@@ -585,12 +593,14 @@ impl RpcApi for RpcServer {
     ) -> GetBalanceFromViewKeyResponse {
         use crate::api::export::NativeCurrencyAmount;
 
-        let utxos_response = self.get_utxos_from_view_key_call(GetUtxosFromViewKeyRequest {
-            view_key: request.view_key.clone(),
-            start_block: request.start_block,
-            end_block: request.end_block,
-            max_search_depth: request.max_search_depth,
-        }).await;
+        let utxos_response = self
+            .get_utxos_from_view_key_call(GetUtxosFromViewKeyRequest {
+                view_key: request.view_key.clone(),
+                start_block: request.start_block,
+                end_block: request.end_block,
+                max_search_depth: request.max_search_depth,
+            })
+            .await;
 
         if let Some(error) = utxos_response.error {
             return GetBalanceFromViewKeyResponse {
@@ -675,10 +685,7 @@ impl RpcApi for RpcServer {
         }
     }
 
-    async fn get_current_fee_call(
-        &self,
-        _: GetCurrentFeeRequest,
-    ) -> GetCurrentFeeResponse {
+    async fn get_current_fee_call(&self, _: GetCurrentFeeRequest) -> GetCurrentFeeResponse {
         use crate::api::export::NativeCurrencyAmount;
 
         let state = self.state.lock_guard().await;
@@ -708,10 +715,7 @@ impl RpcApi for RpcServer {
         }
     }
 
-    async fn get_utxo_info_call(
-        &self,
-        request: GetUtxoInfoRequest,
-    ) -> GetUtxoInfoResponse {
+    async fn get_utxo_info_call(&self, request: GetUtxoInfoRequest) -> GetUtxoInfoResponse {
         use tasm_lib::prelude::Tip5;
         use tasm_lib::twenty_first::prelude::Mmr;
 
@@ -757,23 +761,24 @@ impl RpcApi for RpcServer {
 
         let indexed_locations = if let Some(ref index_db) = state.utxo_index {
             match receiver_identifier.try_into() {
-                Ok(receiver_id_u64) => {
-                    match index_db.get_utxos(receiver_id_u64).await {
-                        Ok(Some(locations)) => {
-                            let filtered: Vec<_> = locations
-                                .into_iter()
-                                .filter(|loc| loc.block_height >= request.start_block && loc.block_height <= actual_end)
-                                .collect();
-                            if !filtered.is_empty() {
-                                Some(filtered)
-                            } else {
-                                Some(vec![])
-                            }
+                Ok(receiver_id_u64) => match index_db.get_utxos(receiver_id_u64).await {
+                    Ok(Some(locations)) => {
+                        let filtered: Vec<_> = locations
+                            .into_iter()
+                            .filter(|loc| {
+                                loc.block_height >= request.start_block
+                                    && loc.block_height <= actual_end
+                            })
+                            .collect();
+                        if !filtered.is_empty() {
+                            Some(filtered)
+                        } else {
+                            Some(vec![])
                         }
-                        Ok(None) => Some(vec![]),
-                        Err(_) => None,
                     }
-                }
+                    Ok(None) => Some(vec![]),
+                    Err(_) => None,
+                },
                 Err(_) => None,
             }
         } else {
@@ -795,7 +800,8 @@ impl RpcApi for RpcServer {
         let mut utxo_infos = Vec::new();
 
         for height in blocks_to_scan {
-            let block_digest = match archival_state.archival_block_mmr
+            let block_digest = match archival_state
+                .archival_block_mmr
                 .ammr()
                 .try_get_leaf(height)
                 .await
@@ -859,7 +865,10 @@ impl RpcApi for RpcServer {
                         != addition_record.canonical_commitment
                     {
                         if haystack <= min_aocl_leaf_index {
-                            tracing::warn!("UTXO addition record not found in block height={}", height);
+                            tracing::warn!(
+                                "UTXO addition record not found in block height={}",
+                                height
+                            );
                             break;
                         }
                         haystack -= 1;
@@ -880,8 +889,12 @@ impl RpcApi for RpcServer {
                         incoming_utxo.receiver_preimage,
                         aocl_leaf_index,
                     )
-                    .await else {
-                    tracing::debug!("Could not restore membership proof for UTXO at height {}", height);
+                    .await
+                else {
+                    tracing::debug!(
+                        "Could not restore membership proof for UTXO at height {}",
+                        height
+                    );
                     continue;
                 };
 
@@ -902,12 +915,14 @@ impl RpcApi for RpcServer {
 
                 let utxo_hash = format!("0x{}", item.to_hex());
 
-                utxo_infos.push(crate::application::json_rpc::core::model::message::UtxoInfo {
-                    amount: amount.to_string(),
-                    block_height: height,
-                    addition_record: addition_record_hex,
-                    utxo_hash,
-                });
+                utxo_infos.push(
+                    crate::application::json_rpc::core::model::message::UtxoInfo {
+                        amount: amount.to_string(),
+                        block_height: height,
+                        addition_record: addition_record_hex,
+                        utxo_hash,
+                    },
+                );
             }
         }
 
@@ -966,8 +981,23 @@ impl RpcApi for RpcServer {
             .await;
         match opt_block {
             Some(block) => GetUtxoCreationBlockResponse {
-                last_aocl_index_in_block: Some(block.mutator_set_accumulator_after().unwrap().aocl.num_leafs() -1),
-                num_outputs_in_block: Some(block.mutator_set_update().unwrap().additions.len().try_into().unwrap()),
+                last_aocl_index_in_block: Some(
+                    block
+                        .mutator_set_accumulator_after()
+                        .unwrap()
+                        .aocl
+                        .num_leafs()
+                        - 1,
+                ),
+                num_outputs_in_block: Some(
+                    block
+                        .mutator_set_update()
+                        .unwrap()
+                        .additions
+                        .len()
+                        .try_into()
+                        .unwrap(),
+                ),
                 error: None,
             },
             None => GetUtxoCreationBlockResponse {
@@ -988,15 +1018,30 @@ impl RpcApi for RpcServer {
 
         let item_bytes = match decode_hex(&request.item_hex) {
             Ok(b) => b,
-            Err(e) => return GenerateMembershipProofResponse { msmp_hex: None, error: Some(e) },
+            Err(e) => {
+                return GenerateMembershipProofResponse {
+                    msmp_hex: None,
+                    error: Some(e),
+                }
+            }
         };
         let sender_rand_bytes = match decode_hex(&request.sender_randomness_hex) {
             Ok(b) => b,
-            Err(e) => return GenerateMembershipProofResponse { msmp_hex: None, error: Some(e) },
+            Err(e) => {
+                return GenerateMembershipProofResponse {
+                    msmp_hex: None,
+                    error: Some(e),
+                }
+            }
         };
         let receiver_preimage_bytes = match decode_hex(&request.receiver_preimage_hex) {
             Ok(b) => b,
-            Err(e) => return GenerateMembershipProofResponse { msmp_hex: None, error: Some(e) },
+            Err(e) => {
+                return GenerateMembershipProofResponse {
+                    msmp_hex: None,
+                    error: Some(e),
+                }
+            }
         };
 
         let item = match bincode::deserialize(&item_bytes) {
@@ -1054,7 +1099,10 @@ impl RpcApi for RpcServer {
             }
         };
 
-        GenerateMembershipProofResponse { msmp_hex: Some(msmp_hex), error: None }
+        GenerateMembershipProofResponse {
+            msmp_hex: Some(msmp_hex),
+            error: None,
+        }
     }
 
     async fn get_state_call(&self, _: GetStateRequest) -> GetStateResponse {
@@ -1067,7 +1115,10 @@ impl RpcApi for RpcServer {
         let cli = state.cli().clone();
 
         let tip_digest = state.chain.light_state().hash();
-        let tip_hash = format!("0x{}", hex::encode(bincode::serialize(&tip_digest).unwrap_or_default()));
+        let tip_hash = format!(
+            "0x{}",
+            hex::encode(bincode::serialize(&tip_digest).unwrap_or_default())
+        );
         let network = self.state.cli().network.to_string();
 
         let mutator_set_accumulator = state
@@ -1084,15 +1135,11 @@ impl RpcApi for RpcServer {
         let confirmed_available = state
             .wallet_state
             .confirmed_available_balance(&wallet_status, timestamp);
-        let confirmed_total = state
-            .wallet_state
-            .confirmed_total_balance(&wallet_status);
+        let confirmed_total = state.wallet_state.confirmed_total_balance(&wallet_status);
         let unconfirmed_available = state
             .wallet_state
             .unconfirmed_available_balance(&wallet_status, timestamp);
-        let unconfirmed_total = state
-            .wallet_state
-            .unconfirmed_total_balance(&wallet_status);
+        let unconfirmed_total = state.wallet_state.unconfirmed_total_balance(&wallet_status);
 
         GetStateResponse {
             state: StateInfo {
@@ -1113,8 +1160,8 @@ impl RpcApi for RpcServer {
         &self,
         request: GenerateUtxoWithProofRequest,
     ) -> GenerateUtxoWithProofResponse {
-        use crate::util_types::mutator_set::addition_record::AdditionRecord;
         use crate::twenty_first::prelude::Tip5;
+        use crate::util_types::mutator_set::addition_record::AdditionRecord;
 
         let decode_hex = |s: &str| -> Result<Vec<u8>, String> {
             hex::decode(s.trim_start_matches("0x")).map_err(|e| format!("Invalid hex: {}", e))
@@ -1122,36 +1169,84 @@ impl RpcApi for RpcServer {
 
         let utxo_bytes = match decode_hex(&request.utxo_hex) {
             Ok(b) => b,
-            Err(e) => return GenerateUtxoWithProofResponse { utxo_hex: None, msmp_hex: None, error: Some(e) },
+            Err(e) => {
+                return GenerateUtxoWithProofResponse {
+                    utxo_hex: None,
+                    msmp_hex: None,
+                    error: Some(e),
+                }
+            }
         };
         let addition_record_bytes = match decode_hex(&request.addition_record_hex) {
             Ok(b) => b,
-            Err(e) => return GenerateUtxoWithProofResponse { utxo_hex: None, msmp_hex: None, error: Some(e) },
+            Err(e) => {
+                return GenerateUtxoWithProofResponse {
+                    utxo_hex: None,
+                    msmp_hex: None,
+                    error: Some(e),
+                }
+            }
         };
         let sender_rand_bytes = match decode_hex(&request.sender_randomness_hex) {
             Ok(b) => b,
-            Err(e) => return GenerateUtxoWithProofResponse { utxo_hex: None, msmp_hex: None, error: Some(e) },
+            Err(e) => {
+                return GenerateUtxoWithProofResponse {
+                    utxo_hex: None,
+                    msmp_hex: None,
+                    error: Some(e),
+                }
+            }
         };
         let receiver_preimage_bytes = match decode_hex(&request.receiver_preimage_hex) {
             Ok(b) => b,
-            Err(e) => return GenerateUtxoWithProofResponse { utxo_hex: None, msmp_hex: None, error: Some(e) },
+            Err(e) => {
+                return GenerateUtxoWithProofResponse {
+                    utxo_hex: None,
+                    msmp_hex: None,
+                    error: Some(e),
+                }
+            }
         };
 
         let utxo: Utxo = match bincode::deserialize(&utxo_bytes) {
             Ok(v) => v,
-            Err(e) => return GenerateUtxoWithProofResponse { utxo_hex: None, msmp_hex: None, error: Some(format!("Failed to deserialize utxo: {}", e)) },
+            Err(e) => {
+                return GenerateUtxoWithProofResponse {
+                    utxo_hex: None,
+                    msmp_hex: None,
+                    error: Some(format!("Failed to deserialize utxo: {}", e)),
+                }
+            }
         };
         let addition_record: AdditionRecord = match bincode::deserialize(&addition_record_bytes) {
             Ok(v) => v,
-            Err(e) => return GenerateUtxoWithProofResponse { utxo_hex: None, msmp_hex: None, error: Some(format!("Failed to deserialize addition_record: {}", e)) },
+            Err(e) => {
+                return GenerateUtxoWithProofResponse {
+                    utxo_hex: None,
+                    msmp_hex: None,
+                    error: Some(format!("Failed to deserialize addition_record: {}", e)),
+                }
+            }
         };
         let sender_randomness = match bincode::deserialize(&sender_rand_bytes) {
             Ok(v) => v,
-            Err(e) => return GenerateUtxoWithProofResponse { utxo_hex: None, msmp_hex: None, error: Some(format!("Failed to deserialize sender_randomness: {}", e)) },
+            Err(e) => {
+                return GenerateUtxoWithProofResponse {
+                    utxo_hex: None,
+                    msmp_hex: None,
+                    error: Some(format!("Failed to deserialize sender_randomness: {}", e)),
+                }
+            }
         };
         let receiver_preimage = match bincode::deserialize(&receiver_preimage_bytes) {
             Ok(v) => v,
-            Err(e) => return GenerateUtxoWithProofResponse { utxo_hex: None, msmp_hex: None, error: Some(format!("Failed to deserialize receiver_preimage: {}", e)) },
+            Err(e) => {
+                return GenerateUtxoWithProofResponse {
+                    utxo_hex: None,
+                    msmp_hex: None,
+                    error: Some(format!("Failed to deserialize receiver_preimage: {}", e)),
+                }
+            }
         };
 
         let state = self.state.lock_guard().await;
@@ -1159,7 +1254,8 @@ impl RpcApi for RpcServer {
         let max = request.max_search_depth.or(Some(1000));
         let Some(creation_block) = archival
             .find_canonical_block_with_output(addition_record, max)
-            .await else {
+            .await
+        else {
             return GenerateUtxoWithProofResponse {
                 utxo_hex: None,
                 msmp_hex: None,
@@ -1184,9 +1280,7 @@ impl RpcApi for RpcServer {
 
         let mut haystack = last_aocl_index_in_block;
         let ams = archival.archival_mutator_set.ams();
-        while ams.aocl.get_leaf_async(haystack).await
-            != addition_record.canonical_commitment
-        {
+        while ams.aocl.get_leaf_async(haystack).await != addition_record.canonical_commitment {
             if haystack <= min_aocl_leaf_index {
                 return GenerateUtxoWithProofResponse {
                     utxo_hex: None,
@@ -1216,7 +1310,11 @@ impl RpcApi for RpcServer {
         let utxo_hex = format!("0x{}", hex::encode(bincode::serialize(&utxo).unwrap()));
         let msmp_hex = format!("0x{}", hex::encode(bincode::serialize(&msmp).unwrap()));
 
-        GenerateUtxoWithProofResponse { utxo_hex: Some(utxo_hex), msmp_hex: Some(msmp_hex), error: None }
+        GenerateUtxoWithProofResponse {
+            utxo_hex: Some(utxo_hex),
+            msmp_hex: Some(msmp_hex),
+            error: None,
+        }
     }
 
     async fn submit_transaction_call(
@@ -1259,10 +1357,9 @@ impl RpcApi for RpcServer {
             )
         };
 
-        let is_valid = transaction.is_valid(
-            self.state.cli().network,
-            consensus_rule_set,
-        ).await;
+        let is_valid = transaction
+            .is_valid(self.state.cli().network, consensus_rule_set)
+            .await;
 
         if !is_valid {
             tracing::warn!("Transaction validation failed");
@@ -1277,7 +1374,10 @@ impl RpcApi for RpcServer {
         let txid = transaction.kernel.txid();
         let txid_hex = format!("0x{}", hex::encode(bincode::serialize(&txid).unwrap()));
 
-        tracing::info!("Transaction {} validated successfully, adding to mempool", txid_hex);
+        tracing::info!(
+            "Transaction {} validated successfully, adding to mempool",
+            txid_hex
+        );
 
         use std::sync::Arc;
         let transaction_arc = Arc::new(transaction.clone());
@@ -1285,7 +1385,8 @@ impl RpcApi for RpcServer {
         let mut state = self.clone();
         {
             let mut gsm = state.state.lock_guard_mut().await;
-            gsm.mempool_insert(transaction, UpgradePriority::Irrelevant).await;
+            gsm.mempool_insert(transaction, UpgradePriority::Irrelevant)
+                .await;
         }
 
         let broadcaster_tx = self.state.rpc_server_to_main_tx();
@@ -1303,6 +1404,12 @@ impl RpcApi for RpcServer {
             txid: txid_hex,
             success: true,
             error: None,
+        }
+    }
+
+    async fn get_xnt_price_call(&self, _: GetXntPriceRequest) -> GetXntPriceResponse {
+        GetXntPriceResponse {
+            price: "4.0".to_string(),
         }
     }
 }

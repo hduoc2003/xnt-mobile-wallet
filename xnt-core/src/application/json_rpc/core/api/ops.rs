@@ -5,7 +5,6 @@ use xnt_rpc_macros::Router;
 
 use crate::application::json_rpc::core::model::message::*;
 
-
 /// API version.
 pub const RPC_API_VERSION: u16 = 1;
 
@@ -120,6 +119,9 @@ pub enum RpcMethods {
 
     #[namespace(Namespace::Wallet)]
     GetUtxoInfo,
+
+    #[namespace(Namespace::Node)]
+    GetXntPrice,
 }
 
 #[cfg(test)]
