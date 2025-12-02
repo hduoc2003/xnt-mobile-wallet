@@ -1,0 +1,20 @@
+--- a/src/build.rs
++++ b/src/build.rs
+@@ -40,6 +40,10 @@ fn build_leveldb(snappy_prefix: Option<PathBuf>) {
+     config
+         .define("LEVELDB_BUILD_TESTS", "OFF")
+         .define("LEVELDB_BUILD_BENCHMARKS", "OFF")
+         .define("CMAKE_INSTALL_LIBDIR", &libdir);
++    if let Some(snappy_prefix) = snappy_prefix {
++        // Set CMAKE_LIBRARY_PATH so CMake's check_library_exists can find snappy
++        config.define("CMAKE_LIBRARY_PATH", snappy_prefix.join(LIBDIR).display().to_string());
++    }
+     if let Some(snappy_prefix) = snappy_prefix {
+         #[cfg(target_env = "msvc")]
+         let ldflags = format!("/LIBPATH:{}", snappy_prefix.join(LIBDIR).display());
+
+
+
+
+
+
