@@ -1,126 +1,114 @@
 <script setup lang="ts">
-import { useNeptuneWallet } from '@/composables/useNeptuneWallet'
-import { message } from 'ant-design-vue'
+import { onMounted, ref } from 'vue'
+import { CheckCircle2, Wallet, Sparkles, ArrowRight, Shield, Lock } from 'lucide-vue-next'
 
-const props = defineProps<{
-    seedPhrase: string[]
-    password: string
-}>()
+interface Props {
+  seedPhrase: string[]
+  password: string
+}
 
-const { createKeystore } = useNeptuneWallet()
+defineProps<Props>()
 
 const emit = defineEmits<{
-    accessWallet: []
-    createAnother: []
+  accessWallet: []
+  createAnother: []
 }>()
 
-const handleAccessWallet = async () => {
-    try {
-        const seedPhraseString = props.seedPhrase.join(' ')
-        
-        if (!seedPhraseString || !props.password) {
-            message.error('Missing seed or password')
-            return
-        }
+const showConfetti = ref(false)
 
-        await createKeystore(seedPhraseString, props.password)
-        emit('accessWallet')
-    } catch (err) {
-        message.error('Failed to create keystore')
-    }
+const handleAccessWallet = () => {
+  emit('accessWallet')
 }
 
-const handleCreateAnother = () => {
-    emit('createAnother')
-}
+onMounted(() => {
+  showConfetti.value = true
+})
 </script>
 
 <template>
-    <div class="well-done-step">
-        <h2 class="done-main">You are done!</h2>
-        <p class="done-desc">
-            You are now ready to take advantage of all that your wallet has to offer! Access with
-            keystore file should only be used in an offline setting.
-        </p>
-        <div class="center-svg" style="margin: 14px auto 12px auto">
-            <img
-                src="@/assets/imgs/logo.png"
-                alt="XNT Logo"
-                style="max-width: 180px; height: auto"
-            />
+  <div class="space-y-8">
+    <div class="flex justify-center">
+      <div class="relative">
+        <div class="absolute -inset-4 rounded-full bg-green-500/20 blur-xl"></div>
+        <div
+          class="relative rounded-full bg-gradient-to-br from-green-400 to-emerald-600 p-6 shadow-2xl"
+        >
+          <CheckCircle2 :size="80" class="text-white" />
         </div>
-        <div class="btn-row">
-            <ButtonCommon
-                class="done-btn"
-                type="primary"
-                size="large"
-                block
-                style="margin-bottom: 0.3em"
-                @click="handleAccessWallet"
-            >
-                Access Wallet
-            </ButtonCommon>
-            <button class="done-link" type="button" @click="handleCreateAnother">
-                Create Another Wallet
-            </button>
-        </div>
+      </div>
     </div>
+
+    <div class="space-y-3 text-center">
+      <h1 class="text-4xl font-bold tracking-tight text-foreground">Congratulations!</h1>
+      <p class="text-lg text-muted-foreground">Your XNT wallet is ready</p>
+    </div>
+
+    <Separator />
+
+    <div class="space-y-6">
+      <div class="flex justify-center">
+        <Logo />
+      </div>
+
+      <div class="grid gap-3">
+        <Card class="border-2 border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent">
+          <CardContent class="flex items-center gap-4 p-4">
+            <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+              <Shield />
+            </div>
+            <div class="flex-1">
+              <h3 class="font-semibold text-foreground">Secure & Private</h3>
+              <p class="text-xs text-muted-foreground">Your keys, your crypto</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          class="border-2 border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent"
+        >
+          <CardContent class="flex items-center gap-4 p-4">
+            <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-green-500/10">
+              <Lock :size="24" class="text-green-600" />
+            </div>
+            <div class="flex-1">
+              <h3 class="font-semibold text-foreground">Encrypted Locally</h3>
+              <p class="text-xs text-muted-foreground">Protected by your password</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card class="border-2 border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent">
+          <CardContent class="flex items-center gap-4 p-4">
+            <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10">
+              <Sparkles :size="24" />
+            </div>
+            <div class="flex-1">
+              <h3 class="font-semibold text-foreground">Ready to Use</h3>
+              <p class="text-xs text-muted-foreground">Start exploring now</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+
+    <Alert class="border-2 border-primary/20 bg-primary/5">
+      <Shield :size="18" />
+      <AlertDescription class="text-sm">
+        <strong>Remember:</strong> Keep your recovery phrase safe. You'll need it to restore your
+        wallet if you ever lose access.
+      </AlertDescription>
+    </Alert>
+
+    <div class="space-y-3">
+      <Button
+        size="lg"
+        class="h-14 w-full gap-2 text-lg font-semibold shadow-lg"
+        @click="handleAccessWallet"
+      >
+        <Wallet :size="24" />
+        Open My Wallet
+        <ArrowRight :size="20" class="ml-auto" />
+      </Button>
+    </div>
+  </div>
 </template>
-
-<style lang="scss" scoped>
-.well-done-step {
-    text-align: center;
-    padding: 20px 8px;
-
-    .done-title {
-        color: var(--primary-color);
-        font-weight: 700;
-        letter-spacing: 0.07em;
-        margin-bottom: 1px;
-    }
-
-    .done-main {
-        font-size: 1.36rem;
-        font-weight: 700;
-        color: var(--text-primary);
-        margin-bottom: 2px;
-    }
-
-    .done-desc {
-        color: var(--text-secondary);
-        font-size: 1.11em;
-        max-width: 410px;
-        margin: 2px auto 15px auto;
-    }
-
-    .center-svg {
-        display: flex;
-        justify-content: center;
-    }
-
-    .btn-row {
-        display: flex;
-        flex-direction: column;
-        gap: 11px;
-        align-items: center;
-        width: 100%;
-        max-width: 400px;
-        margin: 0 auto 5px auto;
-    }
-
-    .done-btn {
-        margin-bottom: 0.3em;
-    }
-
-    .done-link {
-        background: none;
-        border: none;
-        color: var(--primary-color);
-        font-size: 1em;
-        text-decoration: underline;
-        cursor: pointer;
-        margin: 0 auto;
-        font-weight: 600;
-    }
-}
-</style>

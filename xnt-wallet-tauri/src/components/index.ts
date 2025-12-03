@@ -1,4 +1,3 @@
-import LayoutVue from './common/LayoutVue.vue'
 import ButtonCommon from './common/ButtonCommon.vue'
 import FormCommon from './common/FormCommon.vue'
 import PasswordForm from './common/PasswordForm.vue'
@@ -11,7 +10,6 @@ import ModalCommon from './common/ModalCommon.vue'
 import { IconCommon } from './icon'
 
 export {
-    LayoutVue,
     ButtonCommon,
     FormCommon,
     PasswordForm,

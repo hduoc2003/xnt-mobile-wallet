@@ -1,13 +1,10 @@
-// Tabs
-export { default as LoginTab } from './LoginTab.vue'
-export { default as CreateTab } from './CreateTab.vue'
-export { default as ConfirmTab } from './ConfirmTab.vue'
-export { default as RecoverSeedTab } from './RecoverSeedTab.vue'
+// New auth flow components (from wallet-component UI)
+export { default as OnboardingTab } from './onboarding/OnboardingTab.vue'
+export { default as WelcomeTab } from './welcome/WelcomeTab.vue'
+export { default as LoginTab } from './login/LoginTab.vue'
 
-// Auth Components
-export { default as OnboardingTab } from './OnboardingTab.vue'
-export { default as SeedPhraseDisplayComponent } from './SeedPhraseDisplayComponent.vue'
-
-// Nested Components
+// Create wallet flow
 export * from './create'
-export * from './recover'
+
+// Recovery flow
+export * from './recovery'

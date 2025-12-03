@@ -1,28 +1,40 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
-import i18n from '@/lang'
+import i18n from '@/i18n'
 import App from './App.vue'
 import router from './router'
-import 'ant-design-vue/dist/reset.css'
-import './assets/scss/main.scss'
+import './style.css'
 
-const formatLogMessage = (...args: any[]): string => {
-    return args
-        .map((arg) => {
-            if (typeof arg === 'string') return arg
-            try {
-                return JSON.stringify(arg)
-            } catch {
-                return String(arg)
-            }
-        })
-        .join(' ')
+const safeInvoke = async <T = any>(cmd: string, args?: any): Promise<T> => {
+  const maxWait = 5000
+  const startTime = Date.now()
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    try {
+      return await invoke(cmd, args)
+    } catch (e: any) {
+      const msg = String(e?.message || e || '')
+      const looksLikeNotReady =
+        msg.includes("Cannot read properties of undefined (reading 'invoke')") ||
+        msg.includes('__TAURI_INTERNALS__') ||
+        msg.includes('Tauri API not available') ||
+        msg.includes('Tauri is not ready')
+      const elapsed = Date.now() - startTime
+
+      if (!looksLikeNotReady || elapsed >= maxWait) {
+        throw new Error(msg || 'Tauri API not available')
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+  }
 }
 
 const sendLogToNative = (level: 'trace' | 'debug' | 'info' | 'warn' | 'error', message: string) => {
     try {
-        invoke('log_message', { level, message }).catch(() => {})
+        safeInvoke('log_message', { level, message }).catch(() => {})
     } catch {
         // Silent fail
     }
@@ -31,20 +43,20 @@ const sendLogToNative = (level: 'trace' | 'debug' | 'info' | 'warn' | 'error', m
 if (!(window as any).logger) {
     (window as any).logger = {
         info: (...args: any[]) => {
-            const message = formatLogMessage(...args)
+            const message = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
             sendLogToNative('info', message)
         },
         warn: (...args: any[]) => {
-            const message = formatLogMessage(...args)
+            const message = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
             sendLogToNative('warn', message)
         },
         error: (...args: any[]) => {
-            const message = formatLogMessage(...args)
+            const message = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
             console.error('[ERROR]', ...args)
             sendLogToNative('error', message)
         },
         debug: (...args: any[]) => {
-            const message = formatLogMessage(...args)
+            const message = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
             sendLogToNative('debug', message)
         },
     }
@@ -69,10 +81,10 @@ if (!(window as any).walletApi) {
     ;(window as any).walletApi = {
         generateSeed: async () => {
             try {
-                const result = await invoke<string>('generate_seed')
+                const result = await safeInvoke<string>('generate_seed')
                 return JSON.parse(result)
             } catch (error: any) {
-                throw new Error(error || 'Failed to generate seed')
+                throw new Error(error?.message || error || 'Failed to generate seed')
             }
         },
         
@@ -82,20 +94,20 @@ if (!(window as any).walletApi) {
                 if (networkStr === 'mainnet') {
                     networkStr = 'main'
                 }
-                const result = await invoke<string>('generate_keys_from_seed', { 
+                const result = await safeInvoke<string>('generate_keys_from_seed', { 
                     seedPhrase,
                     network: networkStr
                 })
                 return JSON.parse(result)
             } catch (error: any) {
                 console.error('[walletApi] Error generating keys:', error)
-                throw new Error(error || 'Failed to generate keys from seed')
+                throw new Error(error?.message || error || 'Failed to generate keys from seed')
             }
         },
         
         decryptKeystore: async (keystoreFileName: string, password: string) => {
             try {
-                const result = await invoke<string>('decrypt_keystore', { 
+                const result = await safeInvoke<string>('decrypt_keystore', { 
                     fileName: keystoreFileName, 
                     password 
                 })
@@ -107,7 +119,7 @@ if (!(window as any).walletApi) {
         
         saveKeystoreAs: async (keystoreFileName: string) => {
             try {
-                const result = await invoke<string>('save_keystore_as', { fileName: keystoreFileName })
+                const result = await safeInvoke<string>('save_keystore_as', { fileName: keystoreFileName })
                 return JSON.parse(result)
             } catch (error: any) {
                 return { success: false, error: error || 'Failed to save keystore' }
@@ -122,7 +134,7 @@ if (!(window as any).walletApi) {
                 if (blockHeight === null || blockHeight === undefined) {
                     return { success: true }
                 }
-                const result = await invoke<string>('update_min_block_height', { 
+                const result = await safeInvoke<string>('update_min_block_height', { 
                     fileName: keystoreFileName, 
                     blockHeight 
                 })
@@ -135,7 +147,7 @@ if (!(window as any).walletApi) {
         
         buildTransaction: async (payload: any) => {
             try {
-                const result = await invoke<string>('build_transaction', { payload })
+                const result = await safeInvoke<string>('build_transaction', { payload })
                 return JSON.parse(result)
             } catch (error: any) {
                 return { success: false, error: error || 'Failed to build transaction' }
@@ -144,7 +156,7 @@ if (!(window as any).walletApi) {
         
         getMinBlockHeight: async (keystoreFileName: string) => {
             try {
-                const result = await invoke<string>('get_min_block_height', { fileName: keystoreFileName })
+                const result = await safeInvoke<string>('get_min_block_height', { fileName: keystoreFileName })
                 return JSON.parse(result)
             } catch (error: any) {
                 return { success: false, error: error || 'Failed to get min block height' }
@@ -153,7 +165,7 @@ if (!(window as any).walletApi) {
         
         saveMinBlockHeight: async (keystoreFileName: string, blockHeight: number) => {
             try {
-                const result = await invoke<string>('save_min_block_height', { 
+                const result = await safeInvoke<string>('save_min_block_height', { 
                     fileName: keystoreFileName, 
                     blockHeight 
                 })
@@ -165,7 +177,7 @@ if (!(window as any).walletApi) {
         
         keystoreExists: async (fileName: string) => {
             try {
-                const result = await invoke<string>('keystore_exists', { fileName })
+                const result = await safeInvoke<string>('keystore_exists', { fileName })
                 return JSON.parse(result)
             } catch (error: any) {
                 return { success: false, error: error || 'Failed to check keystore', exists: false }
@@ -174,7 +186,7 @@ if (!(window as any).walletApi) {
         
         checkKeystore: async (fileName?: string) => {
             try {
-                const result = await invoke<string>('check_keystore', { fileName })
+                const result = await safeInvoke<string>('check_keystore', { fileName })
                 return JSON.parse(result)
             } catch (error: any) {
                 return { success: false, error: error || 'Failed to check keystore', exists: false }
@@ -183,7 +195,7 @@ if (!(window as any).walletApi) {
         
         saveKeystoreDialog: async (keystoreData: string, defaultFileName: string) => {
             try {
-                const result = await invoke<string>('save_keystore_dialog', { 
+                const result = await safeInvoke<string>('save_keystore_dialog', { 
                     keystoreData, 
                     defaultFileName 
                 })
@@ -195,7 +207,7 @@ if (!(window as any).walletApi) {
         
         createKeystore: async (seed: string, password: string) => {
             try {
-                const result = await invoke<string>('create_keystore', { seed, password })
+                const result = await safeInvoke<string>('create_keystore', { seed, password })
                 return JSON.parse(result)
             } catch (error: any) {
                 return { success: false, error: error || 'Failed to create keystore' }
@@ -204,7 +216,7 @@ if (!(window as any).walletApi) {
         
         getKeystorePath: async () => {
             try {
-                const result = await invoke<string>('get_keystore_path')
+                const result = await safeInvoke<string>('get_keystore_path')
                 return JSON.parse(result)
             } catch (error: any) {
                 return { success: false, error: error || 'Failed to get keystore path' }

@@ -1,3 +1,10 @@
-export const Home = () => import('@/views/Home/HomeView.vue')
-export const NotFound = () => import('@/views/NotFound/NotFoundView.vue')
-export const Auth = () => import('@/views/Auth/AuthView.vue')
+// New UI page entrypoints used by the router
+export const AuthPage = () => import('@/views/Auth/AuthView.vue')
+export const WalletPage = () => import('@/views/Wallet/WalletView.vue')
+export const SendTransactionPage = () => import('@/views/Wallet/SendTransactionView.vue')
+export const BackupSeedPage = () => import('@/views/Wallet/BackupSeedView.vue')
+export const UTXOPage = () => import('@/views/UTXO/UTXOView.vue')
+export const NetworkPage = () => import('@/views/Network/NetworkView.vue')
+export const TransactionHistoryPage = () =>
+  import('@/views/TransactionHistory/TransactionHistoryView.vue')
+export const NotFoundPage = () => import('@/views/NotFound/NotFoundView.vue')

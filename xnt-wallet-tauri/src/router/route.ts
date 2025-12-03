@@ -1,46 +1,46 @@
-import * as Page from '@/views'
+import type { RouteRecordRaw } from 'vue-router'
+import { Layout } from '@/components/commons'
+import * as Pages from '@/views'
 import { useNeptuneStore } from '@/stores/neptuneStore'
-import { useNeptuneWallet } from '@/composables/useNeptuneWallet'
-import { useAuthStore } from '@/stores'
 
-const ifAuthenticated = (to: any, from: any, next: any) => {
-    const neptuneStore = useNeptuneStore()
+const ifAuthenticated = (_to: any, _from: any, next: any) => {
+  const neptuneStore = useNeptuneStore()
+  const hasWallet = neptuneStore.hasWallet
 
-    // If we have a wallet, proceed as normal
-    if (neptuneStore.hasWallet) {
-        next()
-        return
-    }
-
-    // If no wallet yet, go to auth screen (this is expected on first launch)
-    next('/auth')
-}
-
-const ifNotAuthenticated = async (to: any, from: any, next: any) => {
-    const neptuneWallet = useNeptuneWallet()
-    const authStore = useAuthStore()
-
-    const exists = await neptuneWallet.checkKeystore()
-    if (exists) authStore.goToLogin()
+  if (hasWallet) {
     next()
+    return
+  }
+
+  next('/auth')
 }
 
-export const routes: any = [
-    {
-        path: '/',
-        name: 'home',
-        component: Page.Home,
-        beforeEnter: ifAuthenticated,
-    },
-    {
-        path: '/auth',
-        name: 'auth',
-        component: Page.Auth,
-        beforeEnter: ifNotAuthenticated,
-    },
-    {
-        path: '/:pathMatch(.*)*',
-        component: Page.NotFound,
-        name: 'page-not-found',
-    },
+export const routes: RouteRecordRaw[] = [
+  {
+    path: '/auth',
+    name: 'auth',
+    component: Pages.AuthPage,
+  },
+  {
+    path: '/',
+    component: Layout,
+    beforeEnter: ifAuthenticated,
+    children: [
+      { path: '', name: 'wallet', component: Pages.WalletPage },
+      { path: '/wallet/send', name: 'send-transaction', component: Pages.SendTransactionPage },
+      { path: '/wallet/backup-seed', name: 'backup-seed', component: Pages.BackupSeedPage },
+      { path: '/utxo', name: 'utxo', component: Pages.UTXOPage },
+      { path: '/network', name: 'network', component: Pages.NetworkPage },
+      {
+        path: '/transaction-history',
+        name: 'transaction-history',
+        component: Pages.TransactionHistoryPage,
+      },
+    ],
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'not-found',
+    component: Pages.NotFoundPage,
+  },
 ]

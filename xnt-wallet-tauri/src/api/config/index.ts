@@ -2,8 +2,7 @@ import { STATUS_CODE_SUCCESS } from '@/utils/constants/code'
 import axios from 'axios'
 
 axios.defaults.withCredentials = false
-
-export const API_URL = import.meta.env.VITE_APP_API || 'http://zsmartex.com:8080'
+export const API_URL = import.meta.env.VITE_APP_API || 'http://zsmartex.com:9897'
 
 const instance = axios.create({
     baseURL: API_URL,

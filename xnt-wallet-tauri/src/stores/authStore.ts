@@ -1,45 +1,51 @@
 import { ref } from 'vue'
 
-// Auth flow states
-export type AuthState = 'onboarding' | 'login' | 'create' | 'recovery' | 'confirm' | 'complete'
+// Auth flow states for the new UI
+export type AuthState =
+  | 'welcome'
+  | 'create'
+  | 'recovery'
+  | 'confirm'
+  | 'complete'
 
-// Auth store to manage the flow
-const currentState = ref<AuthState>('onboarding')
+// Singletons to preserve state across composables
+const currentState = ref<AuthState>('welcome')
 const previousState = ref<AuthState | null>(null)
 
 export const useAuthStore = () => {
-    const getCurrentState = () => currentState.value
-    const getPreviousState = () => previousState.value
+  const getCurrentState = () => currentState.value
+  const getPreviousState = () => previousState.value
 
-    const setState = (state: AuthState) => {
-        previousState.value = currentState.value
-        currentState.value = state
-    }
+  const setState = (state: AuthState) => {
+    previousState.value = currentState.value
+    currentState.value = state
+  }
 
-    const goToCreate = () => {
-        setState('create')
-    }
+  const goToWelcome = () => {
+    setState('welcome')
+  }
 
-    const goToLogin = () => {
-        setState('login')
-    }
+  const goToCreate = () => {
+    setState('create')
+  }
 
-    const goToRecover = () => {
-        setState('recovery')
-    }
+  const goToRecover = () => {
+    setState('recovery')
+  }
 
-    const goBack = () => {
-        previousState.value ? setState(previousState.value) : setState('onboarding')
-    }
+  const goBack = () => {
+    previousState.value ? setState(previousState.value) : setState('welcome')
+  }
 
-    return {
-        currentState: currentState.value,
-        getCurrentState,
-        getPreviousState,
-        setState,
-        goToCreate,
-        goToLogin,
-        goToRecover,
-        goBack,
-    }
+  return {
+    currentState,
+    previousState,
+    getCurrentState,
+    getPreviousState,
+    setState,
+    goToWelcome,
+    goToCreate,
+    goToRecover,
+    goBack,
+  }
 }

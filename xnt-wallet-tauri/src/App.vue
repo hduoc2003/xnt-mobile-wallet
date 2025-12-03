@@ -1,18 +1,8 @@
 <script setup lang="ts">
-const config = {
-    token: {
-        colorPrimary: '#42A5F5',
-        borderRadius: 4,
-    },
-}
+import { Toaster } from '@/components/ui/sonner'
 </script>
 
 <template>
-    <a-config-provider :theme="config" :autoInsertSpaceInButton="false">
-        <LayoutVue>
-            <router-view />
-        </LayoutVue>
-    </a-config-provider>
+  <router-view />
+  <Toaster />
 </template>
-
-<style lang="scss" scoped></style>

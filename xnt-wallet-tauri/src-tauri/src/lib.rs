@@ -46,6 +46,7 @@ use num_traits::ops::checked::CheckedSub;
 use rand::Rng;
 use std::str::FromStr;
 use log::Level;
+use reqwest::Client;
 
 #[cfg(target_os = "android")]
 use android_logger;
@@ -59,6 +60,8 @@ mod transaction;
 use keystore::*;
 use wallet::*;
 use transaction::*;
+
+const NODE_RPC_URL: &str = "http://zsmartex.com:9897";
 
 #[tauri::command]
 fn generate_seed() -> Result<String, String> {
@@ -220,6 +223,37 @@ async fn build_transaction(payload: serde_json::Value) -> Result<String, String>
 }
 
 #[tauri::command]
+async fn proxy_json_rpc(method: String, params: serde_json::Value) -> Result<String, String> {
+    let client = Client::new();
+
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": method,
+        "params": params,
+        "id": 1,
+    });
+
+    let response = client
+        .post(NODE_RPC_URL)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Request error: {e}"))?;
+
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response body: {e}"))?;
+
+    if !status.is_success() {
+        return Err(format!("Upstream error {status}: {text}"));
+    }
+
+    Ok(text)
+}
+
+#[tauri::command]
 fn log_message(level: String, message: String) -> Result<(), String> {
     let lvl = match level.to_lowercase().as_str() {
         "trace" => Level::Trace,
@@ -278,6 +312,7 @@ pub fn run() {
             save_keystore_dialog,
             get_keystore_path,
             build_transaction,
+            proxy_json_rpc,
             log_message,
         ])
         .run(tauri::generate_context!())

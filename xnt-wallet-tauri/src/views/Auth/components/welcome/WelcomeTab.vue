@@ -1,0 +1,67 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { OnboardingTab, LoginTab } from '@/views/Auth/components'
+import { useNeptuneStore } from '@/stores'
+import { useNeptuneWallet } from '@/composables/useNeptuneWallet'
+import { useRouter } from 'vue-router'
+import { toast } from 'vue-sonner'
+
+const neptuneStore = useNeptuneStore()
+const router = useRouter()
+const { decryptKeystore } = useNeptuneWallet()
+
+const emit = defineEmits<{
+  goToCreate: []
+  goToRecover: []
+  goToWelcome: []
+}>()
+
+// Internal state to switch between onboarding and login
+const showLogin = computed(() => neptuneStore.getKeystoreFileName !== null)
+const isLoading = ref(false)
+
+const handleGoToCreate = () => {
+  emit('goToCreate')
+}
+
+const handleGoToRecover = () => {
+  emit('goToRecover')
+}
+
+const handleSubmit = async (password: string) => {
+  try {
+    isLoading.value = true
+    await decryptKeystore(password)
+    router.push({ name: 'wallet' })
+  } catch (err: any) {
+    console.error('Failed to decrypt keystore:', err)
+    const message = err instanceof Error ? err.message : 'Failed to unlock wallet'
+    toast.error('Unlock Failed', {
+      description: message,
+    })
+    throw err
+  } finally {
+    isLoading.value = false
+  }
+}
+
+</script>
+
+<template>
+  <div>
+    <!-- Onboarding Screen -->
+    <OnboardingTab
+      v-if="!showLogin"
+      @go-to-create="handleGoToCreate"
+      @go-to-recover="handleGoToRecover"
+    />
+
+    <!-- Login Screen -->
+    <LoginTab
+      v-else
+      :loading="isLoading"
+      @go-to-create="handleGoToCreate"
+      @submit="handleSubmit"
+    />
+  </div>
+</template>

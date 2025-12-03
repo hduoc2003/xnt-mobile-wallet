@@ -63,7 +63,7 @@ pub async fn build_transaction(payload: serde_json::Value) -> Result<String, Str
 
 async fn build_transaction_inner(payload: serde_json::Value) -> Result<String, String> {
     let rpc_url = std::env::var("VITE_APP_API")
-        .unwrap_or_else(|_| "http://zsmartex.com:8080".to_string());
+        .unwrap_or_else(|_| "http://zsmartex.com:9897".to_string());
     
     let spending_key_hex = payload["spendingKeyHex"]
         .as_str()

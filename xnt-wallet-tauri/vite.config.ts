@@ -61,16 +61,13 @@ export default defineConfig(async () => ({
     },
   },
   optimizeDeps: {
-    exclude: ['@neptune/wasm'],
+    exclude: [],
   },
   build: {
     rollupOptions: {
-      // Treat the Neptune WASM entries as external so Rollup doesn't try to bundle them
       external: [
-        '@neptune/wasm/pkg/neptune_wasm.js',
-        '@neptune/wasm/pkg/neptune_wasm_bg.wasm?url',
+        'vue-sonner/style.css',
       ],
     },
   },
-  assetsInclude: ['**/*.wasm'],
 }));
