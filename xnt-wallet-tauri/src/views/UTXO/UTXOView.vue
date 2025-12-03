@@ -79,7 +79,7 @@ onMounted(async () => {
             <div class="space-y-1">
               <p class="text-sm text-muted-foreground">Total Amount</p>
               <p class="break-all text-xl font-bold text-primary sm:text-2xl">
-                {{ formatAmount(+inUseUtxosAmount) }} <span class="text-lg">XNT</span>
+                {{ formatAmount(+inUseUtxosAmount, 4) }} <span class="text-lg">XNT</span>
               </p>
             </div>
           </div>
@@ -125,7 +125,7 @@ onMounted(async () => {
                   <div class="space-y-1">
                     <Label class="text-xs text-muted-foreground">Amount</Label>
                     <p class="break-all font-mono text-sm font-semibold text-primary">
-                      {{ utxo.amount }} <span class="text-xs">XNT</span>
+                      {{formatAmount(+utxo.amount, 4) }} <span class="text-xs">XNT</span>
                     </p>
                   </div>
                   <div class="space-y-1">

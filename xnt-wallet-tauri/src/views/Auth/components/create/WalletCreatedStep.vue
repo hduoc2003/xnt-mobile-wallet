@@ -40,7 +40,7 @@ onMounted(() => {
 
     <div class="space-y-3 text-center">
       <h1 class="text-4xl font-bold tracking-tight text-foreground">Congratulations!</h1>
-      <p class="text-lg text-muted-foreground">Your Neptune Privacy wallet is ready</p>
+      <p class="text-lg text-muted-foreground">Your XNT Wallet is ready</p>
     </div>
 
     <Separator />

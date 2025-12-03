@@ -3,8 +3,8 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Neptune Blockchain Wallet - Tauri Desktop Application",
-  "author": "Neptune Team",
+  "description": "XNT Blockchain Wallet - Tauri Application",
+  "author": "XNT Team",
   "license": "Apache-2.0",
   "scripts": {
     "dev": "vite",

@@ -3,10 +3,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { Send, ArrowLeft } from 'lucide-vue-next'
-import { useNeptuneWallet } from '@/composables'
+import { useNeptuneWallet, useFormat } from '@/composables'
 
 const router = useRouter()
 const { getBalance, getUtxos, buildTransaction, broadcastSignedTransaction } = useNeptuneWallet()
+const { formatHash, formatAmount } = useFormat()
 
 const availableBalance = ref('0')
 const loading = ref(false)
@@ -204,7 +205,7 @@ onMounted(() => {
                   Amount <span class="text-destructive">*</span>
                 </Label>
                 <Badge variant="secondary" class="text-xs">
-                  Available: {{ availableBalance }} XNT
+                  Available: {{ formatAmount(+availableBalance) }} XNT
                 </Badge>
               </div>
               <Input
@@ -264,7 +265,7 @@ onMounted(() => {
           <div class="space-y-2">
             <Label class="text-sm text-muted-foreground">Recipient Address</Label>
             <div class="break-all rounded-lg border border-border bg-muted/50 p-3 font-mono text-sm">
-              {{ outputAddress }}
+              {{formatHash(outputAddress) }}
             </div>
           </div>
 

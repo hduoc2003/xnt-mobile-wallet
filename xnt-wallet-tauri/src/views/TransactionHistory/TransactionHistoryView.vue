@@ -12,7 +12,7 @@ const mockTransactions: TransactionDetail[] = [
   {
     id: 'c76b15df5f5b5b8567dd3eb38ee734e1bebd1f85e451c09d1de699531aea5eabaa6ed602cae15c87',
     toAddress: 'xnt1qqp9c0u9k9w0x3z6r4g2d7f8s2a9l0m5n7v3y8k',
-    amount: 12.3456789,
+    amount: 1.3000,
     fee: 0.001,
     time: new Date(Date.now() - 5 * 60 * 1000).toISOString(), // 5 minutes ago
   },
@@ -26,7 +26,7 @@ const mockTransactions: TransactionDetail[] = [
   {
     id: 'c76b15df5f5b5b8567dd3eb38ee734e1bebd1f85e451c09d1de699531aea5eabaa6ed602cae15c87',
     toAddress: 'xnt1qqp7h6g5f4d3s2a1z9x8c7v6b5n4m3k2j1h0g9',
-    amount: 100,
+    amount: 5.2502,
     fee: 0.002,
     time: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
   },

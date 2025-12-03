@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { Wallet, Copy, Check } from 'lucide-vue-next'
 import { useNeptuneStore } from '@/stores'
-import { ref } from 'vue'
 import { toast } from 'vue-sonner'
+import { useFormat } from '@/composables'
 
 interface Props {
   availableBalance: string
@@ -15,6 +15,7 @@ const props = withDefaults(defineProps<Props>(), {
   loading: false,
 })
 
+const { formatAmount, formatHash } = useFormat()
 const neptuneStore = useNeptuneStore()
 const isCopied = ref(false)
 
@@ -52,12 +53,13 @@ const handleCopyAddress = async () => {
         </div>
         <div v-else class="space-y-1">
           <div class="flex items-baseline gap-2">
-            <span class="text-4xl font-bold text-foreground">{{ availableBalance }}</span>
+            <span class="text-4xl font-bold text-foreground">{{ formatAmount(+availableBalance) }}</span>
             <span class="text-xl font-medium text-muted-foreground">XNT</span>
+            <span class="text-lg font-medium text-muted-foreground"> = $5.54</span>
           </div>
           <div v-if="pendingBalance" class="flex items-center gap-2 text-sm">
             <span class="text-muted-foreground">Pending:</span>
-            <span class="font-medium text-foreground">{{ pendingBalance }} XNT</span>
+            <span class="font-medium text-foreground">{{ formatAmount(+pendingBalance) }} XNT</span>
           </div>
         </div>
       </div>
@@ -69,7 +71,7 @@ const handleCopyAddress = async () => {
         <Label class="text-sm font-medium">Receiving Address</Label>
         <div class="flex items-center gap-2 rounded-lg border border-border bg-muted/50 p-3 transition-colors hover:bg-muted">
           <code class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-foreground md:text-sm">
-            {{ receiveAddress }}
+            {{formatHash(receiveAddress) }}
           </code>
           <Button
             variant="ghost"
