@@ -775,6 +775,68 @@ impl GlobalState {
         }
     }
 
+    async fn update_utxo_index_with_block(&mut self, block: &Block) {
+        // Early return if index databases not available
+        let (Some(index_db), Some(metadata_db)) = (&mut self.utxo_index, &mut self.utxo_index_metadata) else {
+            return;
+        };
+
+        use crate::state::wallet::address::receiver_identifier_from_announcement;
+
+        let block_height = block.header().height.value();
+        let tx_kernel = block.kernel.body.transaction_kernel();
+
+        // Skip blocks with no outputs
+        if tx_kernel.outputs.is_empty() {
+            return;
+        }
+
+        let mut utxos_added = 0;
+        let mut unique_receivers = std::collections::HashSet::new();
+
+        // Scan each announcement to extract receiver_identifier
+        for (output_index, announcement) in tx_kernel.announcements.iter().enumerate() {
+            let Ok(receiver_id_bfe) = receiver_identifier_from_announcement(announcement) else {
+                continue;
+            };
+
+            if let Ok(receiver_id) = receiver_id_bfe.value().try_into() {
+                if let Err(e) = index_db
+                    .add_utxo(
+                        receiver_id,
+                        crate::utxo_index::UtxoLocation {
+                            block_height,
+                            output_index: output_index as u16,
+                        },
+                    )
+                    .await
+                {
+                    warn!("Failed to add UTXO to index: {}", e);
+                    continue;
+                }
+
+                utxos_added += 1;
+                unique_receivers.insert(receiver_id);
+            }
+        }
+
+        // Update metadata
+        if let Ok(mut metadata) = metadata_db.get_metadata().await {
+            metadata.indexed_height = block_height;
+            metadata.total_utxos += utxos_added;
+            metadata.total_receivers += unique_receivers.len() as u64;
+
+            if let Err(e) = metadata_db.set_metadata(metadata).await {
+                warn!("Failed to update UTXO index metadata: {}", e);
+            } else if utxos_added > 0 {
+                debug!(
+                    "UTXO index updated: added {} UTXOs from block {} ({} unique receivers)",
+                    utxos_added, block_height, unique_receivers.len()
+                );
+            }
+        }
+    }
+
     /// Return a seed used to randomize shuffling.
     pub(crate) fn shuffle_seed(&self) -> [u8; 32] {
         let next_block_height = self.chain.light_state().header().height.next();
@@ -1881,6 +1943,8 @@ impl GlobalState {
             .archival_state_mut()
             .update_mutator_set(&new_tip)
             .await?;
+
+        self.update_utxo_index_with_block(&new_tip).await;
 
         *self.chain.light_state_mut() = std::sync::Arc::new(new_tip.clone());
 
