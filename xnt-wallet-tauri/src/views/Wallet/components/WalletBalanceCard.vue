@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Wallet, Copy, Check } from 'lucide-vue-next'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
-import { useNeptuneStore } from '@/stores/neptuneStore'
+import { useNeptuneStore } from '@/stores'
 import { ref } from 'vue'
 import { toast } from 'vue-sonner'
 

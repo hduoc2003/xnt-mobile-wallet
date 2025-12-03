@@ -5,6 +5,7 @@ rustflags = ["--cfg", "tokio_unstable"]
 
 [env]
 # workaround for rustc 1.80 running out of stack space when building triton-vm
+RUST_MIN_STACK = "33554432"
 
 [target.'cfg(windows)']
 rustflags = ["-C", "link-arg=/STACK:134217728"]

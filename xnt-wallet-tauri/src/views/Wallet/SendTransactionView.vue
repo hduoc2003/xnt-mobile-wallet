@@ -3,26 +3,9 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { Send, ArrowLeft } from 'lucide-vue-next'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { useNeptuneStore } from '@/stores/neptuneStore'
-import { useNeptuneWallet } from '@/composables/useNeptuneWallet'
+import { useNeptuneWallet } from '@/composables'
 
 const router = useRouter()
-const neptuneStore = useNeptuneStore()
 const { getBalance, getUtxos, buildTransaction, broadcastSignedTransaction } = useNeptuneWallet()
 
 const availableBalance = ref('0')

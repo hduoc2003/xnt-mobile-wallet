@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { WalletState } from '@/interface'
+import type { WalletState } from '@/types'
 import { DEFAULT_MIN_BLOCK_HEIGHT, toFiniteNumber } from '@/utils'
 
 export const useNeptuneStore = defineStore('neptune', () => {

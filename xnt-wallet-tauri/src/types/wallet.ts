@@ -9,11 +9,6 @@ export interface ViewKeyResult {
   spending_key_hex: string
 }
 
-export interface BalanceResult {
-  balance: string
-  pendingBalance: string
-}
-
 export interface PayloadBuildTransaction {
   inputAdditionRecords: string[]
   outputAddresses: string[]
@@ -22,10 +17,20 @@ export interface PayloadBuildTransaction {
 }
 
 export interface WalletState {
+  receiverId: string | null
+  viewKey: string | null
+  spendingKey?: string | null
+  address: string | null
   network: 'mainnet' | 'testnet'
-  receiverId: string
-  viewKey: string
-  spendingKey: string
-  address: string
+  balance?: string | null
+  pendingBalance?: string | null
+  utxos?: Utxo[]
+  minBlockHeight?: number | null
 }
 
+export interface Utxo {
+  additionRecord: string
+  amount: string
+  blockHeight: number
+  utxoHash: string
+}
