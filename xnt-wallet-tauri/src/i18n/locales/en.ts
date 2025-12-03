@@ -1,7 +1,7 @@
 export default {
   common: {
-    app_name: 'Neptune Privacy',
-    welcome: 'Welcome to Neptune Privacy',
+    app_name: 'XNT Wallet',
+    welcome: 'Welcome to XNT Wallet',
     cancel: 'Cancel',
     confirm: 'Confirm',
     save: 'Save',

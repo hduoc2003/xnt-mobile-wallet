@@ -25,7 +25,10 @@ export const useFormat = () => {
         return `${address.slice(0, 10)}...${address.slice(-10)}`;
     };
 
-    const formatAmount = (value: number, precision: number = 4) => value.toFixed(precision).replace(/\.?0+$/, "");
+    const formatAmount = (value: number, precision: number = 4) => {
+        if (isNaN(value) || !isFinite(value)) return "0";
+        return value.toFixed(precision);
+    };
 
     return {
         formatHash,
