@@ -19,7 +19,7 @@ const handleRecover = () => {
 </script>
 
 <template>
-  <div class="relative flex min-h-screen flex-col bg-gradient-to-br from-background via-background to-primary/5 p-4">
+  <div class="relative flex min-h-screen flex-col bg-linear-to-br from-background via-background to-primary/5 p-4">
     <!-- Theme Toggle -->
     <div class="absolute right-4 top-4 z-10">
       <ThemeToggle />
@@ -42,7 +42,7 @@ const handleRecover = () => {
         <!-- Action Cards -->
         <div class="space-y-4">
           <!-- Create New Wallet Card -->
-          <Card class="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5 transition-all hover:border-primary/40 hover:shadow-lg">
+          <Card class="border-2 border-primary/20 bg-linear-to-br from-primary/5 to-accent/5 transition-all hover:border-primary/40 hover:shadow-lg">
             <CardContent class="p-6">
               <button
                 class="w-full space-y-3 text-left"

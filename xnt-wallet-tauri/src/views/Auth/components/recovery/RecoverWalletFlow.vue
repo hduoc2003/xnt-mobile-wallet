@@ -134,7 +134,7 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div class="relative flex min-h-screen flex-col bg-gradient-to-br from-background via-background to-primary/5 p-4">
+  <div class="relative flex min-h-screen flex-col bg-linear-to-br from-background via-background to-primary/5 p-4">
     <!-- Theme Toggle -->
     <div class="absolute right-4 top-4 z-10">
       <ThemeToggle />
@@ -150,7 +150,7 @@ const handleSubmit = async () => {
       <div class="w-full max-w-md space-y-8">
         <!-- Header -->
         <div class="flex flex-col items-center space-y-4 text-center">
-          <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-accent shadow-xl">
+          <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-primary to-accent shadow-xl">
             <KeyRound :size="32" class="text-primary-foreground" />
           </div>
 

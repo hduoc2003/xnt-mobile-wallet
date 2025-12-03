@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { Send, FileDown, Key } from 'lucide-vue-next'
-import { Button } from '@/components/ui/button'
-import { useRouter } from 'vue-router'
-import { useNeptuneWallet } from '@/composables/useNeptuneWallet'
 import { toast } from 'vue-sonner'
+import { useRouter } from 'vue-router'
+import { Send, FileDown, Key } from 'lucide-vue-next'
+import { useNeptuneWallet } from '@/composables'
 
 const router = useRouter()
 const { saveKeystoreAs } = useNeptuneWallet()

@@ -3,14 +3,10 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { Key, ArrowLeft, Copy, Eye, EyeOff } from 'lucide-vue-next'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useNeptuneWallet } from '@/composables'
 
 const router = useRouter()
+const { decryptKeystore } = useNeptuneWallet()
 
 const verifyPassword = ref('')
 const showPassword = ref(false)
@@ -22,31 +18,8 @@ const handleVerifyPassword = async () => {
   try {
     verifyLoading.value = true
 
-    // TODO: Implement decrypt keystore with Tauri command
-    // const result = await decryptKeystore(verifyPassword.value)
-    // seedPhrase.value = result.seedPhrase
-
-    // Mock: Use test seed phrase
-    seedPhrase.value = [
-      'abandon',
-      'ability',
-      'able',
-      'about',
-      'above',
-      'absent',
-      'absorb',
-      'abstract',
-      'absurd',
-      'abuse',
-      'access',
-      'accident',
-      'account',
-      'accuse',
-      'achieve',
-      'acid',
-      'acoustic',
-      'acquire',
-    ]
+    const result = await decryptKeystore(verifyPassword.value)
+    seedPhrase.value = result.seedPhrase
 
     seedRevealed.value = true
     toast.success('Seed phrase revealed')
