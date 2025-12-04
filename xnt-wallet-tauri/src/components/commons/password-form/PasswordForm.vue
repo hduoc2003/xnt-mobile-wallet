@@ -132,18 +132,17 @@ function isInvalid(field: any) {
                   field.handleChange((e.target as HTMLInputElement).value)
                 }"
               />
-              <button
-                type="button"
+              <div
                 class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                 @click="showPassword = !showPassword"
               >
                 <Eye v-if="!showPassword" :size="20" />
                 <EyeOff v-else :size="20" />
-              </button>
+              </div>
             </div>
 
             <!-- Error Message -->
-            <p v-if="error" class="text-sm text-destructive">
+            <p v-if="props.error" class="text-sm text-destructive">
               {{ errorMessage }}
             </p>
 
