@@ -32,7 +32,7 @@ fn main() {
                 println!("cargo:rustc-env=CMAKE_BUILD_TYPE=Release");
                 println!("cargo:rustc-env=CMAKE_POSITION_INDEPENDENT_CODE=ON");
                 println!("cargo:rustc-env=BUILD_SHARED_LIBS=OFF");
-                println!("cargo:rustc-env=CMAKE_POLICY_VERSION_MINIMUM=3.5");
+                println!("cargo:rustc-env=CMAKE_POLICY_VERSION_MINIMUM=3.9");
                 
                 // Help CMake find libraries (for leveldb-sys snappy linking)
                 // The build directory will contain the snappy library after it's built

@@ -3,7 +3,7 @@
 # Script to patch WryActivity.kt to load libc++_shared before the main library
 # This needs to be run after each Tauri Android build
 
-WRY_ACTIVITY_FILE="src-tauri/gen/android/app/src/main/java/com/draplydo/xnt_wallet_tauri/generated/WryActivity.kt"
+WRY_ACTIVITY_FILE="src-tauri/gen/android/app/src/main/java/com/xnt/wallet/generated/WryActivity.kt"
 
 if [ ! -f "$WRY_ACTIVITY_FILE" ]; then
     echo "Error: WryActivity.kt not found at $WRY_ACTIVITY_FILE"

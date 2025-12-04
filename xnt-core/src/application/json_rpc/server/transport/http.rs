@@ -1,11 +1,15 @@
 use std::sync::Arc;
 
 use axum::extract::rejection::JsonRejection;
+use axum::extract::DefaultBodyLimit;
 use axum::extract::State;
 use axum::routing::post;
 use axum::Json;
 use axum::Router;
 use tokio::net::TcpListener;
+
+#[cfg(feature = "rest")]
+use tower_http::cors::{Any, CorsLayer};
 
 use crate::application::json_rpc::core::api::ops::RpcMethods;
 use crate::application::json_rpc::core::api::rpc::RpcApi;
@@ -26,9 +30,28 @@ impl RpcServer {
         let namespaces = self.enabled_namespaces().await;
         let router = RpcMethods::new_router(api, namespaces);
 
-        let app = Router::new()
+        // Configure body size limit to allow large transactions
+        // This is necessary for client-side built transactions with proofs
+        let body_limit = DefaultBodyLimit::max(50 * 1024 * 1024); // 50 MB
+
+        // Configure CORS to allow requests from any origin (for development)
+        #[cfg(feature = "rest")]
+        let cors = CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any);
+
+        #[allow(unused_mut)]
+        let mut app = Router::new()
             .route("/", post(Self::rpc_handler))
-            .with_state(Arc::new(router));
+            .layer(body_limit);
+
+        #[cfg(feature = "rest")]
+        {
+            app = app.layer(cors);
+        }
+
+        let app = app.with_state(Arc::new(router));
 
         axum::serve(listener, app).await.unwrap();
     }

@@ -1,4 +1,4 @@
-package com.draplydo.xnt_wallet_tauri
+package com.xnt.wallet
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

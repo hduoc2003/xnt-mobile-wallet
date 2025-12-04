@@ -57,7 +57,7 @@ echo "Step 3: Patching WryActivity for libc++ load order..."
 echo ""
 echo "Step 4: Assembling universal release APK via Gradle..."
 cd src-tauri/gen/android
-./gradlew assembleRelease -x rustBuildArm64Release -x rustBuildX86_64Release
+./gradlew assembleRelease -x rustBuildArm64Release -x rustBuildX86_64Release -x rustBuildArmRelease -x rustBuildX86Release -x rustBuildUniversalRelease
 cd ../../..
 
 UNSIGNED_APK="src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk"
