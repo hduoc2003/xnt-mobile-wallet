@@ -6,7 +6,7 @@ import type {
   PayloadBuildTransaction,
   ViewKeyResult,
   WalletState,
-} from '@/types/wallet'
+} from '@/types'
 import { DEFAULT_MIN_BLOCK_HEIGHT } from '@/utils/constants/constants'
 import { toFiniteNumber } from '@/utils'
 
