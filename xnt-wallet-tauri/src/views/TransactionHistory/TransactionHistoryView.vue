@@ -3,36 +3,13 @@ import { computed } from 'vue'
 import { History, ArrowUpRight } from 'lucide-vue-next'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useFormat } from '@/composables'
-import type { TransactionDetail } from '@/types'
+import { useNeptuneStore } from '@/stores/neptuneStore'
 
 const { formatAddress, formatAmount } = useFormat()
+const neptuneStore = useNeptuneStore()
 
-	// Mock data – replace with real API later
-const mockTransactions: TransactionDetail[] = [
-  {
-    id: 'c76b15df5f5b5b8567dd3eb38ee734e1bebd1f85e451c09d1de699531aea5eabaa6ed602cae15c87',
-    toAddress: 'xnt1qqp9c0u9k9w0x3z6r4g2d7f8s2a9l0m5n7v3y8k',
-    amount: 1.3000,
-    fee: 0.001,
-    time: new Date(Date.now() - 5 * 60 * 1000).toISOString(), // 5 minutes ago
-  },
-  {
-    id: 'c76b15df5f5b5b8567dd3eb38ee734e1bebd1f85e451c09d1de699531aea5eabaa6ed602cae15c87',
-    toAddress: 'xnt1qqp3k9u2m4n5b7v8c9x1z2a3s4d5f6g7h8j9k0',
-    amount: 0.5,
-    fee: 0.0005,
-    time: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-  },
-  {
-    id: 'c76b15df5f5b5b8567dd3eb38ee734e1bebd1f85e451c09d1de699531aea5eabaa6ed602cae15c87',
-    toAddress: 'xnt1qqp7h6g5f4d3s2a1z9x8c7v6b5n4m3k2j1h0g9',
-    amount: 5.2502,
-    fee: 0.002,
-    time: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
-  },
-]
-
-const hasTransactions = computed(() => mockTransactions.length > 0)
+const transactions = computed(() => neptuneStore.getTransactions)
+const hasTransactions = computed(() => transactions.value.length > 0)
 
 const formatDateTime = (iso: string) => {
   const d = new Date(iso)
@@ -42,7 +19,8 @@ const formatDateTime = (iso: string) => {
 
 const openExplorer = async (txid: string) => {
   try {
-    await openUrl(`http://neptunescan.io/tx?id=${txid}`)
+    const cleanTxid = txid.startsWith('0x') ? txid.slice(2) : txid
+    await openUrl(`http://neptunescan.io/tx?id=${cleanTxid}`)
   } catch (error) {
     console.error('Failed to open explorer:', error)
   }
@@ -71,7 +49,7 @@ const openExplorer = async (txid: string) => {
       <!-- Transactions list -->
       <div v-else class="space-y-3">
         <Card
-          v-for="tx in mockTransactions"
+          v-for="tx in transactions"
           :key="tx.id"
           class="border border-border/70 bg-card transition-all hover:bg-muted/50 hover:shadow-md cursor-pointer"
           @click="openExplorer(tx.id)"

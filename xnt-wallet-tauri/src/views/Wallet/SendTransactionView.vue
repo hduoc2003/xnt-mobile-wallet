@@ -4,10 +4,12 @@ import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { Send, ArrowLeft } from 'lucide-vue-next'
 import { useNeptuneWallet, useFormat } from '@/composables'
+import { useNeptuneStore } from '@/stores/neptuneStore'
 
 const router = useRouter()
 const { getBalance, getUtxos, buildTransaction, broadcastSignedTransaction } = useNeptuneWallet()
 const { formatHash, formatAmount } = useFormat()
+const neptuneStore = useNeptuneStore()
 
 const availableBalance = ref('0')
 const loading = ref(false)
@@ -137,7 +139,24 @@ const handleConfirmSend = async () => {
     }
 
     // Broadcast transaction
-    await broadcastSignedTransaction(txResult.transaction)
+    const submitResult = await broadcastSignedTransaction(txResult.transaction)
+
+    if (!submitResult?.success) {
+      toast.error(submitResult?.error || 'Failed to broadcast transaction')
+      return
+    }
+
+    // Store transaction locally for history view
+    const amountNum = parseFloat(outputAmount.value)
+    const feeNum = parseFloat(priorityFee.value)
+
+    neptuneStore.addTransaction({
+      id: submitResult.txid,
+      toAddress: outputAddress.value.trim(),
+      amount: Number.isFinite(amountNum) ? amountNum : 0,
+      fee: Number.isFinite(feeNum) ? feeNum : 0,
+      time: new Date().toISOString(),
+    })
 
     toast.success('Transaction sent successfully!')
 
