@@ -33,7 +33,6 @@ const handleNextFromPassword = async (pwd: string) => {
   try {
     isLoading.value = true
 
-    // Generate wallet using Tauri backend
     const result = await generateWallet()
     seedPhrase.value = result.seed_phrase
 
@@ -70,7 +69,6 @@ const handleAccessWallet = async () => {
   try {
     isLoading.value = true
 
-    // Create keystore file
     const seedPhraseString = seedPhrase.value.join(' ')
     await createKeystore(seedPhraseString, password.value)
 
@@ -100,7 +98,7 @@ const handleAccessWallet = async () => {
     <!-- Step 2: Display Seed Phrase -->
     <div
       v-else-if="step === 2"
-      class="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4"
+      class="flex min-h-screen items-center justify-center bg-linear-to-br from-background via-background to-primary/5 p-4"
     >
       <SeedPhraseDisplayStep
         :seed-phrase="seedPhrase"
@@ -112,7 +110,7 @@ const handleAccessWallet = async () => {
     <!-- Step 3: Confirm Seed Phrase -->
     <div
       v-else-if="step === 3"
-      class="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4"
+      class="flex min-h-screen items-center justify-center bg-linear-to-br from-background via-background to-primary/5 p-4"
     >
       <Card class="w-full max-w-2xl border-2 border-border/50 shadow-xl">
         <CardContent class="p-6 md:p-8">
@@ -128,7 +126,7 @@ const handleAccessWallet = async () => {
     <!-- Step 4: Wallet Created Success -->
     <div
       v-else-if="step === 4"
-      class="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4"
+      class="flex min-h-screen items-center justify-center bg-linear-to-br from-background via-background to-primary/5 p-4"
     >
       <Card class="w-full max-w-2xl border-2 border-border/50 shadow-xl">
         <CardContent class="p-6 md:p-8">

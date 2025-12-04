@@ -16,7 +16,6 @@ const emit = defineEmits<{
   goToWelcome: []
 }>()
 
-// Internal state to switch between onboarding and login
 const showLogin = computed(() => neptuneStore.getKeystoreFileName !== null)
 const isLoading = ref(false)
 
@@ -28,18 +27,16 @@ const handleGoToRecover = () => {
   emit('goToRecover')
 }
 
-const handleSubmit = async (password: string) => {
+const handleSubmitPassword = async (password: string) => {
   try {
     isLoading.value = true
     await decryptKeystore(password)
     router.push({ name: 'wallet' })
   } catch (err: any) {
-    console.error('Failed to decrypt keystore:', err)
-    const message = err instanceof Error ? err.message : 'Failed to unlock wallet'
+    const message = 'Failed to unlock wallet'
     toast.error('Unlock Failed', {
       description: message,
     })
-    throw err
   } finally {
     isLoading.value = false
   }
@@ -61,7 +58,7 @@ const handleSubmit = async (password: string) => {
       v-else
       :loading="isLoading"
       @go-to-create="handleGoToCreate"
-      @submit="handleSubmit"
+      @submit="handleSubmitPassword"
     />
   </div>
 </template>

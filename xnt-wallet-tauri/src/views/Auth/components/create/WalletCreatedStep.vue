@@ -31,7 +31,7 @@ onMounted(() => {
       <div class="relative">
         <div class="absolute -inset-4 rounded-full bg-green-500/20 blur-xl"></div>
         <div
-          class="relative rounded-full bg-gradient-to-br from-green-400 to-emerald-600 p-6 shadow-2xl"
+          class="relative rounded-full bg-linear-to-br from-green-400 to-emerald-600 p-6 shadow-2xl"
         >
           <CheckCircle2 :size="80" class="text-white" />
         </div>
@@ -51,7 +51,7 @@ onMounted(() => {
       </div>
 
       <div class="grid gap-3">
-        <Card class="border-2 border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent">
+        <Card class="border-2 border-green-500/20 bg-linear-to-br from-green-500/5 to-transparent">
           <CardContent class="flex items-center gap-4 p-4">
             <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
               <Shield />
@@ -64,7 +64,7 @@ onMounted(() => {
         </Card>
 
         <Card
-          class="border-2 border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent"
+          class="border-2 border-green-500/20 bg-linear-to-br from-green-500/5 to-transparent"
         >
           <CardContent class="flex items-center gap-4 p-4">
             <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-green-500/10">
@@ -77,7 +77,7 @@ onMounted(() => {
           </CardContent>
         </Card>
 
-        <Card class="border-2 border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent">
+        <Card class="border-2 border-green-500/20 bg-linear-to-br from-green-500/5 to-transparent">
           <CardContent class="flex items-center gap-4 p-4">
             <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10">
               <Sparkles :size="24" />
