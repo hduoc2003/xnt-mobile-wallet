@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Wallet, Copy, Check } from 'lucide-vue-next'
-import { useNeptuneStore } from '@/stores'
+import { useNeptuneStore, useTickerStore } from '@/stores'
 import { toast } from 'vue-sonner'
 import { useFormat } from '@/composables'
+import { useTickers } from '@/composables/useTickers'
+import { POLLING_INTERVAL_XNT_PRICE } from '@/utils/constants'
 
 interface Props {
   availableBalance: string
@@ -17,7 +19,16 @@ const props = withDefaults(defineProps<Props>(), {
 
 const { formatAmount, formatHash } = useFormat()
 const neptuneStore = useNeptuneStore()
+const tickerStore = useTickerStore()
 const isCopied = ref(false)
+
+const { fetchXntPrice } = useTickers()
+
+const usdValue = computed(() => {
+  const price = tickerStore.getXntPrice ?? 0
+  const balance = Number(props.availableBalance) || 0
+  return balance * price
+})
 
 const receiveAddress = computed(() => neptuneStore.getWallet?.address || '')
 
@@ -33,6 +44,20 @@ const handleCopyAddress = async () => {
     toast.error('Failed to copy address')
   }
 }
+
+let intervalId: number | null = null
+
+onMounted(() => {
+  fetchXntPrice()
+  intervalId = window.setInterval(fetchXntPrice, POLLING_INTERVAL_XNT_PRICE)
+})
+
+onUnmounted(() => {
+  if (intervalId != null) {
+    clearInterval(intervalId)
+    intervalId = null
+  }
+})
 </script>
 
 <template>
@@ -53,9 +78,13 @@ const handleCopyAddress = async () => {
         </div>
         <div v-else class="space-y-1">
           <div class="flex items-baseline gap-2">
-            <span class="text-4xl font-bold text-foreground">{{ formatAmount(+availableBalance) }}</span>
+            <span class="text-4xl font-bold text-foreground">
+              {{ formatAmount(+availableBalance) }}
+            </span>
             <span class="text-xl font-medium text-muted-foreground">XNT</span>
-            <span class="text-lg font-medium text-muted-foreground"> = $5.54</span>
+            <span class="text-lg font-medium text-muted-foreground">
+              = ${{ formatAmount(usdValue, 2) }}
+            </span>
           </div>
           <div v-if="pendingBalance" class="flex items-center gap-2 text-sm">
             <span class="text-muted-foreground">Pending:</span>
