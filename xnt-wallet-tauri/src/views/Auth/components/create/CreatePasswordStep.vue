@@ -102,7 +102,7 @@ const handleGoToWelcome = () => {
 
 <template>
   <div
-    class="relative flex min-h-screen flex-col bg-gradient-to-br from-background via-background to-primary/5 p-4"
+    class="relative flex min-h-screen flex-col bg-linear-to-br from-background via-background to-primary/5 p-4"
   >
     <!-- Theme Toggle -->
     <div class="absolute right-4 top-4 z-10">

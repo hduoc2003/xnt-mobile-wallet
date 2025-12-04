@@ -1,7 +1,7 @@
 import type { RouteRecordRaw } from 'vue-router'
 import { Layout } from '@/components/commons'
 import * as Pages from '@/views'
-import { useNeptuneStore } from '@/stores/neptuneStore'
+import { useNeptuneStore } from '@/stores'
 
 const ifAuthenticated = (_to: any, _from: any, next: any) => {
   const neptuneStore = useNeptuneStore()

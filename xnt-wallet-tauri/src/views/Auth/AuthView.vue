@@ -3,7 +3,7 @@ import { computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores'
 import { WelcomeTab, CreateWalletFlow, RecoverWalletFlow } from './components'
-import { useAuthRouting } from '@/composables'
+import { useAuthRouting, useNeptuneWallet } from '@/composables'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -15,6 +15,8 @@ onMounted(() => {
   if ((window as any).logger) {
     (window as any).logger.info('[AuthView] Component mounted, currentState:', currentState.value)
   }
+
+  checkKeystore()
 })
 
 watch(currentState, (newState) => {
@@ -37,6 +39,11 @@ const handleAccessWallet = () => {
 
 const handleGoToWelcome = () => {
   goBackToWelcome()
+}
+
+const checkKeystore = async () => {
+  const neptuneWallet = useNeptuneWallet()
+  await neptuneWallet.checkKeystore()
 }
 </script>
 
