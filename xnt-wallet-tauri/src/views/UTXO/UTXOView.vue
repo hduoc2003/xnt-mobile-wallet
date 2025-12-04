@@ -1,19 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useWindowSize } from '@vueuse/core'
 import { Database, RefreshCw } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import { useNeptuneStore } from '@/stores/neptuneStore'
-import { useNeptuneWallet } from '@/composables/useNeptuneWallet'
+import { useNeptuneWallet, useFormat } from '@/composables'
 
 const neptuneStore = useNeptuneStore()
 const { getUtxos } = useNeptuneWallet()
+const { formatHash, formatAmount } = useFormat()
 
-const { width } = useWindowSize()
 const loading = ref(false)
 
 const utxosList = computed(() => [...(neptuneStore.getUtxos || [])])
@@ -29,23 +24,6 @@ const inUseUtxosAmount = computed(() => {
 
   return total.toFixed(8)
 })
-
-const formatHash = (hash: string) => {
-  if (!hash || hash.length <= 20) return hash
-
-  const minWidth = 375
-  const maxWidth = 1920
-  const currentWidth = Math.max(minWidth, Math.min(width.value, maxWidth))
-  const normalizedWidth = (currentWidth - minWidth) / (maxWidth - minWidth)
-  const curve = Math.pow(normalizedWidth, 0.6)
-  const startChars = Math.round(8 + curve * 22)
-  const endChars = Math.round(6 + curve * 18)
-
-  const totalChars = startChars + endChars + 3
-  if (totalChars >= hash.length) return hash
-
-  return `${hash.slice(0, startChars)}...${hash.slice(-endChars)}`
-}
 
 const handleRefresh = async () => {
   await getUtxosData()
@@ -101,7 +79,7 @@ onMounted(async () => {
             <div class="space-y-1">
               <p class="text-sm text-muted-foreground">Total Amount</p>
               <p class="break-all text-xl font-bold text-primary sm:text-2xl">
-                {{ inUseUtxosAmount }} <span class="text-lg">XNT</span>
+                {{ formatAmount(+inUseUtxosAmount, 4) }} <span class="text-lg">XNT</span>
               </p>
             </div>
           </div>
@@ -147,7 +125,7 @@ onMounted(async () => {
                   <div class="space-y-1">
                     <Label class="text-xs text-muted-foreground">Amount</Label>
                     <p class="break-all font-mono text-sm font-semibold text-primary">
-                      {{ utxo.amount }} <span class="text-xs">XNT</span>
+                      {{formatAmount(+utxo.amount, 4) }} <span class="text-xs">XNT</span>
                     </p>
                   </div>
                   <div class="space-y-1">

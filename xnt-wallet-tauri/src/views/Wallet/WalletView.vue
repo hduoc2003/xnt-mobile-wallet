@@ -4,7 +4,7 @@ import { toast } from 'vue-sonner'
 import { Wallet } from 'lucide-vue-next'
 import WalletBalanceCard from './components/WalletBalanceCard.vue'
 import WalletActions from './components/WalletActions.vue'
-import { useNeptuneWallet } from '@/composables/useNeptuneWallet'
+import { useNeptuneWallet } from '@/composables'
 
 const { getBalance } = useNeptuneWallet()
 
