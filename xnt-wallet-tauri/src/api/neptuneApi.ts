@@ -24,7 +24,7 @@ export const callJsonRpc = async (method: string, params: any = []) => {
 
   return request({
     method: 'POST',
-    url: '/', // explicit root path on JSON-RPC server
+    url: '/',
     data: requestData,
   })
 }
