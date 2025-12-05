@@ -223,6 +223,26 @@ pub struct GetBlockAnnouncementsResponse {
 
 #[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
 #[serde(rename_all = "camelCase")]
+pub struct GetBlockAnnouncementsRangeRequest {
+    pub start_height: u64,
+    pub end_height: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockAnnouncementsEntry {
+    pub height: u64,
+    pub announcements: Option<Vec<RpcBFieldElements>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBlockAnnouncementsRangeResponse {
+    pub blocks: Vec<BlockAnnouncementsEntry>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
+#[serde(rename_all = "camelCase")]
 pub struct IsBlockCanonicalRequest {
     pub digest: Digest,
 }
@@ -368,6 +388,43 @@ pub struct GetUtxoCreationBlockResponse {
 
     pub num_outputs_in_block: Option<u64>,
     /// Error description if lookup failed
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
+#[serde(rename_all = "camelCase")]
+pub struct GetAoclAuthenticationPathRequest {
+    pub aocl_leaf_index: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetAoclAuthenticationPathResponse {
+    /// Hex-encoded bincode-serialized MMR membership proof
+    pub auth_path_hex: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetChunksAndAuthPathsRequest {
+    pub chunk_indices: Vec<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChunkAndAuthPath {
+    pub chunk_index: u64,
+    /// Hex-encoded bincode-serialized chunk
+    pub chunk_hex: String,
+    /// Hex-encoded bincode-serialized MMR membership proof
+    pub auth_path_hex: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetChunksAndAuthPathsResponse {
+    pub chunks: Vec<ChunkAndAuthPath>,
     pub error: Option<String>,
 }
 

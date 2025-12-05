@@ -221,6 +221,24 @@ if (!(window as any).walletApi) {
             } catch (error: any) {
                 return { success: false, error: error || 'Failed to get keystore path' }
             }
+        },
+        
+        scanUtxosClientSide: async (request: any) => {
+            try {
+                const result = await safeInvoke<string>('scan_utxos_client_side', { request })
+                return JSON.parse(result)
+            } catch (error: any) {
+                return { success: false, error: error?.message || error || 'Failed to scan UTXOs' }
+            }
+        },
+        
+        clearUtxoCache: async () => {
+            try {
+                const result = await safeInvoke<string>('clear_utxo_cache')
+                return JSON.parse(result)
+            } catch (error: any) {
+                return { success: false, error: error?.message || error || 'Failed to clear UTXO cache' }
+            }
         }
     }
 }

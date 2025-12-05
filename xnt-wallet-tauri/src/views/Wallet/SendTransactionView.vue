@@ -116,7 +116,10 @@ const handleConfirmSend = async () => {
 
     // Get UTXOs
     const utxosResult = await getUtxos()
-    const utxos = utxosResult?.utxos || []
+    const utxos =
+      utxosResult?.result?.utxos ||
+      utxosResult?.utxos ||
+      []
 
     if (!utxos.length) {
       toast.error('No UTXOs available')
@@ -124,7 +127,12 @@ const handleConfirmSend = async () => {
     }
 
     // Build transaction
-    const inputAdditionRecords = utxos.map((utxo: any) => utxo.additionRecord || utxo.addition_record)
+    const inputAdditionRecords = utxos.map(
+      (utxo: any) =>
+        utxo.addition_record_hex ||
+        utxo.additionRecord ||
+        utxo.addition_record
+    )
 
     const txResult = await buildTransaction({
       inputAdditionRecords,

@@ -56,12 +56,14 @@ use libc;
 mod keystore;
 mod wallet;
 mod transaction;
+mod utxo_scanning;
+mod utxo_cache;
 
 use keystore::*;
 use wallet::*;
 use transaction::*;
 
-const NODE_RPC_URL: &str = "http://zsmartex.com:9897";
+const NODE_RPC_URL: &str = "https://66b4b9bd1e4c.ngrok-free.app";
 
 #[tauri::command]
 fn generate_seed() -> Result<String, String> {
@@ -223,6 +225,20 @@ async fn build_transaction(payload: serde_json::Value) -> Result<String, String>
 }
 
 #[tauri::command]
+async fn scan_utxos_client_side(request: serde_json::Value) -> Result<String, String> {
+    let scan_request: utxo_scanning::ScanUtxosRequest = serde_json::from_value(request)
+        .map_err(|e| format!("Invalid request: {}", e))?;
+    
+    utxo_scanning::scan_utxos_client_side(scan_request).await
+}
+
+#[tauri::command]
+async fn clear_utxo_cache() -> Result<(), String> {
+    utxo_cache::clear_cache().await;
+    Ok(())
+}
+
+#[tauri::command]
 async fn proxy_json_rpc(method: String, params: serde_json::Value) -> Result<String, String> {
     let client = Client::new();
 
@@ -284,6 +300,7 @@ pub extern "C" fn __gxx_personality_v0(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize logging
     #[cfg(target_os = "android")]
     {
         android_logger::init_once(
@@ -292,6 +309,19 @@ pub fn run() {
                 .with_tag("NeptuneWallet"),
         );
         log::info!("[NeptuneWallet] Logger initialized for Android");
+    }
+    
+    #[cfg(not(target_os = "android"))]
+    {
+        // Initialize env_logger for desktop platforms
+        // Use RUST_LOG environment variable to control log level
+        // Example: RUST_LOG=debug npm run tauri:dev
+        env_logger::Builder::from_default_env()
+            .filter_level(log::LevelFilter::Info) // Default to Info level
+            .filter_module("xnt_wallet_tauri", log::LevelFilter::Debug) // Debug for our crate
+            .filter_module("neptune_privacy", log::LevelFilter::Warn) // Warn for xnt-core
+            .init();
+        log::info!("[NeptuneWallet] Logger initialized for desktop");
     }
 
     tauri::Builder::default()
@@ -312,6 +342,8 @@ pub fn run() {
             save_keystore_dialog,
             get_keystore_path,
             build_transaction,
+            scan_utxos_client_side,
+            clear_utxo_cache,
             proxy_json_rpc,
             log_message,
         ])

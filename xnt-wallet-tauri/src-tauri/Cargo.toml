@@ -43,6 +43,10 @@ log = "0.4"
 libc = "0.2"
 bip39 = { version = "1.0", package = "tiny-bip39" }
 
+# Logger for desktop platforms
+[target.'cfg(not(target_os = "android"))'.dependencies]
+env_logger = "0.11"
+
 # OpenSSL vendored for Android builds
 [target.'cfg(target_os = "android")'.dependencies]
 openssl = { version = "0.10", features = ["vendored"] }

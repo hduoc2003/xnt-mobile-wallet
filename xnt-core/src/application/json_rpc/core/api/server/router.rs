@@ -39,11 +39,14 @@ impl_to_json_result_direct!(
     GetUtxoCreationBlockResponse,
     GenerateMembershipProofResponse,
     GenerateUtxoWithProofResponse,
+    GetAoclAuthenticationPathResponse,
+    GetChunksAndAuthPathsResponse,
     GetStateResponse,
     SubmitTransactionResponse,
     GetCurrentFeeResponse,
     GetUtxoInfoResponse,
-    GetXntPriceResponse
+    GetXntPriceResponse,
+    GetBlockAnnouncementsRangeResponse
 );
 
 type HandlerFn = Box<

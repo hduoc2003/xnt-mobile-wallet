@@ -18,7 +18,9 @@ const inUseUtxosAmount = computed(() => {
   if (!utxosList.value?.length) return '0'
 
   const total = utxosList.value.reduce((sum: number, utxo: any) => {
-    const amount = parseFloat(utxo.amount || 0)
+    // Amount is already in coins (decimal string), not nau
+    const amount = parseFloat(utxo.amount || '0')
+    if (isNaN(amount)) return sum
     return sum + amount
   }, 0)
 
