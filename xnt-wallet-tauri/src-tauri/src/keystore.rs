@@ -1,6 +1,19 @@
-use tauri::Manager;
 use std::path::PathBuf;
+
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce,
+};
+use base64::{engine::general_purpose, Engine as _};
+use pbkdf2::pbkdf2_hmac_array;
+use rand::{rng, RngCore};
 use serde_json::json;
+use tauri::Manager;
+use sha2::Sha256;
+
+const SALT_LEN: usize = 16;
+const NONCE_LEN: usize = 12;
+const PBKDF2_ITERATIONS: u32 = 100_000;
 
 pub fn get_wallets_dir(app: &tauri::AppHandle) -> PathBuf {
     app.path()
@@ -31,8 +44,7 @@ pub async fn create_keystore(
     seed: String,
     password: String,
 ) -> Result<String, String> {
-    //TODO: try to research encryption like AES-256-GCM
-    let encrypted = encrypt_simple(&seed, &password);
+    let encrypted = encrypt_secure(&seed, &password)?;
     let timestamp = chrono::Utc::now().timestamp_millis();
     let file_name = format!("xnt-wallet-{}.json", timestamp);
     
@@ -85,7 +97,7 @@ pub async fn decrypt_keystore(
         .as_str()
         .ok_or_else(|| "Invalid keystore format".to_string())?;
     
-    let seed = decrypt_simple(encrypted, &password)
+    let seed = decrypt_secure(encrypted, &password)
         .map_err(|_| "Invalid password".to_string())?;
     
     Ok(json!({
@@ -129,7 +141,7 @@ pub async fn save_keystore_as(
     
     let path_buf = match file_path {
         FilePath::Path(p) => p,
-        FilePath::Url(url) => {
+        FilePath::Url(_url) => {
             return Err("File dialog not supported on this platform".to_string());
         }
     };
@@ -327,27 +339,56 @@ pub async fn save_keystore_dialog(
     .to_string())
 }
 
-// Simple encryption/decryption (NOT production-ready, use proper crypto in production)
-fn encrypt_simple(data: &str, password: &str) -> String {
-    use base64::{Engine as _, engine::general_purpose};
-    let mut result = Vec::new();
-    let password_bytes = password.as_bytes();
-    for (i, byte) in data.as_bytes().iter().enumerate() {
-        result.push(byte ^ password_bytes[i % password_bytes.len()]);
-    }
-    general_purpose::STANDARD.encode(&result)
+/// Derive a 256-bit key from the password using PBKDF2-HMAC-SHA256.
+fn derive_key(password: &str, salt: &[u8]) -> [u8; 32] {
+    pbkdf2_hmac_array::<Sha256, 32>(password.as_bytes(), salt, PBKDF2_ITERATIONS)
 }
 
-fn decrypt_simple(encrypted: &str, password: &str) -> Result<String, String> {
-    use base64::{Engine as _, engine::general_purpose};
+/// Encrypt data with AES-256-GCM using a password-derived key.
+/// Output is base64(salt || nonce || ciphertext).
+fn encrypt_secure(data: &str, password: &str) -> Result<String, String> {
+    let mut salt = [0u8; SALT_LEN];
+    let mut nonce_bytes = [0u8; NONCE_LEN];
+    let mut rng = rng();
+    rng.fill_bytes(&mut salt);
+    rng.fill_bytes(&mut nonce_bytes);
+
+    let key = derive_key(password, &salt);
+    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| e.to_string())?;
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    let ciphertext = cipher
+        .encrypt(nonce, data.as_bytes())
+        .map_err(|e| format!("Encryption failed: {}", e))?;
+
+    let mut payload = Vec::with_capacity(SALT_LEN + NONCE_LEN + ciphertext.len());
+    payload.extend_from_slice(&salt);
+    payload.extend_from_slice(&nonce_bytes);
+    payload.extend_from_slice(&ciphertext);
+
+    Ok(general_purpose::STANDARD.encode(payload))
+}
+
+fn decrypt_secure(encrypted: &str, password: &str) -> Result<String, String> {
     let decoded = general_purpose::STANDARD
         .decode(encrypted)
-        .map_err(|_| "Invalid encrypted data")?;
-    let mut result = Vec::new();
-    let password_bytes = password.as_bytes();
-    for (i, byte) in decoded.iter().enumerate() {
-        result.push(byte ^ password_bytes[i % password_bytes.len()]);
+        .map_err(|_| "Invalid encrypted data".to_string())?;
+
+    if decoded.len() < SALT_LEN + NONCE_LEN {
+        return Err("Invalid encrypted data".to_string());
     }
-    String::from_utf8(result).map_err(|_| "Invalid UTF-8".to_string())
+
+    let (salt, rest) = decoded.split_at(SALT_LEN);
+    let (nonce_bytes, ciphertext) = rest.split_at(NONCE_LEN);
+
+    let key = derive_key(password, salt);
+    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| e.to_string())?;
+    let nonce = Nonce::from_slice(nonce_bytes);
+
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|_| "Invalid password or corrupted data".to_string())?;
+
+    String::from_utf8(plaintext).map_err(|_| "Invalid UTF-8".to_string())
 }
 

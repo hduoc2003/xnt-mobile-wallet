@@ -1,51 +1,15 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![allow(non_snake_case)] 
 
-use neptune_privacy::prelude::triton_vm::prelude::*;
-use neptune_privacy::api::export::{ReceivingAddress, TransactionDetails};
-use neptune_privacy::api::tx_initiation::builder::transaction_builder::TransactionBuilder;
-use neptune_privacy::api::tx_initiation::builder::tx_output_list_builder::OutputFormat;
+use std::str::FromStr;
+
+use log::Level;
 use neptune_privacy::application::config::network::Network;
-use neptune_privacy::application::json_rpc::core::model::message::{
-    GetArchivalMutatorSetResponse, GetStateResponse,
-};
-use neptune_privacy::prelude::twenty_first::prelude::Digest;
-use neptune_privacy::protocol::consensus::shared::Hash;
-use neptune_privacy::protocol::consensus::transaction::primitive_witness::PrimitiveWitness;
-use neptune_privacy::protocol::consensus::transaction::transaction_proof::TransactionProof;
-use neptune_privacy::protocol::consensus::transaction::validity::collect_lock_scripts::{
-    CollectLockScripts, CollectLockScriptsWitness,
-};
-use neptune_privacy::protocol::consensus::transaction::validity::collect_type_scripts::{
-    CollectTypeScripts, CollectTypeScriptsWitness,
-};
-use neptune_privacy::protocol::consensus::transaction::validity::kernel_to_outputs::{
-    KernelToOutputs, KernelToOutputsWitness,
-};
-use neptune_privacy::protocol::consensus::transaction::validity::neptune_proof::Proof as NeptuneProof;
-use neptune_privacy::protocol::consensus::transaction::validity::proof_collection::ProofCollection;
-use neptune_privacy::protocol::consensus::transaction::validity::removal_records_integrity::{
-    RemovalRecordsIntegrity, RemovalRecordsIntegrityWitness,
-};
-use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
-use neptune_privacy::protocol::proof_abstractions::timestamp::Timestamp;
-use neptune_privacy::state::wallet::address::generation_address::GenerationSpendingKey;
 use neptune_privacy::state::wallet::address::view_key::ViewKey;
 use neptune_privacy::state::wallet::address::SpendingKey;
-use neptune_privacy::state::wallet::incoming_utxo::IncomingUtxo;
-use neptune_privacy::state::wallet::transaction_input::{TxInput, TxInputList};
-use neptune_privacy::state::wallet::transaction_output::{TxOutput, TxOutputList};
-use neptune_privacy::state::wallet::unlocked_utxo::UnlockedUtxo;
-use neptune_privacy::state::wallet::utxo_notification::UtxoNotificationMedium;
-use neptune_privacy::state::wallet::wallet_entropy::WalletEntropy;
 use neptune_privacy::state::wallet::secret_key_material::SecretKeyMaterial;
-use neptune_privacy::util_types::mutator_set::addition_record::AdditionRecord;
-use neptune_privacy::util_types::mutator_set::ms_membership_proof::MsMembershipProof;
-use num_traits::identities::Zero;
-use num_traits::ops::checked::CheckedSub;
+use neptune_privacy::state::wallet::wallet_entropy::WalletEntropy;
 use rand::Rng;
-use std::str::FromStr;
-use log::Level;
 use reqwest::Client;
 
 #[cfg(target_os = "android")]
@@ -57,9 +21,6 @@ mod keystore;
 mod wallet;
 mod transaction;
 
-use keystore::*;
-use wallet::*;
-use transaction::*;
 
 const NODE_RPC_URL: &str = "http://zsmartex.com:9897";
 

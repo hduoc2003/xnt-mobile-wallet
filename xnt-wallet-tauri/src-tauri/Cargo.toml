@@ -42,6 +42,9 @@ base64 = "0.22"
 log = "0.4"
 libc = "0.2"
 bip39 = { version = "1.0", package = "tiny-bip39" }
+aes-gcm = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+sha2 = "0.10"
 
 # OpenSSL vendored for Android builds
 [target.'cfg(target_os = "android")'.dependencies]
