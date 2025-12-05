@@ -3,12 +3,12 @@ import { computed } from 'vue'
 import { History, ArrowUpRight } from 'lucide-vue-next'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useFormat } from '@/composables'
-import { useNeptuneStore } from '@/stores/neptuneStore'
+import { useTransactionStore } from '@/stores'
 
 const { formatAddress, formatAmount } = useFormat()
-const neptuneStore = useNeptuneStore()
+const transactionStore = useTransactionStore()
 
-const transactions = computed(() => neptuneStore.getTransactions)
+const transactions = computed(() => transactionStore.getTransactions)
 const hasTransactions = computed(() => transactions.value.length > 0)
 
 const formatDateTime = (iso: string) => {
