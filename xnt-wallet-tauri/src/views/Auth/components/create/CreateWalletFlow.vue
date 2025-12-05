@@ -5,8 +5,7 @@ import CreatePasswordStep from './CreatePasswordStep.vue'
 import SeedPhraseDisplayStep from './SeedPhraseDisplayStep.vue'
 import ConfirmSeedStep from './ConfirmSeedStep.vue'
 import WalletCreatedStep from './WalletCreatedStep.vue'
-import { useNeptuneWallet } from '@/composables/useNeptuneWallet'
-import { Card, CardContent } from '@/components/ui/card'
+import { useNeptuneWallet, useTransaction } from '@/composables'
 
 const emit = defineEmits<{
   goToRecover: []
@@ -15,6 +14,7 @@ const emit = defineEmits<{
 }>()
 
 const { generateWallet, createKeystore } = useNeptuneWallet()
+const { clearTransactions } = useTransaction()
 
 const step = ref(1)
 const seedPhrase = ref<string[]>([])
@@ -71,6 +71,7 @@ const handleAccessWallet = async () => {
 
     const seedPhraseString = seedPhrase.value.join(' ')
     await createKeystore(seedPhraseString, password.value)
+    clearTransactions()
 
     emit('accessWallet')
   } catch (err) {

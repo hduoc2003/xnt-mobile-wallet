@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { WalletState } from '@/types'
-import type { TransactionDetail } from '@/types'
 import { DEFAULT_MIN_BLOCK_HEIGHT, toFiniteNumber } from '@/utils'
 
 export const useNeptuneStore = defineStore('neptune', () => {
@@ -21,32 +20,6 @@ export const useNeptuneStore = defineStore('neptune', () => {
     })
 
     const keystoreFileName = ref<string | null>(null)
-    const transactions = ref<TransactionDetail[]>([])
-
-    const TX_STORAGE_KEY = 'xnt_tx_history'
-
-    const loadTransactionsFromStorage = () => {
-        if (typeof window === 'undefined') return
-        try {
-            const raw = window.localStorage.getItem(TX_STORAGE_KEY)
-            if (!raw) return
-            const parsed = JSON.parse(raw)
-            if (Array.isArray(parsed)) {
-                transactions.value = parsed
-            }
-        } catch {
-        }
-    }
-
-    const persistTransactions = () => {
-        if (typeof window === 'undefined') return
-        try {
-            window.localStorage.setItem(TX_STORAGE_KEY, JSON.stringify(transactions.value))
-        } catch {
-        }
-    }
-
-    loadTransactionsFromStorage()
 
     // ===== SETTERS =====
 
@@ -94,16 +67,6 @@ export const useNeptuneStore = defineStore('neptune', () => {
         keystoreFileName.value = fileName
     }
 
-    const setTransactions = (items: TransactionDetail[]) => {
-        transactions.value = items
-        persistTransactions()
-    }
-
-    const addTransaction = (item: TransactionDetail) => {
-        transactions.value = [item, ...transactions.value]
-        persistTransactions()
-    }
-
     const clearWallet = () => {
         wallet.value = {
             receiverId: null,
@@ -129,7 +92,6 @@ export const useNeptuneStore = defineStore('neptune', () => {
     const getPendingBalance = computed(() => wallet.value.pendingBalance)
     const getUtxos = computed(() => wallet.value.utxos)
     const getMinBlockHeight = computed(() => wallet.value.minBlockHeight ?? null)
-    const getTransactions = computed(() => transactions.value)
     const hasWallet = computed(() => wallet.value.address !== null)
     const getKeystoreFileName = computed(() => keystoreFileName.value ?? null)
     return {
@@ -143,7 +105,6 @@ export const useNeptuneStore = defineStore('neptune', () => {
         getPendingBalance,
         getUtxos,
         getMinBlockHeight,
-        getTransactions,
         hasWallet,
         getKeystoreFileName,
         setReceiverId,
@@ -157,8 +118,6 @@ export const useNeptuneStore = defineStore('neptune', () => {
         setMinBlockHeight,
         setWallet,
         setKeystoreFileName,
-        setTransactions,
-        addTransaction,
         clearWallet,
     }
 })

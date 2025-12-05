@@ -2,7 +2,8 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import { Key, ArrowLeft, Copy, Eye, EyeOff } from 'lucide-vue-next'
+import { Key, ArrowLeft, Eye, EyeOff } from 'lucide-vue-next'
+import { SeedPhraseGrid } from '@/components/commons'
 import { useNeptuneWallet } from '@/composables'
 
 const router = useRouter()
@@ -13,6 +14,7 @@ const showPassword = ref(false)
 const verifyLoading = ref(false)
 const seedPhrase = ref<string[]>([])
 const seedRevealed = ref(false)
+const seedPhraseGridRef = ref<InstanceType<typeof SeedPhraseGrid>>()
 
 const handleVerifyPassword = async () => {
   try {
@@ -29,15 +31,6 @@ const handleVerifyPassword = async () => {
     verifyLoading.value = false
   }
 }
-
-const handleCopySeed = async () => {
-  try {
-    await navigator.clipboard.writeText(seedPhrase.value.join(' '))
-    toast.success('Seed phrase copied to clipboard')
-  } catch (error) {
-    toast.error('Failed to copy seed phrase')
-  }
-}
 </script>
 
 <template>
@@ -50,26 +43,27 @@ const handleCopySeed = async () => {
         </Button>
         <div>
           <h1 class="text-2xl font-bold text-foreground">Backup Seed Phrase</h1>
-          <p class="text-sm text-muted-foreground">Verify password to view your seed phrase</p>
+          <p v-if="!seedRevealed" class="text-sm text-muted-foreground">Verify password to view your seed phrase</p>
+          <p v-if="seedRevealed" class="text-sm text-muted-foreground">Write down these 18 words in order</p>
         </div>
       </div>
 
-      <!-- Backup Seed Card -->
-      <Card>
+      <!-- Password Verification Card -->
+      <Card v-if="!seedRevealed">
         <CardHeader>
           <CardTitle class="flex items-center gap-2">
             <Key class="size-5" />
-            {{ seedRevealed ? 'Your Seed Phrase' : 'Verify Password' }}
+            Verify Password
           </CardTitle>
         </CardHeader>
         <CardContent class="space-y-4">
-          <Alert v-if="!seedRevealed" variant="destructive">
+          <Alert variant="destructive">
             <AlertDescription>
               Never share your seed phrase with anyone. It gives full access to your wallet.
             </AlertDescription>
           </Alert>
 
-          <div v-if="!seedRevealed" class="space-y-2">
+          <div class="space-y-2">
             <Label for="password">Password</Label>
             <div class="relative">
               <Input
@@ -92,37 +86,12 @@ const handleCopySeed = async () => {
             </div>
           </div>
 
-          <div v-else class="space-y-4">
-            <Alert>
-              <AlertDescription>
-                Write down these 18 words in order and store them safely offline.
-              </AlertDescription>
-            </Alert>
-
-            <div class="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-4 sm:grid-cols-3">
-              <div
-                v-for="(word, index) in seedPhrase"
-                :key="index"
-                class="flex items-center gap-2 rounded-md border border-border bg-background p-2"
-              >
-                <Badge variant="secondary" class="shrink-0 text-xs">{{ index + 1 }}</Badge>
-                <span class="font-mono text-sm">{{ word }}</span>
-              </div>
-            </div>
-
-            <Button variant="outline" class="w-full" @click="handleCopySeed">
-              <Copy class="mr-2 size-4" />
-              Copy Seed Phrase
-            </Button>
-          </div>
-
           <!-- Action Buttons -->
           <div class="flex gap-2">
             <Button variant="outline" class="flex-1" @click="router.push('/')">
-              {{ seedRevealed ? 'Close' : 'Cancel' }}
+              Cancel
             </Button>
             <Button
-              v-if="!seedRevealed"
               class="flex-1"
               :disabled="!verifyPassword || verifyLoading"
               @click="handleVerifyPassword"
@@ -136,6 +105,23 @@ const handleCopySeed = async () => {
           </div>
         </CardContent>
       </Card>
+
+      <!-- Seed Phrase Card -->
+      <div v-else>
+
+        <SeedPhraseGrid
+          ref="seedPhraseGridRef"
+          :seed-phrase="seedPhrase"
+          :require-reveal="false"
+        />
+
+        <!-- Action Buttons -->
+        <div class="flex gap-2 mt-4">
+          <Button variant="outline" class="flex-1" @click="router.push('/')">
+            Close
+          </Button>
+        </div>
+      </div>
     </div>
   </div>
 </template>

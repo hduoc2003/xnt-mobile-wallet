@@ -1,13 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ChevronLeft, KeyRound, Shield } from 'lucide-vue-next'
-import { ThemeToggle } from '@/components/ui/theme-toggle'
 import RecoverSeedInput from './RecoverSeedInput.vue'
 import { ArrowLeftCommon, PasswordCreationForm } from '@/components/commons'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { useNeptuneWallet } from '@/composables/useNeptuneWallet'
+import { useNeptuneWallet, useTransaction } from '@/composables'
 
 const emit = defineEmits<{
   cancel: []
@@ -15,6 +11,7 @@ const emit = defineEmits<{
 }>()
 
 const { recoverWalletFromSeed, createKeystore } = useNeptuneWallet()
+const { clearTransactions } = useTransaction()
 
 onMounted(() => {
   if ((window as any).logger) {
@@ -60,6 +57,8 @@ const handlePasswordSubmit = async (submittedPassword: string) => {
     const result = await recoverWalletFromSeed(seedPhrase.value)
     if (result.address) {
       await createKeystore(seedPhrase.value.join(' '), password.value)
+      clearTransactions()
+      
       emit('accessWallet')
     }
   } catch (err) {

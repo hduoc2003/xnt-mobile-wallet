@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { PasswordForm, Logo } from '@/components/commons'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 
 const props = withDefaults(defineProps<{
   loading?: boolean

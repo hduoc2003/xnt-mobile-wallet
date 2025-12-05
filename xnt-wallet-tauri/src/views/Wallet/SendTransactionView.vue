@@ -3,13 +3,12 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { Send, ArrowLeft } from 'lucide-vue-next'
-import { useNeptuneWallet, useFormat } from '@/composables'
-import { useNeptuneStore } from '@/stores/neptuneStore'
+import { useNeptuneWallet, useFormat, useTransaction } from '@/composables'
 
 const router = useRouter()
 const { getBalance, getUtxos, buildTransaction, broadcastSignedTransaction } = useNeptuneWallet()
+const { addTransaction } = useTransaction()
 const { formatHash, formatAmount } = useFormat()
-const neptuneStore = useNeptuneStore()
 
 const availableBalance = ref('0')
 const loading = ref(false)
@@ -150,7 +149,7 @@ const handleConfirmSend = async () => {
     const amountNum = parseFloat(outputAmount.value)
     const feeNum = parseFloat(priorityFee.value)
 
-    neptuneStore.addTransaction({
+    addTransaction({
       id: submitResult.txid,
       toAddress: outputAddress.value.trim(),
       amount: Number.isFinite(amountNum) ? amountNum : 0,
