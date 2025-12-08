@@ -4,11 +4,12 @@ import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { Send, ArrowLeft } from 'lucide-vue-next'
 import { useNeptuneWallet, useFormat, useTransaction } from '@/composables'
+import ConfirmTransactionDrawer from './components/ConfirmTransactionDrawer.vue'
 
 const router = useRouter()
 const { getBalance, getUtxos, buildTransaction, broadcastSignedTransaction } = useNeptuneWallet()
 const { addTransaction } = useTransaction()
-const { formatHash, formatAmount } = useFormat()
+const { formatAmount } = useFormat()
 
 const availableBalance = ref('0')
 const loading = ref(false)
@@ -270,60 +271,16 @@ onMounted(() => {
       </Card>
     </div>
 
-    <!-- Confirm Transaction Modal -->
-    <Dialog v-model:open="showConfirmModal">
-      <DialogContent class="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle>Confirm Transaction</DialogTitle>
-          <DialogDescription>Please review the transaction details before sending</DialogDescription>
-        </DialogHeader>
-
-        <div class="space-y-4 py-4">
-          <!-- Recipient -->
-          <div class="space-y-2">
-            <Label class="text-sm text-muted-foreground">Recipient Address</Label>
-            <div class="break-all rounded-lg border border-border bg-muted/50 p-3 font-mono text-sm">
-              {{formatHash(outputAddress) }}
-            </div>
-          </div>
-
-          <!-- Amount and Fee -->
-          <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-2">
-              <Label class="text-sm text-muted-foreground">Amount</Label>
-              <div class="rounded-lg border border-border bg-muted/50 p-3 font-semibold">
-                {{ outputAmount }} XNT
-              </div>
-            </div>
-            <div class="space-y-2">
-              <Label class="text-sm text-muted-foreground">Priority Fee</Label>
-              <div class="rounded-lg border border-border bg-muted/50 p-3 font-semibold">
-                {{ priorityFee }} XNT
-              </div>
-            </div>
-          </div>
-
-          <Alert>
-            <AlertDescription>
-              This action cannot be undone. Make sure all details are correct before proceeding.
-            </AlertDescription>
-          </Alert>
-        </div>
-
-        <DialogFooter class="gap-2">
-          <Button variant="outline" @click="handleCancelConfirm" :disabled="sendLoading">
-            Cancel
-          </Button>
-          <Button @click="handleConfirmSend" :disabled="sendLoading">
-            <span
-              v-if="sendLoading"
-              class="mr-2 size-4 animate-spin rounded-full border-2 border-white border-t-transparent"
-            />
-            {{ sendLoading ? 'Sending...' : 'Confirm & Send' }}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <!-- Confirm Transaction Drawer -->
+    <ConfirmTransactionDrawer
+      v-model:open="showConfirmModal"
+      :recipient-address="outputAddress"
+      :amount="outputAmount"
+      :fee="priorityFee"
+      :loading="sendLoading"
+      @confirm="handleConfirmSend"
+      @cancel="handleCancelConfirm"
+    />
   </div>
 </template>
 

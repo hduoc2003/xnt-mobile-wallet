@@ -1,17 +1,36 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { Database, RefreshCw } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useNeptuneStore } from '@/stores/neptuneStore'
 import { useNeptuneWallet, useFormat } from '@/composables'
+import type { Utxo } from '@/types'
 
 const neptuneStore = useNeptuneStore()
 const { getUtxos } = useNeptuneWallet()
 const { formatHash, formatAmount } = useFormat()
 
 const loading = ref(false)
+const displayedUtxos = ref<Utxo[]>([])
+const itemsPerPage = 20
 
 const utxosList = computed(() => [...(neptuneStore.getUtxos || [])])
+
+const hasMore = computed(() => {
+  return displayedUtxos.value?.length < utxosList.value?.length
+})
+
+const loadMoreUtxos = () => {
+  if (!hasMore.value) return
+
+  const currentLength = displayedUtxos.value.length
+  const nextItems = utxosList.value.slice(currentLength, currentLength + itemsPerPage)
+  displayedUtxos.value = [...displayedUtxos.value, ...nextItems]
+}
+
+watch(utxosList, (newList: Utxo[]) => {
+  displayedUtxos.value = newList.slice(0, itemsPerPage)
+}, { immediate: true })
 
 const inUseUtxosCount = computed(() => utxosList.value?.length || 0)
 const inUseUtxosAmount = computed(() => {
@@ -71,7 +90,7 @@ onMounted(async () => {
           <CardTitle class="text-lg font-semibold">Summary</CardTitle>
         </CardHeader>
         <CardContent>
-          <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <div class="flex justify-between items-center gap-6">
             <div class="space-y-1">
               <p class="text-sm text-muted-foreground">Total Count</p>
               <p class="text-2xl font-bold text-primary">{{ inUseUtxosCount }}</p>
@@ -93,7 +112,7 @@ onMounted(async () => {
         </CardHeader>
         <CardContent>
           <!-- Loading State -->
-          <div v-if="loading" class="flex items-center justify-center py-12">
+          <div v-if="loading" class="flex items-center justify-center py-4">
             <div
               class="size-8 animate-spin rounded-full border-4 border-primary border-t-transparent"
             />
@@ -108,34 +127,46 @@ onMounted(async () => {
             <p class="text-sm text-muted-foreground">No UTXOs found</p>
           </div>
 
-          <!-- UTXO Cards (Mobile) -->
-          <div class="space-y-3 md:hidden">
-            <Card
-              v-for="(utxo, index) in utxosList"
-              :key="index"
-              class="border border-border transition-colors hover:bg-muted/50"
-            >
-              <CardContent class="space-y-3 p-4">
-                <div class="space-y-1">
-                  <Label class="text-xs text-muted-foreground">UTXO Hash</Label>
-                  <code class="block text-xs text-foreground">{{ formatHash(utxo.utxoHash) }}</code>
-                </div>
-                <Separator />
-                <div class="grid grid-cols-2 gap-4">
-                  <div class="space-y-1">
-                    <Label class="text-xs text-muted-foreground">Amount</Label>
-                    <p class="break-all font-mono text-sm font-semibold text-primary">
-                      {{formatAmount(+utxo.amount, 4) }} <span class="text-xs">XNT</span>
-                    </p>
-                  </div>
-                  <div class="space-y-1">
-                    <Label class="text-xs text-muted-foreground">Block Height</Label>
-                    <p class="text-sm font-medium text-foreground">{{ utxo.blockHeight }}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <!-- UTXO Cards -->
+          <InfiniteScrollList
+            v-if="!loading && utxosList.length > 0"
+            :items="displayedUtxos"
+            :loading="loading"
+            :has-more="hasMore"
+            empty-message="No UTXOs found"
+            class="max-h-[550px]"
+            @load-more="loadMoreUtxos"
+          >
+            <template #default="{ items }">
+              <div class="space-y-3">
+                <Card
+                  v-for="(utxo, index) in items"
+                  :key="index"
+                  class="border border-border transition-colors hover:bg-muted/50"
+                >
+                  <CardContent class="space-y-3 p-4">
+                    <div class="space-y-1">
+                      <Label class="text-xs text-muted-foreground">UTXO Hash</Label>
+                      <code class="block text-xs text-foreground">{{ formatHash(utxo.utxoHash) }}</code>
+                    </div>
+                    <Separator />
+                    <div class="grid grid-cols-2 gap-4">
+                      <div class="space-y-1">
+                        <Label class="text-xs text-muted-foreground">Amount</Label>
+                        <p class="break-all font-mono text-sm font-semibold text-primary">
+                          {{formatAmount(+utxo.amount, 4) }} <span class="text-xs">XNT</span>
+                        </p>
+                      </div>
+                      <div class="space-y-1">
+                        <Label class="text-xs text-muted-foreground">Block Height</Label>
+                        <p class="text-sm font-medium text-foreground">{{ utxo.blockHeight }}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </template>
+          </InfiniteScrollList>
         </CardContent>
       </Card>
     </div>

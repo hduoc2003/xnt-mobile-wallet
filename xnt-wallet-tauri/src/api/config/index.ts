@@ -1,4 +1,4 @@
-import { STATUS_CODE_SUCCESS } from '@/utils/constants/code'
+import { STATUS_CODE_SUCCESS } from '@/utils'
 import axios from 'axios'
 
 axios.defaults.withCredentials = false

@@ -12,7 +12,6 @@ export const useTransaction = () => {
             const raw = window.localStorage.getItem(TX_STORAGE_KEY)
             if (!raw) return []
             const parsed = JSON.parse(raw)
-            console.log('loadTransactionsFromStorage ', parsed)
             if (Array.isArray(parsed)) {
                 transactionStore.setTransactions(parsed)
                 return parsed

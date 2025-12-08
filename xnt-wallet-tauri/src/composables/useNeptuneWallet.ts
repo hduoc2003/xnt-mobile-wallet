@@ -7,7 +7,7 @@ import type {
   ViewKeyResult,
   WalletState,
 } from '@/types'
-import { DEFAULT_MIN_BLOCK_HEIGHT } from '@/utils/constants/constants'
+import { DEFAULT_MIN_BLOCK_HEIGHT } from '@/utils'
 import { toFiniteNumber } from '@/utils'
 
 export function useNeptuneWallet() {

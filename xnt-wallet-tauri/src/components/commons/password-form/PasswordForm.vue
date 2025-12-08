@@ -3,10 +3,6 @@ import { ref, computed } from 'vue'
 import { useForm } from '@tanstack/vue-form'
 import { z } from 'zod'
 import { Eye, EyeOff, Lock, Loader2, ChevronLeft } from 'lucide-vue-next'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 
 interface Props {
   label?: string

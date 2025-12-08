@@ -1,4 +1,4 @@
-import { DEFAULT_MIN_BLOCK_HEIGHT } from '@/utils/constants/constants'
+import { DEFAULT_MIN_BLOCK_HEIGHT } from '@/utils'
 
 export function toFiniteNumber(
     value: number,

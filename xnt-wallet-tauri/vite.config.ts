@@ -3,7 +3,6 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import Components from 'unplugin-vue-components/vite'
-import { AntDesignVueResolver } from 'unplugin-vue-components/resolvers'
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -14,7 +13,10 @@ export default defineConfig(async () => ({
     vue(),
     vueJsx(),
     Components({
-      resolvers: [AntDesignVueResolver({ importStyle: false })],
+      dirs: ['src/components'],
+      dts: true,
+      deep: true,
+      extensions: ['vue'],
     }),
   ],
 

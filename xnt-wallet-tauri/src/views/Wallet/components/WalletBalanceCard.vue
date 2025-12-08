@@ -5,7 +5,7 @@ import { useNeptuneStore, useTickerStore } from '@/stores'
 import { toast } from 'vue-sonner'
 import { useFormat } from '@/composables'
 import { useTickers } from '@/composables/useTickers'
-import { POLLING_INTERVAL_XNT_PRICE } from '@/utils/constants'
+import { POLLING_INTERVAL_XNT_PRICE } from '@/utils'
 
 interface Props {
   availableBalance: string

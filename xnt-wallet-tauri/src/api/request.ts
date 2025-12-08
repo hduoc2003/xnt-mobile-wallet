@@ -1,5 +1,5 @@
 import axios, { type AxiosInstance, type AxiosResponse, type AxiosError } from 'axios'
-import { STATUS_CODE_SUCCESS } from '@/utils/constants'
+import { STATUS_CODE_SUCCESS } from '@/utils'
 
 export const API_URL = import.meta.env.VITE_APP_API || 'http://zsmartex.com:9897'
 
