@@ -221,7 +221,25 @@ if (!(window as any).walletApi) {
             } catch (error: any) {
                 return { success: false, error: error || 'Failed to get keystore path' }
             }
-        }
+        },
+        
+        setRpcEndpoint: async (endpoint: string) => {
+            try {
+                await safeInvoke('set_rpc_endpoint', { endpoint })
+                return { success: true }
+            } catch (error: any) {
+                return { success: false, error: error?.message || error || 'Failed to set RPC endpoint' }
+            }
+        },
+        
+        getCustomRpcEndpoint: async () => {
+            try {
+                const result = await safeInvoke<string | null>('get_custom_rpc_endpoint')
+                return result || null
+            } catch (error: any) {
+                return { success: false, error: error || 'Failed to get RPC endpoint' }
+            }
+        },
     }
 }
 

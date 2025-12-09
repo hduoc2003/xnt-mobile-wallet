@@ -222,7 +222,8 @@ export function useNeptuneWallet() {
       await persistMinBlockHeight(utxoList)
       return result
     } catch (err: any) {
-      console.error('Error getting UTXOs:', err.message)
+      await (window as any).logger?.error('Error getting UTXOs:', err.message)
+      store.setUtxos([])
       throw err
     }
   }
@@ -248,7 +249,9 @@ export function useNeptuneWallet() {
         pendingBalance: result?.pendingBalance || result,
       }
     } catch (err: any) {
-      console.error('Error getting balance:', err.message)
+      await (window as any).logger?.error('Error getting balance:', err.message)
+      store.setBalance('0')
+      store.setPendingBalance('0')
       throw err
     }
   }
@@ -259,7 +262,7 @@ export function useNeptuneWallet() {
       const result = response?.result || response
       return result?.height || result
     } catch (err: any) {
-      console.error('Error getting block height:', err.message)
+      await (window as any).logger?.error('Error getting block height:', err.message)
       throw err
     }
   }
@@ -272,7 +275,7 @@ export function useNeptuneWallet() {
 
       return result
     } catch (err: any) {
-      console.error('Error getting network info:', err.message)
+      await (window as any).logger?.error('Error getting network info:', err.message)
       throw err
     }
   }
@@ -312,7 +315,7 @@ export function useNeptuneWallet() {
       const result = response?.result || response
       return result
     } catch (err: any) {
-      console.error('Error sending transaction:', err.message)
+      await (window as any).logger?.error('Error sending transaction:', err.message)
       throw err
     }
   }

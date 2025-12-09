@@ -20,6 +20,7 @@ export const useNeptuneStore = defineStore('neptune', () => {
     })
 
     const keystoreFileName = ref<string | null>(null)
+    const rpcUrl = ref<string | null>(null)
 
     // ===== SETTERS =====
 
@@ -67,6 +68,10 @@ export const useNeptuneStore = defineStore('neptune', () => {
         keystoreFileName.value = fileName
     }
 
+    const setRpcUrl = (url: string | null) => {
+        rpcUrl.value = url
+    }
+
     const clearWallet = () => {
         wallet.value = {
             receiverId: null,
@@ -94,6 +99,7 @@ export const useNeptuneStore = defineStore('neptune', () => {
     const getMinBlockHeight = computed(() => wallet.value.minBlockHeight ?? null)
     const hasWallet = computed(() => wallet.value.address !== null)
     const getKeystoreFileName = computed(() => keystoreFileName.value ?? null)
+    const getRpcUrl = computed(() => rpcUrl.value)
     return {
         getWallet,
         getReceiverId,
@@ -107,6 +113,7 @@ export const useNeptuneStore = defineStore('neptune', () => {
         getMinBlockHeight,
         hasWallet,
         getKeystoreFileName,
+        getRpcUrl,
         setReceiverId,
         setViewKey,
         setSpendingKey,
@@ -118,6 +125,7 @@ export const useNeptuneStore = defineStore('neptune', () => {
         setMinBlockHeight,
         setWallet,
         setKeystoreFileName,
+        setRpcUrl,
         clearWallet,
     }
 })

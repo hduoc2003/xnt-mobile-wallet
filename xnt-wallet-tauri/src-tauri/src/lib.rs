@@ -20,9 +20,7 @@ use libc;
 mod keystore;
 mod wallet;
 mod transaction;
-
-
-const NODE_RPC_URL: &str = "http://zsmartex.com:9897";
+mod rpc_config;
 
 #[tauri::command]
 fn generate_seed() -> Result<String, String> {
@@ -184,8 +182,14 @@ async fn build_transaction(payload: serde_json::Value) -> Result<String, String>
 }
 
 #[tauri::command]
-async fn proxy_json_rpc(method: String, params: serde_json::Value) -> Result<String, String> {
+async fn proxy_json_rpc(
+    app: tauri::AppHandle,
+    method: String,
+    params: serde_json::Value,
+) -> Result<String, String> {
     let client = Client::new();
+    let rpc_url = rpc_config::get_custom_rpc_endpoint(&app)
+        .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string());
 
     let body = serde_json::json!({
         "jsonrpc": "2.0",
@@ -195,7 +199,7 @@ async fn proxy_json_rpc(method: String, params: serde_json::Value) -> Result<Str
     });
 
     let response = client
-        .post(NODE_RPC_URL)
+        .post(&rpc_url)
         .json(&body)
         .send()
         .await
@@ -212,6 +216,19 @@ async fn proxy_json_rpc(method: String, params: serde_json::Value) -> Result<Str
     }
 
     Ok(text)
+}
+
+#[tauri::command]
+async fn set_rpc_endpoint(
+    app: tauri::AppHandle,
+    endpoint: String,
+) -> Result<(), String> {
+    rpc_config::set_rpc_endpoint(&app, endpoint)
+}
+
+#[tauri::command]
+async fn get_custom_rpc_endpoint(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    Ok(rpc_config::get_custom_rpc_endpoint(&app))
 }
 
 #[tauri::command]
@@ -274,6 +291,8 @@ pub fn run() {
             get_keystore_path,
             build_transaction,
             proxy_json_rpc,
+            set_rpc_endpoint,
+            get_custom_rpc_endpoint,
             log_message,
         ])
         .run(tauri::generate_context!())
