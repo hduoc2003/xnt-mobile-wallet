@@ -54,6 +54,7 @@ use neptune_privacy::protocol::consensus::transaction::transaction_kernel::Trans
 use neptune_privacy::protocol::proof_abstractions::mast_hash::MastHash;
 use neptune_privacy::protocol::proof_abstractions::tasm::program::ConsensusProgram;
 use neptune_privacy::protocol::proof_abstractions::SecretWitness;
+use crate::rpc_config;
 
 const MAX_SEARCH_DEPTH: u64 = 5000;
 
@@ -150,7 +151,7 @@ pub(crate) async fn generate_membership_proof_client_side(
         return Err("UTXO addition record not found in block".to_string());
     }
     
-    // Step 2: Get AOCL authentication path
+    //Get AOCL authentication path
     let auth_path_text = client
         .post(rpc_url)
         .json(&serde_json::json!({
@@ -182,7 +183,7 @@ pub(crate) async fn generate_membership_proof_client_side(
         )
         .map_err(|e| format!("Failed to deserialize auth path: {}", e))?;
     
-    // Step 3: Compute chunk indices needed (client-side, uses receiver_preimage - never sent to server!)
+    // Compute chunk indices needed
     let item = Tip5::hash(incoming_utxo.utxo());
     let swbf_indices = AbsoluteIndexSet::compute(
         item,
@@ -201,7 +202,7 @@ pub(crate) async fn generate_membership_proof_client_side(
         .map(|bi| (*bi / u128::from(CHUNK_SIZE)) as u64)
         .collect();
     
-    // Step 4: Get chunks and their auth paths
+    // Get chunks and their auth paths
     let chunks_text = client
         .post(rpc_url)
         .json(&serde_json::json!({
@@ -259,7 +260,7 @@ pub(crate) async fn generate_membership_proof_client_side(
         target_chunks.insert(chunk_index, (chunk_auth_path, chunk));
     }
     
-    // Step 5: Build membership proof (all client-side, receiver_preimage never sent to server!)
+    // Build membership proof
     Ok(MsMembershipProof {
         sender_randomness: incoming_utxo.sender_randomness(),
         receiver_preimage: incoming_utxo.receiver_preimage(),
@@ -281,7 +282,9 @@ pub async fn build_transaction(payload: serde_json::Value) -> Result<String, Str
 
 async fn build_transaction_inner(payload: serde_json::Value) -> Result<String, String> {
     let rpc_url = std::env::var("VITE_APP_API")
-        .unwrap_or_else(|_| "https://66b4b9bd1e4c.ngrok-free.app".to_string());
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string());
     
     let spending_key_hex = payload["spendingKeyHex"]
         .as_str()
@@ -355,7 +358,7 @@ async fn build_transaction_inner(payload: serde_json::Value) -> Result<String, S
     
     let spending_key_enum = SpendingKey::Generation(generation_spending_key.clone());
     let lock_script_and_witness = spending_key_enum.lock_script_and_witness();
-    // Get UTXOs from cache instead of calling server (PRIVACY: no view key sent!)
+    // Get UTXOs from cache instead of calling server
     use crate::utxo_cache;
     let matched_utxos = utxo_cache::get_utxos_by_addition_records(&input_addition_records).await;
     
@@ -405,7 +408,7 @@ async fn build_transaction_inner(payload: serde_json::Value) -> Result<String, S
         ));
     }
     
-    // Get mutator set accumulator first (needed for client-side proof generation)
+    // Get mutator set accumulator first
     let archival_text = client
         .post(&rpc_url)
         .json(&serde_json::json!({
@@ -438,7 +441,7 @@ async fn build_transaction_inner(payload: serde_json::Value) -> Result<String, S
         .map_err(|e| format!("Failed to deserialize archival mutator set: {}", e))?
         .archival_mutator_set;
     
-    // Generate membership proofs client-side (receiver_preimage never sent to server!)
+    // Generate membership proofs client-side
     let mut tx_inputs = Vec::new();
     for incoming_utxo in matched_utxos {
         let msmp = generate_membership_proof_client_side(

@@ -1,7 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(non_snake_case)]
-
-use neptune_privacy::prelude::triton_vm::prelude::*;
 use neptune_privacy::api::export::{ReceivingAddress, TransactionDetails};
 use neptune_privacy::api::tx_initiation::builder::transaction_builder::TransactionBuilder;
 use neptune_privacy::api::tx_initiation::builder::tx_output_list_builder::OutputFormat;

@@ -264,8 +264,11 @@ export function useNeptuneWallet() {
       }
       
 
-      // Get RPC URL from environment or use default
-      const rpcUrl = import.meta.env.VITE_APP_API || 'https://66b4b9bd1e4c.ngrok-free.app'
+      const customRpc = await (window as any).walletApi.getCustomRpcEndpoint?.()
+      const rpcUrl = customRpc || import.meta.env.VITE_APP_API
+      if (!rpcUrl) {
+        throw new Error('RPC endpoint is not configured')
+      }
 
       // Use client-side scanning (NO VIEW KEY TO SERVER!)
       const scanRequest = {

@@ -2,6 +2,7 @@ use neptune_privacy::prelude::twenty_first::math::b_field_element::BFieldElement
 use neptune_privacy::prelude::triton_vm::prelude::Tip5;
 use neptune_privacy::protocol::consensus::transaction::announcement::Announcement;
 use neptune_privacy::protocol::consensus::transaction::transaction_kernel::{TransactionKernel, TransactionKernelProxy};
+use neptune_privacy::application::json_rpc::core::model::block::transaction_kernel::RpcTransactionKernel;
 use neptune_privacy::state::wallet::address::view_key::ViewKey;
 use neptune_privacy::state::wallet::incoming_utxo::IncomingUtxo;
 use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
@@ -114,14 +115,19 @@ fn parse_rpc_bfield_elements(hex_str: &str) -> Result<Vec<BFieldElement>, String
 pub async fn scan_utxos_client_side(
     request: ScanUtxosRequest,
 ) -> Result<String, String> {
-    // Create client with timeout
+    log::debug!(
+        "[UTXO Scan] start_block={} end_block={} rpc_url={}",
+        request.start_block,
+        request.end_block,
+        request.rpc_url
+    );
+
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
     let rpc_url = request.rpc_url;
     
-    // Deserialize view key (stays on device!)
     let view_key_bytes = hex::decode(
         request.view_key_hex.trim_start_matches("0x")
     )
@@ -130,34 +136,40 @@ pub async fn scan_utxos_client_side(
     let view_key: ViewKey = bincode::deserialize(&view_key_bytes)
         .map_err(|e| format!("Failed to deserialize view key: {}", e))?;
     
-    // Get current mutator set accumulator to verify UTXOs are unspent
     let mutator_set_accumulator = get_current_mutator_set_accumulator(&client, &rpc_url).await?;
     
     let mut all_utxos = Vec::new();
     let mut last_scanned = request.start_block;
     
-    // Scan blocks in batches using the new range endpoint
-    let batch_size = 1000; // Request 1000 blocks per batch
+    let batch_size = 1000;
     let mut current_block = request.start_block;
     
-    // timing accumulators removed
-    
+
     while current_block <= request.end_block {
         let batch_end = std::cmp::min(current_block + batch_size - 1, request.end_block);
         
-        // Request announcements for the entire range in one call
         let mut retries = 3;
         let mut response_result = None;
         
         while retries > 0 {
+            let request_body = serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "archival_getBlockAnnouncementsRange",
+                "params": [current_block, batch_end],
+                "id": 1
+            });
+
+            log::info!(
+                "[UTXO Scan] req archival_getBlockAnnouncementsRange {}-{} retry={} url={}",
+                current_block,
+                batch_end,
+                4 - retries,
+                rpc_url
+            );
+
             match client
                 .post(&rpc_url)
-                .json(&serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "method": "archival_getBlockAnnouncementsRange",
-                    "params": [current_block, batch_end],
-                    "id": 1
-                }))
+                .json(&request_body)
                 .send()
                 .await
             {
@@ -167,13 +179,22 @@ pub async fn scan_utxos_client_side(
                 }
                 Err(e) => {
                     retries -= 1;
+                    log::warn!(
+                        "[UTXO Scan] HTTP error for blocks {}-{}: {} (remaining retries: {})",
+                        current_block,
+                        batch_end,
+                        e,
+                        retries
+                    );
                     if retries == 0 {
-                        log::warn!("[UTXO Scan] Batch request failed for blocks {} to {} after retries: {}. Skipping batch.", 
-                            current_block, batch_end, e);
+                        log::warn!(
+                            "[UTXO Scan] Giving up on batch {}-{} after retries",
+                            current_block,
+                            batch_end
+                        );
                         response_result = None;
                         break;
                     }
-                    // Wait before retry (exponential backoff)
                     let delay_ms = 1000 * (3 - retries);
                     tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
                 }
@@ -183,7 +204,11 @@ pub async fn scan_utxos_client_side(
         let response = match response_result {
             Some(r) => r,
             None => {
-                // Batch failed, skip to next batch
+                log::warn!(
+                    "[UTXO Scan] No response for batch {}-{} (all retries failed)",
+                    current_block,
+                    batch_end
+                );
                 current_block = batch_end + 1;
                 continue;
             }
@@ -193,27 +218,39 @@ pub async fn scan_utxos_client_side(
         let response_text = match response.text().await {
             Ok(text) => text,
             Err(e) => {
-                log::warn!("[UTXO Scan] Failed to read batch response for blocks {} to {}: {}. Skipping batch.", 
-                    current_block, batch_end, e);
+                log::warn!(
+                    "[UTXO Scan] Failed to read batch response for blocks {}-{}: {}",
+                    current_block,
+                    batch_end,
+                    e
+                );
                 current_block = batch_end + 1;
                 continue;
             }
         };
         
         if !status.is_success() {
-            log::warn!("[UTXO Scan] Non-success status {} for batch {} to {}: {}", 
-                status, current_block, batch_end, response_text);
+            log::warn!(
+                "[UTXO Scan] Non-success status {} for batch {}-{} body_prefix={}",
+                status,
+                current_block,
+                batch_end,
+                response_text.chars().take(200).collect::<String>()
+            );
             current_block = batch_end + 1;
             continue;
         }
         
         if response_text.trim().is_empty() {
-            log::warn!("[UTXO Scan] Empty response for batch {} to {}", current_block, batch_end);
+            log::warn!(
+                "[UTXO Scan] Empty response for batch {}-{}",
+                current_block,
+                batch_end
+            );
             current_block = batch_end + 1;
             continue;
         }
         
-        // Parse batch response
         let response_json: serde_json::Value = match serde_json::from_str(&response_text) {
             Ok(json) => json,
             Err(e) => {
@@ -225,7 +262,6 @@ pub async fn scan_utxos_client_side(
                 continue;
             }
         };
-        // Extract result from RPC response
         let result = match extract_rpc_result("archival_getBlockAnnouncementsRange", &response_json) {
             Ok(r) => r,
             Err(e) => {
@@ -236,7 +272,6 @@ pub async fn scan_utxos_client_side(
             }
         };
         
-        // Process each block in the batch response
         let blocks_array = match result.get("blocks") {
             Some(serde_json::Value::Array(arr)) => arr,
             _ => {
@@ -272,7 +307,6 @@ pub async fn scan_utxos_client_side(
                 continue;
             }
             
-            // Convert RPC announcements to Announcement structs
             let mut announcement_vec = Vec::new();
             let mut parse_errors = 0;
             
@@ -304,14 +338,14 @@ pub async fn scan_utxos_client_side(
                 continue;
             }
             
-            let announcement_count = announcement_vec.len();
+            let _announcement_count = announcement_vec.len();
             
             if parse_errors > 0 && parse_errors == announcements.len() {
                 log::warn!("[UTXO Scan] Block {}: Failed to parse all {} announcements", 
                     height, announcements.len());
             }
             
-            // Build TransactionKernel with announcements using TransactionKernelProxy
+            // Build TransactionKernel
             let tx_kernel = TransactionKernelProxy {
                 inputs: vec![],
                 outputs: vec![],
@@ -324,7 +358,6 @@ pub async fn scan_utxos_client_side(
             }
             .into_kernel();
             
-            // CLIENT-SIDE FILTERING (view key never left device!)
             let scan_result = view_key.scan_for_announced_utxos(&tx_kernel);
             match scan_result {
                 Ok(incoming_utxos) => {
@@ -336,7 +369,7 @@ pub async fn scan_utxos_client_side(
                         // Verify UTXO is unspent by checking membership proof against current accumulator
                         let item = Tip5::hash(utxo.utxo());
                         
-                        // Generate membership proof client-side (same as in transaction building)
+                        // Generate membership proof
                         let msmp = match transaction::generate_membership_proof_client_side(
                             utxo,
                             &mutator_set_accumulator,
@@ -345,25 +378,21 @@ pub async fn scan_utxos_client_side(
                         ).await {
                             Ok(proof) => proof,
                             Err(_e) => {
-                                continue; // Skip this UTXO if we can't generate proof
+                                continue;
                             }
                         };
                         
                         // Verify the membership proof against current accumulator
                         if !mutator_set_accumulator.verify(item, &msmp) {
-                            continue; // UTXO has been spent, skip it
+                            continue;
                         }
                         
-                        // UTXO is unspent, add it to results
                         unspent_count += 1;
                         let amount = utxo.utxo().get_native_currency_amount();
                         let addition_record = utxo.addition_record();
                         
-                        // Compute UTXO hash using Tip5::hash
                         let utxo_hash = Tip5::hash(utxo.utxo());
                         
-                        // Convert amount from nau to coins as a decimal string
-                        // Use Display implementation which formats as decimal coins
                         let amount_str = format!("{}", amount);
                         
                         all_utxos.push(UtxoInfo {
@@ -384,13 +413,11 @@ pub async fn scan_utxos_client_side(
                         log::info!("[UTXO Scan] Block {}: Found {} unspent UTXO(s)", height, unspent_count);
                     }
                     
-                    // Store unspent UTXOs in cache for later use in transaction building
                     if !cached_utxos.is_empty() {
                         utxo_cache::store_utxos(cached_utxos).await;
                     }
                 }
                 Err(_e) => {
-                    // Silently skip blocks with scanning errors
                 }
             }
             
@@ -428,14 +455,12 @@ pub struct GetPendingBalanceResponse {
 pub async fn get_pending_balance_from_mempool(
     request: GetPendingBalanceRequest,
 ) -> Result<String, String> {
-    // Create client with timeout
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
     let rpc_url = request.rpc_url;
     
-    // Deserialize view key (stays on device!)
     let view_key_bytes = hex::decode(
         request.view_key_hex.trim_start_matches("0x")
     )
@@ -444,13 +469,8 @@ pub async fn get_pending_balance_from_mempool(
     let view_key: ViewKey = bincode::deserialize(&view_key_bytes)
         .map_err(|e| format!("Failed to deserialize view key: {}", e))?;
     
-    // Get mempool transaction IDs and kernels to scan for pending UTXOs
-    // Note: This requires mempool_txIds and mempool_txKernel JSON-RPC methods
-    // If these methods are not available, pending balance will be 0
-    
     let mut pending_total = NativeCurrencyAmount::zero();
     
-    // Get mempool transaction IDs via JSON-RPC
     let mempool_tx_ids_result = client
         .post(&rpc_url)
         .json(&serde_json::json!({
@@ -469,7 +489,6 @@ pub async fn get_pending_balance_from_mempool(
             let json: serde_json::Value = serde_json::from_str(&text)
                 .map_err(|e| format!("Failed to parse mempool tx IDs: {}", e))?;
             
-            // Check for RPC errors
             if let Some(error) = json.get("error") {
                 log::warn!("Mempool tx IDs method error: {}", error);
                 return Ok(serde_json::to_string(&GetPendingBalanceResponse {
@@ -484,7 +503,6 @@ pub async fn get_pending_balance_from_mempool(
                 .map_err(|e| format!("Failed to deserialize tx IDs: {}", e))?
         }
         Err(e) => {
-            // Request failed
             log::warn!("Failed to get mempool tx IDs: {}", e);
             return Ok(serde_json::to_string(&GetPendingBalanceResponse {
                 success: true,
@@ -502,7 +520,6 @@ pub async fn get_pending_balance_from_mempool(
         }).map_err(|e| format!("Failed to serialize response: {}", e))?);
     }
     
-    // Get transaction kernels for each mempool transaction
     for tx_id_hex in tx_ids {
         let tx_kernel_result = client
             .post(&rpc_url)
@@ -526,30 +543,23 @@ pub async fn get_pending_balance_from_mempool(
                 
                 let kernel_result = extract_rpc_result("mempool_getMempoolTxKernel", &json)?;
                 
-                // Check if transaction kernel exists (might be null if transaction was already mined)
                 if kernel_result.get("kernel").is_none() || kernel_result["kernel"].is_null() {
                     continue;
                 }
                 
-                // The kernel is returned as an RpcTransactionKernel object
-                // We need to convert it to TransactionKernel
-                let rpc_kernel: crate::application::json_rpc::core::model::block::transaction_kernel::RpcTransactionKernel = 
+                let rpc_kernel: RpcTransactionKernel = 
                     serde_json::from_value(kernel_result["kernel"].clone())
                         .map_err(|e| format!("Failed to deserialize RPC kernel: {}", e))?;
                 
-                // Convert RpcTransactionKernel to TransactionKernel using TransactionKernelProxy
-                // For scanning, we only need announcements, so we can simplify the conversion
-                use neptune_privacy::protocol::consensus::transaction::transaction_kernel::TransactionKernelProxy;
-                
                 let tx_kernel_proxy = TransactionKernelProxy {
-                    inputs: vec![], // We skip inputs for scanning - we only need announcements
+                    inputs: vec![],
                     outputs: rpc_kernel.outputs.into_iter().map(|ar| ar.into()).collect(),
                     announcements: rpc_kernel.announcements.into_iter().map(|ann| {
                         use neptune_privacy::protocol::consensus::transaction::announcement::Announcement;
                         Announcement::new(ann.0)
                     }).collect(),
-                    fee: rpc_kernel.fee.into(),
-                    coinbase: rpc_kernel.coinbase.map(|c| c.into()),
+                    fee: rpc_kernel.fee.0,
+                    coinbase: rpc_kernel.coinbase.map(|c| c.0),
                     timestamp: rpc_kernel.timestamp,
                     mutator_set_hash: rpc_kernel.mutator_set_hash,
                     merge_bit: rpc_kernel.merge_bit,
@@ -558,29 +568,24 @@ pub async fn get_pending_balance_from_mempool(
                 Some(tx_kernel_proxy.into_kernel())
             }
             Err(_e) => {
-                // Skip this transaction if we can't get its kernel
                 continue;
             }
         };
         
         if let Some(tx_kernel) = tx_kernel {
-            // CLIENT-SIDE SCANNING (view key never left device!)
             match view_key.scan_for_announced_utxos(&tx_kernel) {
                 Ok(incoming_utxos) => {
-                    // Sum up amounts from pending incoming UTXOs
                     for utxo in incoming_utxos {
                         pending_total = pending_total + utxo.utxo().get_native_currency_amount();
                     }
                 }
                 Err(_e) => {
-                    // Silently skip transactions that can't be scanned
                     continue;
                 }
             }
         }
     }
     
-    // Convert to decimal string (coins)
     let pending_balance_str = format!("{}", pending_total);
     
     Ok(serde_json::to_string(&GetPendingBalanceResponse {

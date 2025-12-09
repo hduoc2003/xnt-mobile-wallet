@@ -399,8 +399,8 @@ impl RpcApi for RpcServer {
         let GetUtxosFromViewKeyRequest {
             view_key,
             start_block,
-            end_block,
-            max_search_depth,
+            end_block: _,
+            max_search_depth: _,
         } = request;
 
         let view_key_hex = view_key.trim_start_matches("0x");
@@ -1237,7 +1237,7 @@ impl RpcApi for RpcServer {
 
         let height = state.chain.light_state().kernel.header.height;
 
-        let cli = state.cli().clone();
+        let _cli = state.cli().clone();
 
         let tip_digest = state.chain.light_state().hash();
         let tip_hash = format!(

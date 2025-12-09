@@ -800,24 +800,27 @@ impl GlobalState {
                 continue;
             };
 
-            if let Ok(receiver_id) = receiver_id_bfe.value().try_into() {
-                if let Err(e) = index_db
-                    .add_utxo(
-                        receiver_id,
-                        crate::utxo_index::UtxoLocation {
-                            block_height,
-                            output_index: output_index as u16,
-                        },
-                    )
-                    .await
-                {
-                    warn!("Failed to add UTXO to index: {}", e);
-                    continue;
-                }
+            let receiver_id = match receiver_id_bfe.value().try_into() {
+                Ok(id) => id,
+                Err(_) => continue,
+            };
 
-                utxos_added += 1;
-                unique_receivers.insert(receiver_id);
+            if let Err(e) = index_db
+                .add_utxo(
+                    receiver_id,
+                    crate::utxo_index::UtxoLocation {
+                        block_height,
+                        output_index: output_index as u16,
+                    },
+                )
+                .await
+            {
+                warn!("Failed to add UTXO to index: {}", e);
+                continue;
             }
+
+            utxos_added += 1;
+            unique_receivers.insert(receiver_id);
         }
 
         // Update metadata
