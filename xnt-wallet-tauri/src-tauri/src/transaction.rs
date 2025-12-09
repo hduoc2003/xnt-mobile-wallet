@@ -26,7 +26,6 @@ use neptune_privacy::protocol::consensus::transaction::validity::removal_records
 use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
 use neptune_privacy::protocol::proof_abstractions::timestamp::Timestamp;
 use neptune_privacy::state::wallet::address::generation_address::GenerationSpendingKey;
-use neptune_privacy::state::wallet::address::view_key::ViewKey;
 use neptune_privacy::state::wallet::address::SpendingKey;
 use neptune_privacy::state::wallet::incoming_utxo::IncomingUtxo;
 use neptune_privacy::state::wallet::transaction_input::{TxInput, TxInputList};
@@ -35,6 +34,13 @@ use neptune_privacy::state::wallet::unlocked_utxo::UnlockedUtxo;
 use neptune_privacy::state::wallet::utxo_notification::UtxoNotificationMedium;
 use neptune_privacy::util_types::mutator_set::addition_record::AdditionRecord;
 use neptune_privacy::util_types::mutator_set::ms_membership_proof::MsMembershipProof;
+use neptune_privacy::util_types::mutator_set::removal_record::absolute_index_set::AbsoluteIndexSet;
+use neptune_privacy::util_types::mutator_set::removal_record::chunk::Chunk;
+use neptune_privacy::util_types::mutator_set::removal_record::chunk_dictionary::ChunkDictionary;
+use neptune_privacy::util_types::mutator_set::shared::CHUNK_SIZE;
+use neptune_privacy::prelude::twenty_first::prelude::Tip5;
+use neptune_privacy::util_types::mutator_set::mutator_set_accumulator::MutatorSetAccumulator;
+use neptune_privacy::prelude::twenty_first::util_types::mmr::mmr_membership_proof::MmrMembershipProof;
 use num_traits::identities::Zero;
 use num_traits::ops::checked::CheckedSub;
 use rand::Rng;
@@ -51,6 +57,218 @@ use neptune_privacy::protocol::proof_abstractions::SecretWitness;
 
 const MAX_SEARCH_DEPTH: u64 = 5000;
 
+/// Generate membership proof client-side without sending receiver_preimage to server
+pub(crate) async fn generate_membership_proof_client_side(
+    incoming_utxo: &IncomingUtxo,
+    mutator_set_accumulator: &MutatorSetAccumulator,
+    rpc_url: &str,
+    client: &Client,
+) -> Result<MsMembershipProof, String> {
+    let serialize_hex = |data: &[u8]| format!("0x{}", hex::encode(data));
+    
+    // Step 1: Find AOCL leaf index
+    let addition_record = incoming_utxo.addition_record();
+    let addition_record_hex = serialize_hex(&bincode::serialize(&addition_record)
+        .map_err(|e| format!("Failed to serialize addition record: {}", e))?);
+    
+    let creation_block_text = client
+        .post(rpc_url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "archival_getUtxoCreationBlock",
+            "params": {
+                "additionRecord": addition_record_hex,
+                "maxSearchDepth": MAX_SEARCH_DEPTH,
+            },
+            "id": 1
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get UTXO creation block: {}", e))?
+        .text()
+        .await
+        .map_err(|e| format!("Failed to get response: {}", e))?;
+    
+    let creation_block_json: serde_json::Value = serde_json::from_str(&creation_block_text)
+        .map_err(|e| format!("Failed to parse: {}", e))?;
+    
+    let creation_result = extract_rpc_result("archival_getUtxoCreationBlock", &creation_block_json)?;
+    
+    let last_aocl_index = creation_result["lastAoclIndexInBlock"]
+        .as_u64()
+        .ok_or_else(|| "Missing lastAoclIndexInBlock".to_string())?;
+    
+    let num_outputs = creation_result["numOutputsInBlock"]
+        .as_u64()
+        .ok_or_else(|| "Missing numOutputsInBlock".to_string())?;
+    
+    // Find exact AOCL leaf index by searching backwards
+    let mut aocl_leaf_index = last_aocl_index;
+    let min_aocl_leaf_index = last_aocl_index.saturating_sub(num_outputs) + 1;
+    
+    while aocl_leaf_index >= min_aocl_leaf_index {
+        let digest_text = client
+            .post(rpc_url)
+            .json(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "archival_getUtxoDigest",
+                "params": [aocl_leaf_index],
+                "id": 1
+            }))
+            .send()
+            .await
+            .map_err(|e| format!("Failed to get AOCL digest: {}", e))?
+            .text()
+            .await
+            .map_err(|e| format!("Failed to get response: {}", e))?;
+        
+        let digest_json: serde_json::Value = serde_json::from_str(&digest_text)
+            .map_err(|e| format!("Failed to parse: {}", e))?;
+        
+        let digest_result = extract_rpc_result("archival_getUtxoDigest", &digest_json)?;
+        
+        if let Some(digest_opt) = digest_result.get("digest") {
+            if let Some(digest_hex) = digest_opt.as_str() {
+                let digest_bytes = hex::decode(digest_hex.trim_start_matches("0x"))
+                    .map_err(|e| format!("Invalid digest hex: {}", e))?;
+                let digest: Digest = bincode::deserialize(&digest_bytes)
+                    .map_err(|e| format!("Failed to deserialize digest: {}", e))?;
+                
+                if digest == addition_record.canonical_commitment {
+                    break;
+                }
+            }
+        }
+        
+        if aocl_leaf_index == 0 {
+            break;
+        }
+        aocl_leaf_index -= 1;
+    }
+    
+    if aocl_leaf_index < min_aocl_leaf_index {
+        return Err("UTXO addition record not found in block".to_string());
+    }
+    
+    // Step 2: Get AOCL authentication path
+    let auth_path_text = client
+        .post(rpc_url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "archival_getAoclAuthenticationPath",
+            "params": [aocl_leaf_index],
+            "id": 1
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get AOCL auth path: {}", e))?
+        .text()
+        .await
+        .map_err(|e| format!("Failed to get response: {}", e))?;
+    
+    let auth_path_json: serde_json::Value = serde_json::from_str(&auth_path_text)
+        .map_err(|e| format!("Failed to parse: {}", e))?;
+    
+    let auth_path_result = extract_rpc_result("archival_getAoclAuthenticationPath", &auth_path_json)?;
+    
+    let auth_path_aocl_hex = auth_path_result["authPathHex"]
+        .as_str()
+        .ok_or_else(|| "Missing authPathHex".to_string())?;
+    
+    let auth_path_aocl: MmrMembershipProof = 
+        bincode::deserialize(
+            &hex::decode(auth_path_aocl_hex.trim_start_matches("0x"))
+                .map_err(|e| format!("Invalid hex: {}", e))?
+        )
+        .map_err(|e| format!("Failed to deserialize auth path: {}", e))?;
+    
+    // Step 3: Compute chunk indices needed (client-side, uses receiver_preimage - never sent to server!)
+    let item = Tip5::hash(incoming_utxo.utxo());
+    let swbf_indices = AbsoluteIndexSet::compute(
+        item,
+        incoming_utxo.sender_randomness(),
+        incoming_utxo.receiver_preimage(),
+        aocl_leaf_index,
+    );
+    
+    let batch_index = mutator_set_accumulator.get_batch_index();
+    let window_start = u128::from(batch_index) * u128::from(CHUNK_SIZE);
+    
+    let chunk_indices: Vec<u64> = swbf_indices
+        .to_array()
+        .iter()
+        .filter(|bi| **bi < window_start)
+        .map(|bi| (*bi / u128::from(CHUNK_SIZE)) as u64)
+        .collect();
+    
+    // Step 4: Get chunks and their auth paths
+    let chunks_text = client
+        .post(rpc_url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "archival_getChunksAndAuthPaths",
+            "params": {
+                "chunkIndices": chunk_indices,
+            },
+            "id": 1
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get chunks: {}", e))?
+        .text()
+        .await
+        .map_err(|e| format!("Failed to get response: {}", e))?;
+    
+    let chunks_json: serde_json::Value = serde_json::from_str(&chunks_text)
+        .map_err(|e| format!("Failed to parse: {}", e))?;
+    
+    let chunks_result = extract_rpc_result("archival_getChunksAndAuthPaths", &chunks_json)?;
+    
+    let chunks_array = chunks_result["chunks"]
+        .as_array()
+        .ok_or_else(|| "Missing chunks array".to_string())?;
+    
+    let mut target_chunks = ChunkDictionary::default();
+    
+    for chunk_data in chunks_array {
+        let chunk_index = chunk_data["chunkIndex"]
+            .as_u64()
+            .ok_or_else(|| "Missing chunkIndex".to_string())?;
+        
+        let chunk_hex = chunk_data["chunkHex"]
+            .as_str()
+            .ok_or_else(|| "Missing chunkHex".to_string())?;
+        
+        let chunk_bytes = hex::decode(chunk_hex.trim_start_matches("0x"))
+            .map_err(|e| format!("Invalid chunk hex: {}", e))?;
+        
+        let chunk: Chunk = bincode::deserialize(&chunk_bytes)
+            .map_err(|e| format!("Failed to deserialize chunk: {}", e))?;
+        
+        let auth_path_hex = chunk_data["authPathHex"]
+            .as_str()
+            .ok_or_else(|| "Missing authPathHex".to_string())?;
+        
+        let chunk_auth_path: MmrMembershipProof = 
+            bincode::deserialize(
+                &hex::decode(auth_path_hex.trim_start_matches("0x"))
+                    .map_err(|e| format!("Invalid auth path hex: {}", e))?
+            )
+            .map_err(|e| format!("Failed to deserialize auth path: {}", e))?;
+        
+        target_chunks.insert(chunk_index, (chunk_auth_path, chunk));
+    }
+    
+    // Step 5: Build membership proof (all client-side, receiver_preimage never sent to server!)
+    Ok(MsMembershipProof {
+        sender_randomness: incoming_utxo.sender_randomness(),
+        receiver_preimage: incoming_utxo.receiver_preimage(),
+        auth_path_aocl,
+        aocl_leaf_index,
+        target_chunks,
+    })
+}
+
 pub async fn build_transaction(payload: serde_json::Value) -> Result<String, String> {
     match build_transaction_inner(payload).await {
         Ok(result) => Ok(result),
@@ -63,7 +281,7 @@ pub async fn build_transaction(payload: serde_json::Value) -> Result<String, Str
 
 async fn build_transaction_inner(payload: serde_json::Value) -> Result<String, String> {
     let rpc_url = std::env::var("VITE_APP_API")
-        .unwrap_or_else(|_| "http://zsmartex.com:9897".to_string());
+        .unwrap_or_else(|_| "https://66b4b9bd1e4c.ngrok-free.app".to_string());
     
     let spending_key_hex = payload["spendingKeyHex"]
         .as_str()
@@ -137,60 +355,21 @@ async fn build_transaction_inner(payload: serde_json::Value) -> Result<String, S
     
     let spending_key_enum = SpendingKey::Generation(generation_spending_key.clone());
     let lock_script_and_witness = spending_key_enum.lock_script_and_witness();
-    let view_key = ViewKey::from_spending_key(&spending_key_enum)
-        .map_err(|e| format!("Failed to derive view key: {}", e))?;
+    // Get UTXOs from cache instead of calling server (PRIVACY: no view key sent!)
+    use crate::utxo_cache;
+    let matched_utxos = utxo_cache::get_utxos_by_addition_records(&input_addition_records).await;
     
-    let view_key_hex = format!("0x{}", hex::encode(bincode::serialize(&view_key)
-        .map_err(|e| format!("Failed to serialize view key: {}", e))?));
+    if matched_utxos.len() != input_addition_records.len() {
+        return Err(format!(
+            "Not all UTXOs found in cache. Found {}/{} UTXOs. Please scan UTXOs first.",
+            matched_utxos.len(),
+            input_addition_records.len()
+        ));
+    }
     
-    let utxo_text = client
-        .post(&rpc_url)
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "wallet_getUtxosFromViewKey",
-            "params": {
-                "viewKey": view_key_hex,
-                "startBlock": min_block_height,
-                "maxSearchDepth": MAX_SEARCH_DEPTH,
-            },
-            "id": 1
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to get UTXOs: {}", e))?
-        .text()
-        .await
-        .map_err(|e| format!("Failed to get UTXO response: {}", e))?;
-    
-    let utxo_json: serde_json::Value = serde_json::from_str(&utxo_text)
-        .map_err(|e| format!("Failed to parse UTXO response: {}", e))?;
-    let utxo_result = extract_rpc_result("wallet_getUtxosFromViewKey", &utxo_json)?;
-
-    let all_utxos: Vec<IncomingUtxo> = utxo_result["utxos"]
-        .as_array()
-        .ok_or_else(|| "Missing utxos in response".to_string())?
-        .iter()
-        .map(|u| serde_json::from_value(u.clone()))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("Failed to deserialize UTXO: {}", e))?;
-    
-    let mut matched_utxos = Vec::new();
     let mut total_input_amount = NativeCurrencyAmount::zero();
-    
-    for requested_ar_hex in &input_addition_records {
-        let requested_ar: AdditionRecord = bincode::deserialize(
-            &hex::decode(requested_ar_hex.trim_start_matches("0x"))
-                .map_err(|e| format!("Invalid addition record hex: {}", e))?
-        )
-        .map_err(|e| format!("Invalid addition record: {}", e))?;
-        
-        let matching_utxo = all_utxos
-            .iter()
-            .find(|utxo| utxo.addition_record().canonical_commitment == requested_ar.canonical_commitment)
-            .ok_or_else(|| format!("UTXO with addition_record {} not found", requested_ar_hex))?;
-        
-        total_input_amount = total_input_amount + matching_utxo.utxo().get_native_currency_amount();
-        matched_utxos.push(matching_utxo.clone());
+    for utxo in &matched_utxos {
+        total_input_amount = total_input_amount + utxo.utxo().get_native_currency_amount();
     }
     
     let fee_amount = NativeCurrencyAmount::coins_from_str(fee)
@@ -226,76 +405,7 @@ async fn build_transaction_inner(payload: serde_json::Value) -> Result<String, S
         ));
     }
     
-    let mut tx_inputs = Vec::new();
-    for incoming_utxo in matched_utxos {
-        let serialize_hex = |data: &[u8]| format!("0x{}", hex::encode(data));
-        
-        let utxo_with_proof_text = client
-            .post(&rpc_url)
-            .json(&serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "archival_generateUtxoWithProof",
-                "params": {
-                    "utxoHex": serialize_hex(&bincode::serialize(incoming_utxo.utxo()).unwrap()),
-                    "additionRecordHex": serialize_hex(&bincode::serialize(&incoming_utxo.addition_record()).unwrap()),
-                    "senderRandomnessHex": serialize_hex(&bincode::serialize(&incoming_utxo.sender_randomness()).unwrap()),
-                    "receiverPreimageHex": serialize_hex(&bincode::serialize(&incoming_utxo.receiver_preimage()).unwrap()),
-                    "maxSearchDepth": MAX_SEARCH_DEPTH,
-                },
-                "id": 1
-            }))
-            .send()
-            .await
-            .map_err(|e| format!("Failed to generate UTXO with proof: {}", e))?
-            .text()
-            .await
-            .map_err(|e| format!("Failed to get UTXO with proof response: {}", e))?;
-
-        let utxo_with_proof_json: serde_json::Value =
-            serde_json::from_str(&utxo_with_proof_text)
-                .map_err(|e| format!("Failed to parse UTXO with proof: {}", e))?;
-
-        let result =
-            extract_rpc_result("archival_generateUtxoWithProof", &utxo_with_proof_json)?;
-
-        let msmp_hex = result["msmpHex"]
-            .as_str()
-            .or_else(|| result["msmp_hex"].as_str())
-            .ok_or_else(|| "Missing msmp_hex in response".to_string())?;
-        
-        let msmp: MsMembershipProof = bincode::deserialize(
-            &hex::decode(msmp_hex.trim_start_matches("0x"))
-                .map_err(|e| format!("Invalid msmp_hex: {}", e))?
-        )
-        .map_err(|e| format!("Failed to deserialize msmp: {}", e))?;
-        
-        tx_inputs.push(TxInput::from(UnlockedUtxo::unlock(
-            incoming_utxo.utxo().clone(),
-            lock_script_and_witness.clone(),
-            msmp,
-        )));
-    }
-    
-    let my_address: ReceivingAddress = generation_spending_key.to_address().into();
-    let tx_outputs: Vec<TxOutput> = validated_outputs
-        .into_iter()
-        .map(|output| {
-            let (address, amount) = match output {
-                OutputFormat::AddressAndAmountAndMedium(addr, amt, _) => (addr, amt),
-                _ => return Err("Invalid output format".to_string()),
-            };
-            
-            let sender_randomness = rand::rng().random::<Digest>();
-            let is_change = address == my_address && amount == change_amount;
-            
-            Ok(if is_change {
-                TxOutput::onchain_native_currency_as_change(amount, sender_randomness, address)
-            } else {
-                TxOutput::onchain_native_currency(amount, sender_randomness, address, false)
-            })
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-    
+    // Get mutator set accumulator first (needed for client-side proof generation)
     let archival_text = client
         .post(&rpc_url)
         .json(&serde_json::json!({
@@ -327,6 +437,43 @@ async fn build_transaction_inner(payload: serde_json::Value) -> Result<String, S
     let mutator_set_accumulator = serde_json::from_value::<GetArchivalMutatorSetResponse>(result_obj.clone())
         .map_err(|e| format!("Failed to deserialize archival mutator set: {}", e))?
         .archival_mutator_set;
+    
+    // Generate membership proofs client-side (receiver_preimage never sent to server!)
+    let mut tx_inputs = Vec::new();
+    for incoming_utxo in matched_utxos {
+        let msmp = generate_membership_proof_client_side(
+            &incoming_utxo,
+            &mutator_set_accumulator,
+            &rpc_url,
+            &client,
+        ).await?;
+        
+        tx_inputs.push(TxInput::from(UnlockedUtxo::unlock(
+            incoming_utxo.utxo().clone(),
+            lock_script_and_witness.clone(),
+            msmp,
+        )));
+    }
+    
+    let my_address: ReceivingAddress = generation_spending_key.to_address().into();
+    let tx_outputs: Vec<TxOutput> = validated_outputs
+        .into_iter()
+        .map(|output| {
+            let (address, amount) = match output {
+                OutputFormat::AddressAndAmountAndMedium(addr, amt, _) => (addr, amt),
+                _ => return Err("Invalid output format".to_string()),
+            };
+            
+            let sender_randomness = rand::rng().random::<Digest>();
+            let is_change = address == my_address && amount == change_amount;
+            
+            Ok(if is_change {
+                TxOutput::onchain_native_currency_as_change(amount, sender_randomness, address)
+            } else {
+                TxOutput::onchain_native_currency(amount, sender_randomness, address, false)
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     
     let tx_details = TransactionDetails::new_without_coinbase(
         TxInputList::from(tx_inputs),

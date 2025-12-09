@@ -1,15 +1,51 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-#![allow(non_snake_case)] 
+#![allow(non_snake_case)]
 
-use std::str::FromStr;
-
-use log::Level;
+use neptune_privacy::prelude::triton_vm::prelude::*;
+use neptune_privacy::api::export::{ReceivingAddress, TransactionDetails};
+use neptune_privacy::api::tx_initiation::builder::transaction_builder::TransactionBuilder;
+use neptune_privacy::api::tx_initiation::builder::tx_output_list_builder::OutputFormat;
 use neptune_privacy::application::config::network::Network;
+use neptune_privacy::application::json_rpc::core::model::message::{
+    GetArchivalMutatorSetResponse, GetStateResponse,
+};
+use neptune_privacy::prelude::twenty_first::prelude::Digest;
+use neptune_privacy::protocol::consensus::shared::Hash;
+use neptune_privacy::protocol::consensus::transaction::primitive_witness::PrimitiveWitness;
+use neptune_privacy::protocol::consensus::transaction::transaction_proof::TransactionProof;
+use neptune_privacy::protocol::consensus::transaction::validity::collect_lock_scripts::{
+    CollectLockScripts, CollectLockScriptsWitness,
+};
+use neptune_privacy::protocol::consensus::transaction::validity::collect_type_scripts::{
+    CollectTypeScripts, CollectTypeScriptsWitness,
+};
+use neptune_privacy::protocol::consensus::transaction::validity::kernel_to_outputs::{
+    KernelToOutputs, KernelToOutputsWitness,
+};
+use neptune_privacy::protocol::consensus::transaction::validity::neptune_proof::Proof as NeptuneProof;
+use neptune_privacy::protocol::consensus::transaction::validity::proof_collection::ProofCollection;
+use neptune_privacy::protocol::consensus::transaction::validity::removal_records_integrity::{
+    RemovalRecordsIntegrity, RemovalRecordsIntegrityWitness,
+};
+use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
+use neptune_privacy::protocol::proof_abstractions::timestamp::Timestamp;
+use neptune_privacy::state::wallet::address::generation_address::GenerationSpendingKey;
 use neptune_privacy::state::wallet::address::view_key::ViewKey;
 use neptune_privacy::state::wallet::address::SpendingKey;
-use neptune_privacy::state::wallet::secret_key_material::SecretKeyMaterial;
+use neptune_privacy::state::wallet::incoming_utxo::IncomingUtxo;
+use neptune_privacy::state::wallet::transaction_input::{TxInput, TxInputList};
+use neptune_privacy::state::wallet::transaction_output::{TxOutput, TxOutputList};
+use neptune_privacy::state::wallet::unlocked_utxo::UnlockedUtxo;
+use neptune_privacy::state::wallet::utxo_notification::UtxoNotificationMedium;
 use neptune_privacy::state::wallet::wallet_entropy::WalletEntropy;
+use neptune_privacy::state::wallet::secret_key_material::SecretKeyMaterial;
+use neptune_privacy::util_types::mutator_set::addition_record::AdditionRecord;
+use neptune_privacy::util_types::mutator_set::ms_membership_proof::MsMembershipProof;
+use num_traits::identities::Zero;
+use num_traits::ops::checked::CheckedSub;
 use rand::Rng;
+use std::str::FromStr;
+use log::Level;
 use reqwest::Client;
 
 #[cfg(target_os = "android")]
@@ -20,6 +56,13 @@ use libc;
 mod keystore;
 mod wallet;
 mod transaction;
+mod utxo_scanning;
+mod utxo_cache;
+
+use keystore::*;
+use wallet::*;
+use transaction::*;
+
 mod rpc_config;
 
 #[tauri::command]
@@ -182,6 +225,28 @@ async fn build_transaction(payload: serde_json::Value) -> Result<String, String>
 }
 
 #[tauri::command]
+async fn scan_utxos_client_side(request: serde_json::Value) -> Result<String, String> {
+    let scan_request: utxo_scanning::ScanUtxosRequest = serde_json::from_value(request)
+        .map_err(|e| format!("Invalid request: {}", e))?;
+
+    utxo_scanning::scan_utxos_client_side(scan_request).await
+}
+
+#[tauri::command]
+async fn get_pending_balance(request: serde_json::Value) -> Result<String, String> {
+    let pending_request: utxo_scanning::GetPendingBalanceRequest = serde_json::from_value(request)
+        .map_err(|e| format!("Invalid request: {}", e))?;
+
+    utxo_scanning::get_pending_balance_from_mempool(pending_request).await
+}
+
+#[tauri::command]
+async fn clear_utxo_cache() -> Result<(), String> {
+    utxo_cache::clear_cache().await;
+    Ok(())
+}
+
+#[tauri::command]
 async fn proxy_json_rpc(
     app: tauri::AppHandle,
     method: String,
@@ -272,6 +337,16 @@ pub fn run() {
         log::info!("[NeptuneWallet] Logger initialized for Android");
     }
 
+    #[cfg(not(target_os = "android"))]
+    {
+        env_logger::Builder::from_default_env()
+            .filter_level(log::LevelFilter::Info)
+            .filter_module("xnt_wallet_tauri", log::LevelFilter::Debug)
+            .filter_module("neptune_privacy", log::LevelFilter::Warn)
+            .init();
+        log::info!("[NeptuneWallet] Logger initialized for desktop");
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -290,6 +365,9 @@ pub fn run() {
             save_keystore_dialog,
             get_keystore_path,
             build_transaction,
+            scan_utxos_client_side,
+            clear_utxo_cache,
+            get_pending_balance,
             proxy_json_rpc,
             set_rpc_endpoint,
             get_custom_rpc_endpoint,

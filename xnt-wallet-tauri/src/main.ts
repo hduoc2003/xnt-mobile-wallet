@@ -222,7 +222,7 @@ if (!(window as any).walletApi) {
                 return { success: false, error: error || 'Failed to get keystore path' }
             }
         },
-        
+
         setRpcEndpoint: async (endpoint: string) => {
             try {
                 await safeInvoke('set_rpc_endpoint', { endpoint })
@@ -231,7 +231,7 @@ if (!(window as any).walletApi) {
                 return { success: false, error: error?.message || error || 'Failed to set RPC endpoint' }
             }
         },
-        
+
         getCustomRpcEndpoint: async () => {
             try {
                 const result = await safeInvoke<string | null>('get_custom_rpc_endpoint')
@@ -240,6 +240,33 @@ if (!(window as any).walletApi) {
                 return { success: false, error: error || 'Failed to get RPC endpoint' }
             }
         },
+
+        scanUtxosClientSide: async (request: any) => {
+            try {
+                const result = await safeInvoke<string>('scan_utxos_client_side', { request })
+                return JSON.parse(result)
+            } catch (error: any) {
+                return { success: false, error: error?.message || error || 'Failed to scan UTXOs' }
+            }
+        },
+
+        clearUtxoCache: async () => {
+            try {
+                const result = await safeInvoke<string>('clear_utxo_cache')
+                return JSON.parse(result)
+            } catch (error: any) {
+                return { success: false, error: error?.message || error || 'Failed to clear UTXO cache' }
+            }
+        },
+
+        getPendingBalance: async (request: any) => {
+            try {
+                const result = await safeInvoke<string>('get_pending_balance', { request })
+                return JSON.parse(result)
+            } catch (error: any) {
+                return { success: false, error: error?.message || error || 'Failed to get pending balance' }
+            }
+        }
     }
 }
 

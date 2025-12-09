@@ -39,12 +39,28 @@ impl_to_json_result_direct!(
     GetUtxoCreationBlockResponse,
     GenerateMembershipProofResponse,
     GenerateUtxoWithProofResponse,
+    GetAoclAuthenticationPathResponse,
+    GetChunksAndAuthPathsResponse,
     GetStateResponse,
     SubmitTransactionResponse,
     GetCurrentFeeResponse,
     GetUtxoInfoResponse,
-    GetXntPriceResponse
+    GetXntPriceResponse,
+    GetBlockAnnouncementsRangeResponse
 );
+
+// Manual implementations for mempool response types
+impl ToJsonResult<GetMempoolTxIdsResponse> for GetMempoolTxIdsResponse {
+    fn to_json_result(self) -> JsonResult<GetMempoolTxIdsResponse> {
+        Ok(self)
+    }
+}
+
+impl ToJsonResult<GetMempoolTxKernelResponse> for GetMempoolTxKernelResponse {
+    fn to_json_result(self) -> JsonResult<GetMempoolTxKernelResponse> {
+        Ok(self)
+    }
+}
 
 type HandlerFn = Box<
     dyn Fn(serde_json::Value) -> Pin<Box<dyn Future<Output = JsonResult<serde_json::Value>> + Send>>

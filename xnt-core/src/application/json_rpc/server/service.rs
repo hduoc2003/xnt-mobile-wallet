@@ -2,6 +2,7 @@ use crate::api::export::Utxo;
 use crate::application::json_rpc::core::api::rpc::RpcApi;
 use crate::application::json_rpc::core::api::rpc::RpcResult;
 use crate::application::json_rpc::core::model::block::RpcBlock;
+use crate::application::json_rpc::core::model::common::RpcBlockSelector;
 use crate::application::json_rpc::core::model::message::*;
 use crate::application::json_rpc::server::rpc::RpcServer;
 use crate::prelude::twenty_first::prelude::Mmr;
@@ -290,6 +291,53 @@ impl RpcApi for RpcServer {
         };
 
         Ok(GetBlockAnnouncementsResponse { announcements })
+    }
+
+    async fn get_block_announcements_range_call(
+        &self,
+        request: GetBlockAnnouncementsRangeRequest,
+    ) -> RpcResult<GetBlockAnnouncementsRangeResponse> {
+        let state = self.state.lock_guard().await;
+        let mut blocks = Vec::new();
+
+        // Limit range to prevent abuse (max 1000 blocks per request)
+        let start_height = request.start_height;
+        let end_height = std::cmp::min(
+            request.end_height,
+            request.start_height.saturating_add(1000),
+        );
+
+        for height in start_height..=end_height {
+            use crate::protocol::consensus::block::block_height::BlockHeight;
+            let block_height = BlockHeight::from(height);
+            let selector = RpcBlockSelector::Height(block_height);
+            let digest = selector.as_digest(&state).await;
+            let announcements = match digest {
+                Some(digest) => state
+                    .chain
+                    .archival_state()
+                    .get_block(digest)
+                    .await
+                    .unwrap()
+                    .as_ref()
+                    .map(|b| {
+                        b.body()
+                            .transaction_kernel()
+                            .announcements
+                            .iter()
+                            .map(|a| a.message.clone().into())
+                            .collect::<Vec<_>>()
+                    }),
+                None => None,
+            };
+
+            blocks.push(BlockAnnouncementsEntry {
+                height,
+                announcements,
+            });
+        }
+
+        Ok(GetBlockAnnouncementsRangeResponse { blocks })
     }
 
     async fn is_block_canonical_call(
@@ -1008,6 +1056,83 @@ impl RpcApi for RpcServer {
         }
     }
 
+    async fn get_aocl_authentication_path_call(
+        &self,
+        request: GetAoclAuthenticationPathRequest,
+    ) -> GetAoclAuthenticationPathResponse {
+        let state = self.state.lock_guard().await;
+        let ams = state.chain.archival_state().archival_mutator_set.ams();
+
+        match ams.get_aocl_authentication_path(request.aocl_leaf_index).await {
+            Ok(auth_path) => {
+                match bincode::serialize(&auth_path) {
+                    Ok(bytes) => GetAoclAuthenticationPathResponse {
+                        auth_path_hex: Some(format!("0x{}", hex::encode(bytes))),
+                        error: None,
+                    },
+                    Err(e) => GetAoclAuthenticationPathResponse {
+                        auth_path_hex: None,
+                        error: Some(format!("Failed to serialize auth path: {}", e)),
+                    },
+                }
+            }
+            Err(e) => GetAoclAuthenticationPathResponse {
+                auth_path_hex: None,
+                error: Some(e.to_string()),
+            },
+        }
+    }
+
+    async fn get_chunks_and_auth_paths_call(
+        &self,
+        request: GetChunksAndAuthPathsRequest,
+    ) -> GetChunksAndAuthPathsResponse {
+        let state = self.state.lock_guard().await;
+        let ams = state.chain.archival_state().archival_mutator_set.ams();
+
+        let mut chunks = Vec::new();
+        for chunk_index in request.chunk_indices {
+            match ams.get_chunk_and_auth_path(chunk_index).await {
+                Ok((auth_path, chunk)) => {
+                    let chunk_hex = match bincode::serialize(&chunk) {
+                        Ok(bytes) => format!("0x{}", hex::encode(bytes)),
+                        Err(e) => {
+                            return GetChunksAndAuthPathsResponse {
+                                chunks: vec![],
+                                error: Some(format!("Failed to serialize chunk {}: {}", chunk_index, e)),
+                            };
+                        }
+                    };
+                    let auth_path_hex = match bincode::serialize(&auth_path) {
+                        Ok(bytes) => format!("0x{}", hex::encode(bytes)),
+                        Err(e) => {
+                            return GetChunksAndAuthPathsResponse {
+                                chunks: vec![],
+                                error: Some(format!("Failed to serialize auth path for chunk {}: {}", chunk_index, e)),
+                            };
+                        }
+                    };
+                    chunks.push(ChunkAndAuthPath {
+                        chunk_index,
+                        chunk_hex,
+                        auth_path_hex,
+                    });
+                }
+                Err(e) => {
+                    return GetChunksAndAuthPathsResponse {
+                        chunks: vec![],
+                        error: Some(format!("Failed to get chunk {}: {}", chunk_index, e)),
+                    };
+                }
+            }
+        }
+
+        GetChunksAndAuthPathsResponse {
+            chunks,
+            error: None,
+        }
+    }
+
     async fn generate_membership_proof_call(
         &self,
         request: GenerateMembershipProofRequest,
@@ -1410,6 +1535,53 @@ impl RpcApi for RpcServer {
     async fn get_xnt_price_call(&self, _: GetXntPriceRequest) -> GetXntPriceResponse {
         GetXntPriceResponse {
             price: "4.0".to_string(),
+        }
+    }
+
+    async fn get_mempool_tx_ids_call(&self, _: GetMempoolTxIdsRequest) -> GetMempoolTxIdsResponse {
+        let state = self.state.lock_guard().await;
+        
+        let tx_ids: Vec<String> = state
+            .mempool
+            .fee_density_iter()
+            .map(|(txid, _)| {
+                let txid_bytes = bincode::serialize(&txid)
+                    .expect("Failed to serialize transaction ID");
+                format!("0x{}", hex::encode(txid_bytes))
+            })
+            .collect();
+        
+        GetMempoolTxIdsResponse {
+            tx_ids,
+            error: None,
+        }
+    }
+
+    async fn get_mempool_tx_kernel_call(&self, request: GetMempoolTxKernelRequest) -> GetMempoolTxKernelResponse {
+        let state = self.state.lock_guard().await;
+        
+        // Parse transaction ID from hex
+        let tx_id_bytes = hex::decode(request.tx_id.trim_start_matches("0x"))
+            .map_err(|e| format!("Invalid transaction ID hex: {}", e))
+            .ok();
+        
+        let tx_id = match tx_id_bytes {
+            Some(bytes) => {
+                bincode::deserialize(&bytes)
+                    .map_err(|e| format!("Failed to deserialize transaction ID: {}", e))
+                    .ok()
+            }
+            None => None,
+        };
+        
+        let kernel = tx_id.and_then(|id| {
+            state.mempool.get(id)
+                .map(|tx| (&tx.kernel).into())
+        });
+        
+        GetMempoolTxKernelResponse {
+            kernel,
+            error: None,
         }
     }
 }

@@ -82,6 +82,9 @@ pub enum RpcMethods {
     GetBlockAnnouncements,
 
     #[namespace(Namespace::Archival)]
+    GetBlockAnnouncementsRange,
+
+    #[namespace(Namespace::Archival)]
     IsBlockCanonical,
 
     #[namespace(Namespace::Archival)]
@@ -105,6 +108,12 @@ pub enum RpcMethods {
     #[namespace(Namespace::Archival)]
     GenerateUtxoWithProof,
 
+    #[namespace(Namespace::Archival)]
+    GetAoclAuthenticationPath,
+
+    #[namespace(Namespace::Archival)]
+    GetChunksAndAuthPaths,
+
     #[namespace(Namespace::Wallet)]
     GetUtxosFromViewKey,
 
@@ -116,6 +125,12 @@ pub enum RpcMethods {
 
     #[namespace(Namespace::Mempool)]
     GetCurrentFee,
+
+    #[namespace(Namespace::Mempool)]
+    GetMempoolTxIds,
+
+    #[namespace(Namespace::Mempool)]
+    GetMempoolTxKernel,
 
     #[namespace(Namespace::Wallet)]
     GetUtxoInfo,

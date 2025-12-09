@@ -179,6 +179,22 @@ pub trait RpcApi: Sync + Send {
         request: GetBlockAnnouncementsRequest,
     ) -> RpcResult<GetBlockAnnouncementsResponse>;
 
+    async fn get_block_announcements_range(
+        &self,
+        start_height: u64,
+        end_height: u64,
+    ) -> RpcResult<GetBlockAnnouncementsRangeResponse> {
+        self.get_block_announcements_range_call(GetBlockAnnouncementsRangeRequest {
+            start_height,
+            end_height,
+        })
+        .await
+    }
+    async fn get_block_announcements_range_call(
+        &self,
+        request: GetBlockAnnouncementsRangeRequest,
+    ) -> RpcResult<GetBlockAnnouncementsRangeResponse>;
+
     async fn is_block_canonical(&self, digest: Digest) -> RpcResult<IsBlockCanonicalResponse> {
         self.is_block_canonical_call(IsBlockCanonicalRequest { digest })
             .await
@@ -274,6 +290,16 @@ pub trait RpcApi: Sync + Send {
         request: GetUtxoCreationBlockRequest,
     ) -> GetUtxoCreationBlockResponse;
 
+    async fn get_aocl_authentication_path_call(
+        &self,
+        request: GetAoclAuthenticationPathRequest,
+    ) -> GetAoclAuthenticationPathResponse;
+
+    async fn get_chunks_and_auth_paths_call(
+        &self,
+        request: GetChunksAndAuthPathsRequest,
+    ) -> GetChunksAndAuthPathsResponse;
+
     async fn generate_membership_proof(
         &self,
         item_hex: String,
@@ -335,4 +361,14 @@ pub trait RpcApi: Sync + Send {
         self.get_xnt_price_call(GetXntPriceRequest {}).await
     }
     async fn get_xnt_price_call(&self, request: GetXntPriceRequest) -> GetXntPriceResponse;
+
+    async fn get_mempool_tx_ids(&self) -> GetMempoolTxIdsResponse {
+        self.get_mempool_tx_ids_call(GetMempoolTxIdsRequest {}).await
+    }
+    async fn get_mempool_tx_ids_call(&self, request: GetMempoolTxIdsRequest) -> GetMempoolTxIdsResponse;
+
+    async fn get_mempool_tx_kernel(&self, tx_id: String) -> GetMempoolTxKernelResponse {
+        self.get_mempool_tx_kernel_call(GetMempoolTxKernelRequest { tx_id }).await
+    }
+    async fn get_mempool_tx_kernel_call(&self, request: GetMempoolTxKernelRequest) -> GetMempoolTxKernelResponse;
 }

@@ -223,6 +223,26 @@ pub struct GetBlockAnnouncementsResponse {
 
 #[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
 #[serde(rename_all = "camelCase")]
+pub struct GetBlockAnnouncementsRangeRequest {
+    pub start_height: u64,
+    pub end_height: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockAnnouncementsEntry {
+    pub height: u64,
+    pub announcements: Option<Vec<RpcBFieldElements>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBlockAnnouncementsRangeResponse {
+    pub blocks: Vec<BlockAnnouncementsEntry>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
+#[serde(rename_all = "camelCase")]
 pub struct IsBlockCanonicalRequest {
     pub digest: Digest,
 }
@@ -371,6 +391,43 @@ pub struct GetUtxoCreationBlockResponse {
     pub error: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
+#[serde(rename_all = "camelCase")]
+pub struct GetAoclAuthenticationPathRequest {
+    pub aocl_leaf_index: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetAoclAuthenticationPathResponse {
+    /// Hex-encoded bincode-serialized MMR membership proof
+    pub auth_path_hex: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetChunksAndAuthPathsRequest {
+    pub chunk_indices: Vec<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChunkAndAuthPath {
+    pub chunk_index: u64,
+    /// Hex-encoded bincode-serialized chunk
+    pub chunk_hex: String,
+    /// Hex-encoded bincode-serialized MMR membership proof
+    pub auth_path_hex: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetChunksAndAuthPathsResponse {
+    pub chunks: Vec<ChunkAndAuthPath>,
+    pub error: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize_tuple)]
 #[serde(rename_all = "camelCase")]
 pub struct GetStateRequest {}
@@ -491,4 +548,37 @@ pub struct GetXntPriceRequest {}
 #[serde(rename_all = "camelCase")]
 pub struct GetXntPriceResponse {
     pub price: String,
+}
+
+/// Request for getting mempool transaction IDs
+#[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
+#[serde(rename_all = "camelCase")]
+pub struct GetMempoolTxIdsRequest {}
+
+/// Response for getting mempool transaction IDs
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetMempoolTxIdsResponse {
+    /// List of transaction IDs (hex-encoded)
+    pub tx_ids: Vec<String>,
+    /// Error message if failed
+    pub error: Option<String>,
+}
+
+/// Request for getting a mempool transaction kernel
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetMempoolTxKernelRequest {
+    /// Transaction ID (hex-encoded)
+    pub tx_id: String,
+}
+
+/// Response for getting a mempool transaction kernel
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetMempoolTxKernelResponse {
+    /// Transaction kernel (if found)
+    pub kernel: Option<crate::application::json_rpc::core::model::block::transaction_kernel::RpcTransactionKernel>,
+    /// Error message if failed
+    pub error: Option<String>,
 }

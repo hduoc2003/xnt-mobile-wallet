@@ -94,7 +94,11 @@ export function useNeptuneWallet() {
       const addressResult = (viewKeyResult as any).address || viewKeyResult.receiver_identifier
       store.setAddress(addressResult)
 
-      await loadMinBlockHeightFromKeystore()
+      // Load min block height from keystore (but don't overwrite if it's 0)
+      const loadedHeight = await loadMinBlockHeightFromKeystore()
+      if (loadedHeight > 0) {
+        store.setMinBlockHeight(loadedHeight)
+      }
 
       return { seedPhrase }
     } catch (err: any) {
@@ -182,19 +186,22 @@ export function useNeptuneWallet() {
 
   const loadMinBlockHeightFromKeystore = async (): Promise<number> => {
     const keystoreFileName = store.getKeystoreFileName
-    if (!keystoreFileName) return DEFAULT_MIN_BLOCK_HEIGHT
+    if (!keystoreFileName) return 0 // Return 0 to indicate not set
 
     try {
       const response = await (window as any).walletApi.getMinBlockHeight(keystoreFileName)
-      if (!response?.success) throw new Error(String(response.error))
+      if (!response?.success) {
+        // If keystore doesn't have minBlockHeight set, return 0 (not set yet)
+        return 0
+      }
 
-      const minBlockHeight = toFiniteNumber(response.minBlockHeight)
-
-      store.setMinBlockHeight(minBlockHeight)
+      const minBlockHeight = toFiniteNumber(response.minBlockHeight || 0)
+      
+      // Return the value (0 means not set yet, >0 means it's set)
       return minBlockHeight
     } catch (err: any) {
-      await (window as any).logger?.error('Error loading min block height: ', err.message)
-      throw err
+      await (window as any).logger?.warn('Error loading min block height (will start from 0): ', err.message)
+      return 0 // Return 0 on error, meaning not set yet
     }
   }
 
@@ -205,22 +212,116 @@ export function useNeptuneWallet() {
         throw new Error('No view key available. Please import or generate a wallet first.')
       }
 
-      let startBlock: number | null = store.getMinBlockHeight
-      if (startBlock == null) startBlock = await loadMinBlockHeightFromKeystore()
+      // Get current block height
+      const blockHeightResponse = await API.getBlockHeight()
+      const currentHeight = blockHeightResponse?.result?.height || blockHeightResponse?.height || 0
 
-      const response = await API.getUtxosFromViewKey(
-        store.getViewKey || '',
-        toFiniteNumber(startBlock)
+      if (currentHeight === 0) {
+        throw new Error('Failed to get block height')
+      }
+
+      // Calculate start block from existing UTXOs (if any)
+      const existingUtxos = store.getUtxos || []
+      let minBlockFromUtxos: number | null = null
+      if (existingUtxos.length > 0) {
+        minBlockFromUtxos = existingUtxos.reduce((min: number | null, utxo: any) => {
+          const h = +(
+            utxo?.blockHeight ??
+            utxo?.block_height ??
+            utxo?.height ??
+            utxo?.block?.height
+          )
+          return Number.isFinite(h) && (min === null || h < min) ? h : min
+        }, null)
+      }
+
+      // Get last scanned block (from store or keystore)
+      let lastScannedBlock: number | null = store.getMinBlockHeight
+      // If store doesn't have it, or it's 0 (meaning not set), try loading from keystore
+      if (lastScannedBlock == null || lastScannedBlock === 0) {
+        const loaded = await loadMinBlockHeightFromKeystore()
+        // Only use loaded value if it's greater than 0 (0 means not set yet)
+        if (loaded > 0) {
+          lastScannedBlock = loaded
+          store.setMinBlockHeight(loaded) // Update store with loaded value
+        } else {
+          lastScannedBlock = null
+        }
+      }
+
+      // Start from the last scanned block (where we stopped scanning)
+      // This is more efficient than rescanning from the oldest UTXO block
+      let startBlock: number
+      if (lastScannedBlock !== null && lastScannedBlock > 0) {
+        // Resume from last scanned block (most efficient)
+        startBlock = lastScannedBlock
+      } else if (minBlockFromUtxos !== null) {
+        // No last scanned block, but we have UTXOs - start from oldest UTXO
+        startBlock = minBlockFromUtxos
+      } else {
+        // First scan - start from beginning
+        startBlock = DEFAULT_MIN_BLOCK_HEIGHT
+      }
+      
+
+      // Get RPC URL from environment or use default
+      const rpcUrl = import.meta.env.VITE_APP_API || 'https://66b4b9bd1e4c.ngrok-free.app'
+
+      // Use client-side scanning (NO VIEW KEY TO SERVER!)
+      const scanRequest = {
+        viewKeyHex: store.getViewKey,
+        startBlock: toFiniteNumber(startBlock),
+        endBlock: currentHeight,
+        rpcUrl: rpcUrl,
+      }
+
+      const scanResponse = await (window as any).walletApi.scanUtxosClientSide(scanRequest)
+      const scanResult = typeof scanResponse === 'string' ? JSON.parse(scanResponse) : scanResponse
+
+      if (!scanResult.success) {
+        throw new Error(scanResult.error || 'Scan failed')
+      }
+
+      // Merge new UTXOs with existing ones (deduplicate by utxo_hash)
+      const existingUtxoHashes = new Set(
+        existingUtxos.map((u: any) => u.utxoHash || u.utxo_hash || u.hash)
       )
+      const newUtxos = (scanResult.utxos || []).filter(
+        (u: any) => !existingUtxoHashes.has(u.utxoHash || u.utxo_hash || u.hash)
+      )
+      const allUtxos = [...existingUtxos, ...newUtxos]
 
-      const result = response?.result || response
-      const utxos = result?.utxos ?? result
-      const utxoList = Array.isArray(utxos) ? utxos : []
+      // Store all UTXOs
+      store.setUtxos(allUtxos)
 
-      store.setUtxos(utxoList)
+      // Update last scanned block height - save the last scanned block, not the minimum UTXO block
+      // This allows us to resume scanning from where we left off
+      if (scanResult.lastScannedBlock !== null && scanResult.lastScannedBlock !== undefined) {
+        const lastScanned = toFiniteNumber(scanResult.lastScannedBlock)
+        store.setMinBlockHeight(lastScanned)
+        
+        // Persist the last scanned block to keystore (not the minimum UTXO block)
+        const keystoreFileName = store.getKeystoreFileName
+        if (keystoreFileName) {
+          try {
+            const response = await (window as any).walletApi.updateMinBlockHeight(
+              keystoreFileName,
+              lastScanned
+            )
+            if (!response.success) {
+              await (window as any).logger?.warn('Failed to save last scanned block height')
+            }
+          } catch (err: any) {
+            await (window as any).logger?.warn('Error saving last scanned block height: ', err.message)
+          }
+        }
+      }
 
-      await persistMinBlockHeight(utxoList)
-      return result
+      return {
+        result: {
+          utxos: allUtxos,
+        },
+      }
     } catch (err: any) {
       await (window as any).logger?.error('Error getting UTXOs:', err.message)
       store.setUtxos([])
@@ -230,23 +331,39 @@ export function useNeptuneWallet() {
 
   const getBalance = async (): Promise<BalanceResult> => {
     try {
-      let startBlock: number | null | undefined = store.getMinBlockHeight
+      // Calculate balance from unspent UTXOs (client-side, no view_key sent to server)
+      const utxos = store.getUtxos || []
+      const balance = utxos.reduce((sum: number, utxo: any) => {
+        const amount = parseFloat(utxo.amount || '0')
+        return sum + (isNaN(amount) ? 0 : amount)
+      }, 0)
 
-      if (startBlock == null) {
-        startBlock = await loadMinBlockHeightFromKeystore()
+      const balanceStr = balance.toFixed(8)
+      store.setBalance(balanceStr)
+
+      // Get pending balance from mempool (client-side scanning)
+      let pendingBalance = '0'
+      if (store.getViewKey) {
+        try {
+          const rpcUrl = import.meta.env.VITE_APP_API || 'https://66b4b9bd1e4c.ngrok-free.app'
+          const pendingResult = await (window as any).walletApi.getPendingBalance({
+            viewKeyHex: store.getViewKey,
+            rpcUrl: rpcUrl,
+          })
+          const pendingData = typeof pendingResult === 'string' ? JSON.parse(pendingResult) : pendingResult
+          if (pendingData.success) {
+            pendingBalance = pendingData.pendingBalance || '0'
+          }
+        } catch (pendingErr: any) {
+          console.warn('Error getting pending balance:', pendingErr.message)
+          // Continue with pending balance as 0 if mempool check fails
+        }
       }
 
-      const response = await API.getBalance(
-        store.getViewKey || '',
-        toFiniteNumber(startBlock)
-      )
-      const result = response?.result || response
-
-      store.setBalance(result?.balance || result)
-      store.setPendingBalance(result?.pendingBalance || result)
+      store.setPendingBalance(pendingBalance)
       return {
-        balance: result?.balance || result,
-        pendingBalance: result?.pendingBalance || result,
+        balance: balanceStr,
+        pendingBalance: pendingBalance,
       }
     } catch (err: any) {
       await (window as any).logger?.error('Error getting balance:', err.message)
