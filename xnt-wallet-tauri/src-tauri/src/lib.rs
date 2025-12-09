@@ -233,6 +233,14 @@ async fn scan_utxos_client_side(request: serde_json::Value) -> Result<String, St
 }
 
 #[tauri::command]
+async fn get_pending_balance(request: serde_json::Value) -> Result<String, String> {
+    let pending_request: utxo_scanning::GetPendingBalanceRequest = serde_json::from_value(request)
+        .map_err(|e| format!("Invalid request: {}", e))?;
+    
+    utxo_scanning::get_pending_balance_from_mempool(pending_request).await
+}
+
+#[tauri::command]
 async fn clear_utxo_cache() -> Result<(), String> {
     utxo_cache::clear_cache().await;
     Ok(())
@@ -344,6 +352,7 @@ pub fn run() {
             build_transaction,
             scan_utxos_client_side,
             clear_utxo_cache,
+            get_pending_balance,
             proxy_json_rpc,
             log_message,
         ])

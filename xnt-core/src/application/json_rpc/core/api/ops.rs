@@ -126,6 +126,12 @@ pub enum RpcMethods {
     #[namespace(Namespace::Mempool)]
     GetCurrentFee,
 
+    #[namespace(Namespace::Mempool)]
+    GetMempoolTxIds,
+
+    #[namespace(Namespace::Mempool)]
+    GetMempoolTxKernel,
+
     #[namespace(Namespace::Wallet)]
     GetUtxoInfo,
 

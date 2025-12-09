@@ -330,23 +330,39 @@ export function useNeptuneWallet() {
 
   const getBalance = async (): Promise<BalanceResult> => {
     try {
-      let startBlock: number | null | undefined = store.getMinBlockHeight
+      // Calculate balance from unspent UTXOs (client-side, no view_key sent to server)
+      const utxos = store.getUtxos || []
+      const balance = utxos.reduce((sum: number, utxo: any) => {
+        const amount = parseFloat(utxo.amount || '0')
+        return sum + (isNaN(amount) ? 0 : amount)
+      }, 0)
 
-      if (startBlock == null) {
-        startBlock = await loadMinBlockHeightFromKeystore()
+      const balanceStr = balance.toFixed(8)
+      store.setBalance(balanceStr)
+
+      // Get pending balance from mempool (client-side scanning)
+      let pendingBalance = '0'
+      if (store.getViewKey) {
+        try {
+          const rpcUrl = import.meta.env.VITE_APP_API || 'https://66b4b9bd1e4c.ngrok-free.app'
+          const pendingResult = await (window as any).walletApi.getPendingBalance({
+            viewKeyHex: store.getViewKey,
+            rpcUrl: rpcUrl,
+          })
+          const pendingData = typeof pendingResult === 'string' ? JSON.parse(pendingResult) : pendingResult
+          if (pendingData.success) {
+            pendingBalance = pendingData.pendingBalance || '0'
+          }
+        } catch (pendingErr: any) {
+          console.warn('Error getting pending balance:', pendingErr.message)
+          // Continue with pending balance as 0 if mempool check fails
+        }
       }
 
-      const response = await API.getBalance(
-        store.getViewKey || '',
-        toFiniteNumber(startBlock)
-      )
-      const result = response?.result || response
-
-      store.setBalance(result?.balance || result)
-      store.setPendingBalance(result?.pendingBalance || result)
+      store.setPendingBalance(pendingBalance)
       return {
-        balance: result?.balance || result,
-        pendingBalance: result?.pendingBalance || result,
+        balance: balanceStr,
+        pendingBalance: pendingBalance,
       }
     } catch (err: any) {
       console.error('Error getting balance:', err.message)

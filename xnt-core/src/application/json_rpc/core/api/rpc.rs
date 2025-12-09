@@ -361,4 +361,14 @@ pub trait RpcApi: Sync + Send {
         self.get_xnt_price_call(GetXntPriceRequest {}).await
     }
     async fn get_xnt_price_call(&self, request: GetXntPriceRequest) -> GetXntPriceResponse;
+
+    async fn get_mempool_tx_ids(&self) -> GetMempoolTxIdsResponse {
+        self.get_mempool_tx_ids_call(GetMempoolTxIdsRequest {}).await
+    }
+    async fn get_mempool_tx_ids_call(&self, request: GetMempoolTxIdsRequest) -> GetMempoolTxIdsResponse;
+
+    async fn get_mempool_tx_kernel(&self, tx_id: String) -> GetMempoolTxKernelResponse {
+        self.get_mempool_tx_kernel_call(GetMempoolTxKernelRequest { tx_id }).await
+    }
+    async fn get_mempool_tx_kernel_call(&self, request: GetMempoolTxKernelRequest) -> GetMempoolTxKernelResponse;
 }

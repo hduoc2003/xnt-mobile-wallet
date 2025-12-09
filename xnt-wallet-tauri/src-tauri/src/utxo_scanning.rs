@@ -411,3 +411,182 @@ pub async fn scan_utxos_client_side(
         .map_err(|e| format!("Failed to serialize response: {}", e))?)
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetPendingBalanceRequest {
+    pub view_key_hex: String,
+    pub rpc_url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetPendingBalanceResponse {
+    pub success: bool,
+    pub pending_balance: String,
+    pub error: Option<String>,
+}
+
+pub async fn get_pending_balance_from_mempool(
+    request: GetPendingBalanceRequest,
+) -> Result<String, String> {
+    // Create client with timeout
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    let rpc_url = request.rpc_url;
+    
+    // Deserialize view key (stays on device!)
+    let view_key_bytes = hex::decode(
+        request.view_key_hex.trim_start_matches("0x")
+    )
+    .map_err(|e| format!("Invalid view key hex: {}", e))?;
+    
+    let view_key: ViewKey = bincode::deserialize(&view_key_bytes)
+        .map_err(|e| format!("Failed to deserialize view key: {}", e))?;
+    
+    // Get mempool transaction IDs and kernels to scan for pending UTXOs
+    // Note: This requires mempool_txIds and mempool_txKernel JSON-RPC methods
+    // If these methods are not available, pending balance will be 0
+    
+    let mut pending_total = NativeCurrencyAmount::zero();
+    
+    // Get mempool transaction IDs via JSON-RPC
+    let mempool_tx_ids_result = client
+        .post(&rpc_url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "mempool_getMempoolTxIds",
+            "params": [],
+            "id": 1
+        }))
+        .send()
+        .await;
+    
+    let tx_ids: Vec<String> = match mempool_tx_ids_result {
+        Ok(response) => {
+            let text = response.text().await
+                .map_err(|e| format!("Failed to read mempool tx IDs response: {}", e))?;
+            let json: serde_json::Value = serde_json::from_str(&text)
+                .map_err(|e| format!("Failed to parse mempool tx IDs: {}", e))?;
+            
+            // Check for RPC errors
+            if let Some(error) = json.get("error") {
+                log::warn!("Mempool tx IDs method error: {}", error);
+                return Ok(serde_json::to_string(&GetPendingBalanceResponse {
+                    success: true,
+                    pending_balance: "0".to_string(),
+                    error: Some(format!("Mempool method error: {}", error)),
+                }).map_err(|e| format!("Failed to serialize response: {}", e))?);
+            }
+            
+            let result = extract_rpc_result("mempool_getMempoolTxIds", &json)?;
+            serde_json::from_value(result)
+                .map_err(|e| format!("Failed to deserialize tx IDs: {}", e))?
+        }
+        Err(e) => {
+            // Request failed
+            log::warn!("Failed to get mempool tx IDs: {}", e);
+            return Ok(serde_json::to_string(&GetPendingBalanceResponse {
+                success: true,
+                pending_balance: "0".to_string(),
+                error: Some(format!("Failed to get mempool tx IDs: {}", e)),
+            }).map_err(|e| format!("Failed to serialize response: {}", e))?);
+        }
+    };
+    
+    if tx_ids.is_empty() {
+        return Ok(serde_json::to_string(&GetPendingBalanceResponse {
+            success: true,
+            pending_balance: "0".to_string(),
+            error: None,
+        }).map_err(|e| format!("Failed to serialize response: {}", e))?);
+    }
+    
+    // Get transaction kernels for each mempool transaction
+    for tx_id_hex in tx_ids {
+        let tx_kernel_result = client
+            .post(&rpc_url)
+            .json(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "mempool_getMempoolTxKernel",
+                "params": {
+                    "txId": tx_id_hex
+                },
+                "id": 1
+            }))
+            .send()
+            .await;
+        
+        let tx_kernel: Option<TransactionKernel> = match tx_kernel_result {
+            Ok(response) => {
+                let text = response.text().await
+                    .map_err(|e| format!("Failed to read mempool tx kernel response: {}", e))?;
+                let json: serde_json::Value = serde_json::from_str(&text)
+                    .map_err(|e| format!("Failed to parse mempool tx kernel: {}", e))?;
+                
+                let kernel_result = extract_rpc_result("mempool_getMempoolTxKernel", &json)?;
+                
+                // Check if transaction kernel exists (might be null if transaction was already mined)
+                if kernel_result.get("kernel").is_none() || kernel_result["kernel"].is_null() {
+                    continue;
+                }
+                
+                // The kernel is returned as an RpcTransactionKernel object
+                // We need to convert it to TransactionKernel
+                let rpc_kernel: crate::application::json_rpc::core::model::block::transaction_kernel::RpcTransactionKernel = 
+                    serde_json::from_value(kernel_result["kernel"].clone())
+                        .map_err(|e| format!("Failed to deserialize RPC kernel: {}", e))?;
+                
+                // Convert RpcTransactionKernel to TransactionKernel using TransactionKernelProxy
+                // For scanning, we only need announcements, so we can simplify the conversion
+                use neptune_privacy::protocol::consensus::transaction::transaction_kernel::TransactionKernelProxy;
+                
+                let tx_kernel_proxy = TransactionKernelProxy {
+                    inputs: vec![], // We skip inputs for scanning - we only need announcements
+                    outputs: rpc_kernel.outputs.into_iter().map(|ar| ar.into()).collect(),
+                    announcements: rpc_kernel.announcements.into_iter().map(|ann| {
+                        use neptune_privacy::protocol::consensus::transaction::announcement::Announcement;
+                        Announcement::new(ann.0)
+                    }).collect(),
+                    fee: rpc_kernel.fee.into(),
+                    coinbase: rpc_kernel.coinbase.map(|c| c.into()),
+                    timestamp: rpc_kernel.timestamp,
+                    mutator_set_hash: rpc_kernel.mutator_set_hash,
+                    merge_bit: rpc_kernel.merge_bit,
+                };
+                
+                Some(tx_kernel_proxy.into_kernel())
+            }
+            Err(_e) => {
+                // Skip this transaction if we can't get its kernel
+                continue;
+            }
+        };
+        
+        if let Some(tx_kernel) = tx_kernel {
+            // CLIENT-SIDE SCANNING (view key never left device!)
+            match view_key.scan_for_announced_utxos(&tx_kernel) {
+                Ok(incoming_utxos) => {
+                    // Sum up amounts from pending incoming UTXOs
+                    for utxo in incoming_utxos {
+                        pending_total = pending_total + utxo.utxo().get_native_currency_amount();
+                    }
+                }
+                Err(_e) => {
+                    // Silently skip transactions that can't be scanned
+                    continue;
+                }
+            }
+        }
+    }
+    
+    // Convert to decimal string (coins)
+    let pending_balance_str = format!("{}", pending_total);
+    
+    Ok(serde_json::to_string(&GetPendingBalanceResponse {
+        success: true,
+        pending_balance: pending_balance_str,
+        error: None,
+    }).map_err(|e| format!("Failed to serialize response: {}", e))?)
+}
+

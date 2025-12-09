@@ -1537,6 +1537,53 @@ impl RpcApi for RpcServer {
             price: "4.0".to_string(),
         }
     }
+
+    async fn get_mempool_tx_ids_call(&self, _: GetMempoolTxIdsRequest) -> GetMempoolTxIdsResponse {
+        let state = self.state.lock_guard().await;
+        
+        let tx_ids: Vec<String> = state
+            .mempool
+            .fee_density_iter()
+            .map(|(txid, _)| {
+                let txid_bytes = bincode::serialize(&txid)
+                    .expect("Failed to serialize transaction ID");
+                format!("0x{}", hex::encode(txid_bytes))
+            })
+            .collect();
+        
+        GetMempoolTxIdsResponse {
+            tx_ids,
+            error: None,
+        }
+    }
+
+    async fn get_mempool_tx_kernel_call(&self, request: GetMempoolTxKernelRequest) -> GetMempoolTxKernelResponse {
+        let state = self.state.lock_guard().await;
+        
+        // Parse transaction ID from hex
+        let tx_id_bytes = hex::decode(request.tx_id.trim_start_matches("0x"))
+            .map_err(|e| format!("Invalid transaction ID hex: {}", e))
+            .ok();
+        
+        let tx_id = match tx_id_bytes {
+            Some(bytes) => {
+                bincode::deserialize(&bytes)
+                    .map_err(|e| format!("Failed to deserialize transaction ID: {}", e))
+                    .ok()
+            }
+            None => None,
+        };
+        
+        let kernel = tx_id.and_then(|id| {
+            state.mempool.get(id)
+                .map(|tx| (&tx.kernel).into())
+        });
+        
+        GetMempoolTxKernelResponse {
+            kernel,
+            error: None,
+        }
+    }
 }
 
 #[cfg(test)]

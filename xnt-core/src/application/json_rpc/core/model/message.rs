@@ -549,3 +549,36 @@ pub struct GetXntPriceRequest {}
 pub struct GetXntPriceResponse {
     pub price: String,
 }
+
+/// Request for getting mempool transaction IDs
+#[derive(Clone, Copy, Debug, Serialize_tuple, Deserialize_tuple)]
+#[serde(rename_all = "camelCase")]
+pub struct GetMempoolTxIdsRequest {}
+
+/// Response for getting mempool transaction IDs
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetMempoolTxIdsResponse {
+    /// List of transaction IDs (hex-encoded)
+    pub tx_ids: Vec<String>,
+    /// Error message if failed
+    pub error: Option<String>,
+}
+
+/// Request for getting a mempool transaction kernel
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetMempoolTxKernelRequest {
+    /// Transaction ID (hex-encoded)
+    pub tx_id: String,
+}
+
+/// Response for getting a mempool transaction kernel
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetMempoolTxKernelResponse {
+    /// Transaction kernel (if found)
+    pub kernel: Option<crate::application::json_rpc::core::model::block::transaction_kernel::RpcTransactionKernel>,
+    /// Error message if failed
+    pub error: Option<String>,
+}

@@ -239,6 +239,15 @@ if (!(window as any).walletApi) {
             } catch (error: any) {
                 return { success: false, error: error?.message || error || 'Failed to clear UTXO cache' }
             }
+        },
+        
+        getPendingBalance: async (request: any) => {
+            try {
+                const result = await safeInvoke<string>('get_pending_balance', { request })
+                return JSON.parse(result)
+            } catch (error: any) {
+                return { success: false, error: error?.message || error || 'Failed to get pending balance' }
+            }
         }
     }
 }
