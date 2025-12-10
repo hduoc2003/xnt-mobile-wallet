@@ -229,46 +229,6 @@ pub trait RpcApi: Sync + Send {
         request: FindUtxoOriginRequest,
     ) -> RpcResult<FindUtxoOriginResponse>;
 
-    async fn get_utxos_from_view_key(
-        &self,
-        view_key: String,
-        start_block: u64,
-        end_block: Option<u64>,
-        max_search_depth: u64,
-    ) -> GetUtxosFromViewKeyResponse {
-        self.get_utxos_from_view_key_call(GetUtxosFromViewKeyRequest {
-            view_key,
-            start_block,
-            end_block,
-            max_search_depth,
-        })
-        .await
-    }
-    async fn get_utxos_from_view_key_call(
-        &self,
-        request: GetUtxosFromViewKeyRequest,
-    ) -> GetUtxosFromViewKeyResponse;
-
-    async fn get_balance_from_view_key(
-        &self,
-        view_key: String,
-        start_block: u64,
-        end_block: Option<u64>,
-        max_search_depth: u64,
-    ) -> GetBalanceFromViewKeyResponse {
-        self.get_balance_from_view_key_call(GetBalanceFromViewKeyRequest {
-            view_key,
-            start_block,
-            end_block,
-            max_search_depth,
-        })
-        .await
-    }
-    async fn get_balance_from_view_key_call(
-        &self,
-        request: GetBalanceFromViewKeyRequest,
-    ) -> GetBalanceFromViewKeyResponse;
-
     async fn get_archival_mutator_set_call(
         &self,
         request: GetArchivalMutatorSetRequest,
@@ -351,11 +311,6 @@ pub trait RpcApi: Sync + Send {
         self.get_current_fee_call(GetCurrentFeeRequest {}).await
     }
     async fn get_current_fee_call(&self, request: GetCurrentFeeRequest) -> GetCurrentFeeResponse;
-
-    async fn get_utxo_info(&self, request: GetUtxoInfoRequest) -> GetUtxoInfoResponse {
-        self.get_utxo_info_call(request).await
-    }
-    async fn get_utxo_info_call(&self, request: GetUtxoInfoRequest) -> GetUtxoInfoResponse;
 
     async fn get_xnt_price(&self) -> GetXntPriceResponse {
         self.get_xnt_price_call(GetXntPriceRequest {}).await

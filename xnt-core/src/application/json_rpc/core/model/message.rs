@@ -4,7 +4,6 @@ use crate::application::json_rpc::core::model::block::header::*;
 use crate::application::json_rpc::core::model::block::transaction_kernel::*;
 use crate::application::json_rpc::core::model::block::*;
 use crate::application::json_rpc::core::model::common::*;
-use crate::state::wallet::incoming_utxo::IncomingUtxo;
 use crate::util_types::mutator_set::mutator_set_accumulator::MutatorSetAccumulator;
 use serde::Deserialize;
 use serde::Serialize;
@@ -280,41 +279,6 @@ pub struct FindUtxoOriginResponse {
     pub block: Option<Digest>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetUtxosFromViewKeyRequest {
-    pub view_key: String,
-    pub start_block: u64,
-    pub end_block: Option<u64>,
-    pub max_search_depth: u64,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetUtxosFromViewKeyResponse {
-    pub utxos: Vec<IncomingUtxo>,
-    pub error: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetBalanceFromViewKeyRequest {
-    pub view_key: String,
-    pub start_block: u64,
-    pub end_block: Option<u64>,
-    pub max_search_depth: u64,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetBalanceFromViewKeyResponse {
-    pub balance: String,
-    pub available_balance: String,
-    pub pending_balance: String,
-    pub utxo_count: u64,
-    pub error: Option<String>,
-}
-
 #[derive(Clone, Copy, Debug, Serialize, Deserialize_tuple)]
 #[serde(rename_all = "camelCase")]
 pub struct GetArchivalMutatorSetRequest {}
@@ -501,41 +465,6 @@ pub struct GetCurrentFeeResponse {
     pub max_fee_from_mempool: Option<String>,
     /// Number of transactions in mempool used for fee calculation
     pub mempool_tx_count: u64,
-    /// Error message if failed
-    pub error: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetUtxoInfoRequest {
-    /// Hex-encoded bincode-serialized ViewKey (needed to decrypt UTXO from block)
-    pub view_key: String,
-    /// Start block height to scan from
-    pub start_block: u64,
-    /// End block height to scan to (optional, defaults to tip)
-    pub end_block: Option<u64>,
-    /// Maximum search depth
-    pub max_search_depth: u64,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UtxoInfo {
-    /// Amount of the UTXO
-    pub amount: String,
-    /// Block height where the UTXO was created
-    pub block_height: u64,
-    /// Hex-encoded bincode-serialized AdditionRecord
-    pub addition_record: String,
-    /// Hex-encoded UTXO hash (Tip5 hash of the UTXO)
-    pub utxo_hash: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetUtxoInfoResponse {
-    /// List of UTXO information
-    pub utxos: Vec<UtxoInfo>,
     /// Error message if failed
     pub error: Option<String>,
 }

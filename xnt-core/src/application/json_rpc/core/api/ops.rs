@@ -114,12 +114,6 @@ pub enum RpcMethods {
     #[namespace(Namespace::Archival)]
     GetChunksAndAuthPaths,
 
-    #[namespace(Namespace::Wallet)]
-    GetUtxosFromViewKey,
-
-    #[namespace(Namespace::Wallet)]
-    GetBalanceFromViewKey,
-
     #[namespace(Namespace::Node)]
     GetState,
 
@@ -131,9 +125,6 @@ pub enum RpcMethods {
 
     #[namespace(Namespace::Mempool)]
     GetMempoolTxKernel,
-
-    #[namespace(Namespace::Wallet)]
-    GetUtxoInfo,
 
     #[namespace(Namespace::Node)]
     GetXntPrice,

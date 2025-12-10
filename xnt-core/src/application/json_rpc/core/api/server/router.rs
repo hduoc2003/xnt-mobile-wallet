@@ -33,8 +33,6 @@ macro_rules! impl_to_json_result_direct {
 }
 
 impl_to_json_result_direct!(
-    GetUtxosFromViewKeyResponse,
-    GetBalanceFromViewKeyResponse,
     GetArchivalMutatorSetResponse,
     GetUtxoCreationBlockResponse,
     GenerateMembershipProofResponse,
@@ -44,7 +42,6 @@ impl_to_json_result_direct!(
     GetStateResponse,
     SubmitTransactionResponse,
     GetCurrentFeeResponse,
-    GetUtxoInfoResponse,
     GetXntPriceResponse,
     GetBlockAnnouncementsRangeResponse
 );

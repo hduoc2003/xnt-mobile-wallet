@@ -30,42 +30,6 @@ export const callJsonRpc = async (method: string, params: any = []) => {
 }
 
 /**
- * Get UTXOs from view key
- */
-export const getUtxosFromViewKey = async (
-  viewKey: string,
-  startBlock: number = DEFAULT_MIN_BLOCK_HEIGHT,
-  endBlock: number | null = null,
-  maxSearchDepth: number = 1000
-): Promise<any> => {
-  const params = {
-    viewKey,
-    startBlock,
-    endBlock,
-    maxSearchDepth,
-  }
-  return await callJsonRpc('wallet_getUtxoInfo', params)
-}
-
-/**
- * Get balance from view key
- */
-export const getBalance = async (
-  viewKey: string,
-  startBlock: number = DEFAULT_MIN_BLOCK_HEIGHT,
-  endBlock: number | null = null,
-  maxSearchDepth: number = 1000
-): Promise<any> => {
-  const params = {
-    viewKey,
-    startBlock,
-    endBlock,
-    maxSearchDepth,
-  }
-  return await callJsonRpc('wallet_getBalanceFromViewKey', params)
-}
-
-/**
  * Get current block height
  */
 export const getBlockHeight = async (): Promise<any> => {
