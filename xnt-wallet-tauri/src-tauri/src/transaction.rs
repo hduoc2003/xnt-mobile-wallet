@@ -45,6 +45,7 @@ use num_traits::identities::Zero;
 use num_traits::ops::checked::CheckedSub;
 use rand::Rng;
 use reqwest::Client;
+use tauri::AppHandle;
 use std::str::FromStr;
 use log::error;
 use neptune_privacy::prelude::triton_vm::prelude::{Program, Claim, NonDeterminism, PublicInput};
@@ -270,8 +271,8 @@ pub(crate) async fn generate_membership_proof_client_side(
     })
 }
 
-pub async fn build_transaction(payload: serde_json::Value) -> Result<String, String> {
-    match build_transaction_inner(payload).await {
+pub async fn build_transaction(app: AppHandle, payload: serde_json::Value) -> Result<String, String> {
+    match build_transaction_inner(&app, payload).await {
         Ok(result) => Ok(result),
         Err(err) => {
             error!("[BuildTx] ✖ {}", err);
@@ -280,10 +281,13 @@ pub async fn build_transaction(payload: serde_json::Value) -> Result<String, Str
     }
 }
 
-async fn build_transaction_inner(payload: serde_json::Value) -> Result<String, String> {
-    let rpc_url = std::env::var("VITE_APP_API")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
+async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) -> Result<String, String> {
+    let rpc_url = rpc_config::get_custom_rpc_endpoint(app)
+        .or_else(|| {
+            std::env::var("VITE_APP_API")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+        })
         .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string());
     
     let spending_key_hex = payload["spendingKeyHex"]

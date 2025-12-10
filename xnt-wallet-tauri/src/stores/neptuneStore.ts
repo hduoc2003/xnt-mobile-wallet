@@ -8,15 +8,14 @@ export const useNeptuneStore = defineStore('neptune', () => {
 
     // ===== STATE =====
     const wallet = ref<WalletState>({
-        receiverId: null,
-        viewKey: null,
-        spendingKey: null,
-        address: null,
-        network: defaultNetwork,
-        balance: null,
-        pendingBalance: null,
-        utxos: [],
-        minBlockHeight: null,
+      receiverId: null,
+      spendingKey: null,
+      address: null,
+      network: defaultNetwork,
+      balance: null,
+      pendingBalance: null,
+      utxos: [],
+      minBlockHeight: null,
     })
 
     const keystoreFileName = ref<string | null>(null)
@@ -26,10 +25,6 @@ export const useNeptuneStore = defineStore('neptune', () => {
 
     const setReceiverId = (receiverId: string | null) => {
         wallet.value.receiverId = receiverId
-    }
-
-    const setViewKey = (viewKey: string | null) => {
-        wallet.value.viewKey = viewKey
     }
 
     const setSpendingKey = (spendingKey: string | null) => {
@@ -73,23 +68,21 @@ export const useNeptuneStore = defineStore('neptune', () => {
     }
 
     const clearWallet = () => {
-        wallet.value = {
-            receiverId: null,
-            viewKey: null,
-            spendingKey: null,
-            address: null,
-            network: defaultNetwork,
-            balance: null,
-            pendingBalance: null,
-            utxos: [],
-            minBlockHeight: null,
-        }
+      wallet.value = {
+        receiverId: null,
+        spendingKey: null,
+        address: null,
+        network: defaultNetwork,
+        balance: null,
+        pendingBalance: null,
+        utxos: [],
+        minBlockHeight: null,
+      }
     }
 
     // ===== GETTERS =====
     const getWallet = computed(() => wallet.value)
     const getReceiverId = computed(() => wallet.value.receiverId)
-    const getViewKey = computed(() => wallet.value.viewKey)
     const getSpendingKey = computed(() => wallet.value.spendingKey)
     const getAddress = computed(() => wallet.value.address)
     const getNetwork = computed(() => wallet.value.network)
@@ -103,7 +96,6 @@ export const useNeptuneStore = defineStore('neptune', () => {
     return {
         getWallet,
         getReceiverId,
-        getViewKey,
         getSpendingKey,
         getAddress,
         getNetwork,
@@ -115,7 +107,6 @@ export const useNeptuneStore = defineStore('neptune', () => {
         getKeystoreFileName,
         getRpcUrl,
         setReceiverId,
-        setViewKey,
         setSpendingKey,
         setAddress,
         setNetwork,

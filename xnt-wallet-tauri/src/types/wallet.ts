@@ -18,7 +18,6 @@ export interface PayloadBuildTransaction {
 
 export interface WalletState {
   receiverId: string | null
-  viewKey: string | null
   spendingKey?: string | null
   address: string | null
   network: 'mainnet' | 'testnet'

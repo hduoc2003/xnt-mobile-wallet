@@ -12,6 +12,8 @@ use neptune_privacy::util_types::mutator_set::mutator_set_accumulator::MutatorSe
 use neptune_privacy::application::json_rpc::core::model::message::GetArchivalMutatorSetResponse;
 use num_traits::Zero;
 use reqwest::Client;
+use tauri::AppHandle;
+use crate::rpc_config;
 use serde::{Deserialize, Serialize};
 
 use crate::utxo_cache;
@@ -113,6 +115,7 @@ fn parse_rpc_bfield_elements(hex_str: &str) -> Result<Vec<BFieldElement>, String
 }
 
 pub async fn scan_utxos_client_side(
+    app: &AppHandle,
     request: ScanUtxosRequest,
 ) -> Result<String, String> {
     log::debug!(
@@ -126,7 +129,21 @@ pub async fn scan_utxos_client_side(
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-    let rpc_url = request.rpc_url;
+    let rpc_url = {
+        if !request.rpc_url.trim().is_empty() {
+            request.rpc_url
+        } else {
+            rpc_config::get_custom_rpc_endpoint(app)
+                .or_else(|| {
+                    std::env::var("VITE_APP_API")
+                        .ok()
+                        .filter(|v| !v.trim().is_empty())
+                })
+                .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string())
+        }
+    };
+
+    utxo_cache::clear_cache().await;
     
     let view_key_bytes = hex::decode(
         request.view_key_hex.trim_start_matches("0x")
@@ -158,7 +175,7 @@ pub async fn scan_utxos_client_side(
                 "params": [current_block, batch_end],
                 "id": 1
             });
-
+                
             log::info!(
                 "[UTXO Scan] req archival_getBlockAnnouncementsRange {}-{} retry={} url={}",
                 current_block,
@@ -453,13 +470,24 @@ pub struct GetPendingBalanceResponse {
 }
 
 pub async fn get_pending_balance_from_mempool(
+    app: &AppHandle,
     request: GetPendingBalanceRequest,
 ) -> Result<String, String> {
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-    let rpc_url = request.rpc_url;
+    let rpc_url = if !request.rpc_url.trim().is_empty() {
+        request.rpc_url
+    } else {
+        rpc_config::get_custom_rpc_endpoint(app)
+            .or_else(|| {
+                std::env::var("VITE_APP_API")
+                    .ok()
+                    .filter(|v| !v.trim().is_empty())
+            })
+            .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string())
+    };
     
     let view_key_bytes = hex::decode(
         request.view_key_hex.trim_start_matches("0x")

@@ -4,7 +4,7 @@ use tauri::{AppHandle, Manager};
 use serde::{Deserialize, Serialize};
 
 const CONFIG_FILE: &str = "config.json";
-pub const DEFAULT_RPC_URL: &str = "http://zsmartex.com:9897";
+pub const DEFAULT_RPC_URL: &str = "https://api.xntscan.io";
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct Config {

@@ -55,28 +55,39 @@ echo "Step 3: Patching WryActivity for libc++ load order..."
 ./patch-wry-activity.sh
 
 echo ""
-echo "Step 4: Assembling universal release APK via Gradle..."
+echo "Step 4: Assembling release APK + AAB via Gradle (skip rust builds)..."
 cd src-tauri/gen/android
-./gradlew assembleRelease -x rustBuildArm64Release -x rustBuildX86_64Release -x rustBuildArmRelease -x rustBuildX86Release -x rustBuildUniversalRelease
+./gradlew assembleRelease bundleRelease \
+  -x rustBuildArm64Release \
+  -x rustBuildX86_64Release \
+  -x rustBuildArmRelease \
+  -x rustBuildX86Release \
+  -x rustBuildUniversalRelease
 cd ../../..
 
-UNSIGNED_APK="src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk"
-SIGNED_APK="src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-signed.apk"
+SIGNED_APK="src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk"
+UNSIGNED_AAB="src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab"
 
-if [ ! -f "$UNSIGNED_APK" ]; then
-  echo "Error: unsigned APK not found at $UNSIGNED_APK"
+if [ ! -f "$SIGNED_APK" ]; then
+  echo "Error: APK not found at $SIGNED_APK"
+  exit 1
+fi
+
+if [ ! -f "$UNSIGNED_AAB" ]; then
+  echo "Error: bundle not found at $UNSIGNED_AAB"
   exit 1
 fi
 
 echo ""
-echo "Step 5: Signing universal release APK..."
-./sign-apk.sh "$UNSIGNED_APK" "$SIGNED_APK"
+echo "Step 5: Signing release AAB..."
+./sign-release.sh "$UNSIGNED_AAB"
 
 echo ""
 echo "Build + patch + sign complete!"
-echo "  Signed APK: $SIGNED_APK"
+echo "  Signed APK (from Gradle signingConfig): $SIGNED_APK"
+echo "  Signed AAB:                               $UNSIGNED_AAB"
 echo ""
-echo "You can install it with:"
+echo "Install APK with:"
 echo "  ./install-apk.sh \"$SIGNED_APK\""
 
 

@@ -13,6 +13,11 @@ val tauriProperties = Properties().apply {
     }
 }
 
+val uploadStoreFile: String? = System.getenv("MY_UPLOAD_STORE_FILE") ?: (project.findProperty("MY_UPLOAD_STORE_FILE") as String?)
+val uploadStorePassword: String? = System.getenv("MY_UPLOAD_STORE_PASSWORD") ?: (project.findProperty("MY_UPLOAD_STORE_PASSWORD") as String?)
+val uploadKeyAlias: String? = System.getenv("MY_UPLOAD_KEY_ALIAS") ?: (project.findProperty("MY_UPLOAD_KEY_ALIAS") as String?)
+val uploadKeyPassword: String? = System.getenv("MY_UPLOAD_KEY_PASSWORD") ?: (project.findProperty("MY_UPLOAD_KEY_PASSWORD") as String?)
+
 android {
     compileSdk = 36
     namespace = "com.xnt.wallet"
@@ -23,6 +28,16 @@ android {
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+    }
+    signingConfigs {
+        create("release") {
+            if (uploadStoreFile != null) {
+                storeFile = file(uploadStoreFile)
+            }
+            storePassword = uploadStorePassword
+            keyAlias = uploadKeyAlias
+            keyPassword = uploadKeyPassword
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -43,6 +58,7 @@ android {
                     .plus(getDefaultProguardFile("proguard-android-optimize.txt"))
                     .toList().toTypedArray()
             )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     kotlinOptions {

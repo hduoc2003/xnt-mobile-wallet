@@ -375,26 +375,26 @@ pub async fn initialize(cli_args: cli_args::Args) -> Result<MainLoopHandler> {
                         Err(_) => continue,
                     };
 
-                    // Add to index
-                    let mut state = index_state_lock.lock_guard_mut().await;
-                    let index_db = state.utxo_index.as_mut().unwrap();
+                        // Add to index
+                        let mut state = index_state_lock.lock_guard_mut().await;
+                        let index_db = state.utxo_index.as_mut().unwrap();
 
-                    if let Err(e) = index_db
-                        .add_utxo(
-                            receiver_id,
-                            UtxoLocation {
-                                block_height: height,
-                                output_index: output_index as u16,
-                            },
-                        )
-                        .await
-                    {
-                        warn!("Failed to add UTXO to index: {}", e);
-                        continue;
-                    }
+                        if let Err(e) = index_db
+                            .add_utxo(
+                                receiver_id,
+                                UtxoLocation {
+                                    block_height: height,
+                                    output_index: output_index as u16,
+                                },
+                            )
+                            .await
+                        {
+                            warn!("Failed to add UTXO to index: {}", e);
+                            continue;
+                        }
 
-                    total_utxos += 1;
-                    unique_receivers.insert(receiver_id);
+                        total_utxos += 1;
+                        unique_receivers.insert(receiver_id);
                 }
             }
 

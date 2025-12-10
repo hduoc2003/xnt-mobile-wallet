@@ -805,22 +805,22 @@ impl GlobalState {
                 Err(_) => continue,
             };
 
-            if let Err(e) = index_db
-                .add_utxo(
-                    receiver_id,
-                    crate::utxo_index::UtxoLocation {
-                        block_height,
-                        output_index: output_index as u16,
-                    },
-                )
-                .await
-            {
-                warn!("Failed to add UTXO to index: {}", e);
-                continue;
-            }
+                if let Err(e) = index_db
+                    .add_utxo(
+                        receiver_id,
+                        crate::utxo_index::UtxoLocation {
+                            block_height,
+                            output_index: output_index as u16,
+                        },
+                    )
+                    .await
+                {
+                    warn!("Failed to add UTXO to index: {}", e);
+                    continue;
+                }
 
-            utxos_added += 1;
-            unique_receivers.insert(receiver_id);
+                utxos_added += 1;
+                unique_receivers.insert(receiver_id);
         }
 
         // Update metadata

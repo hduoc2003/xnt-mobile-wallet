@@ -218,24 +218,24 @@ async fn get_keystore_path(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn build_transaction(payload: serde_json::Value) -> Result<String, String> {
-    transaction::build_transaction(payload).await
+async fn build_transaction(app: tauri::AppHandle, payload: serde_json::Value) -> Result<String, String> {
+    transaction::build_transaction(app, payload).await
 }
 
 #[tauri::command]
-async fn scan_utxos_client_side(request: serde_json::Value) -> Result<String, String> {
+async fn scan_utxos_client_side(app: tauri::AppHandle, request: serde_json::Value) -> Result<String, String> {
     let scan_request: utxo_scanning::ScanUtxosRequest = serde_json::from_value(request)
         .map_err(|e| format!("Invalid request: {}", e))?;
-
-    utxo_scanning::scan_utxos_client_side(scan_request).await
+    
+    utxo_scanning::scan_utxos_client_side(&app, scan_request).await
 }
 
 #[tauri::command]
-async fn get_pending_balance(request: serde_json::Value) -> Result<String, String> {
+async fn get_pending_balance(app: tauri::AppHandle, request: serde_json::Value) -> Result<String, String> {
     let pending_request: utxo_scanning::GetPendingBalanceRequest = serde_json::from_value(request)
         .map_err(|e| format!("Invalid request: {}", e))?;
 
-    utxo_scanning::get_pending_balance_from_mempool(pending_request).await
+    utxo_scanning::get_pending_balance_from_mempool(&app, pending_request).await
 }
 
 #[tauri::command]
@@ -334,7 +334,7 @@ pub fn run() {
         );
         log::info!("[NeptuneWallet] Logger initialized for Android");
     }
-
+    
     #[cfg(not(target_os = "android"))]
     {
         env_logger::Builder::from_default_env()
