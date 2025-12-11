@@ -126,7 +126,7 @@ pub async fn scan_utxos_client_side(
     );
 
     let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
     let rpc_url = {
@@ -474,7 +474,7 @@ pub async fn get_pending_balance_from_mempool(
     request: GetPendingBalanceRequest,
 ) -> Result<String, String> {
     let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
     let rpc_url = if !request.rpc_url.trim().is_empty() {

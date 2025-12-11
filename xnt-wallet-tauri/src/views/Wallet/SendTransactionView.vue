@@ -7,7 +7,7 @@ import { useNeptuneWallet, useFormat, useTransaction } from '@/composables'
 import ConfirmTransactionDrawer from './components/ConfirmTransactionDrawer.vue'
 
 const router = useRouter()
-const { getBalance, getUtxos, buildTransaction, broadcastSignedTransaction } = useNeptuneWallet()
+const { getBalance, getUtxos, buildTransaction, broadcastSignedTransaction, selectUtxos } = useNeptuneWallet()
 const { addTransaction } = useTransaction()
 const { formatAmount } = useFormat()
 
@@ -126,8 +126,29 @@ const handleConfirmSend = async () => {
       return
     }
 
-    // Build transaction
-    const inputAdditionRecords = utxos.map(
+    // Select optimal UTXOs using coin selection algorithm
+    const outputAmountNum = parseFloat(outputAmount.value)
+    const feeAmount = parseFloat(priorityFee.value)
+    
+    if (isNaN(outputAmountNum) || isNaN(feeAmount)) {
+      toast.error('Invalid amount or fee')
+      return
+    }
+
+    const { selectedUtxos, totalAmount } = selectUtxos(utxos, outputAmountNum, feeAmount)
+
+    if (selectedUtxos.length === 0) {
+      toast.error('No suitable UTXOs found')
+      return
+    }
+
+    if (totalAmount < outputAmountNum + feeAmount) {
+      toast.error(`Insufficient funds. Selected: ${totalAmount.toFixed(8)} XNT, Needed: ${(outputAmountNum + feeAmount).toFixed(8)} XNT`)
+      return
+    }
+
+    // Build transaction with selected UTXOs only
+    const inputAdditionRecords = selectedUtxos.map(
       (utxo: any) =>
         utxo.addition_record_hex ||
         utxo.additionRecord ||

@@ -250,7 +250,11 @@ async fn proxy_json_rpc(
     method: String,
     params: serde_json::Value,
 ) -> Result<String, String> {
-    let client = Client::new();
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    
     let rpc_url = rpc_config::get_custom_rpc_endpoint(&app)
         .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string());
 

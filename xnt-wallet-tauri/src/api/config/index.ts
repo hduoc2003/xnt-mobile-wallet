@@ -3,7 +3,7 @@ import axios from 'axios'
 
 axios.defaults.withCredentials = false
 export const API_URL =
-  import.meta.env.VITE_APP_API || 'https://66b4b9bd1e4c.ngrok-free.app'
+  import.meta.env.VITE_APP_API || 'https://api.xntscan.io'
 
 const instance = axios.create({
     baseURL: API_URL,

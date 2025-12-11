@@ -321,7 +321,10 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         .as_str()
         .ok_or_else(|| "Missing fee in payload".to_string())?;
     
-    let client = Client::new();
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
     let state_text = client
         .post(&rpc_url)
         .json(&serde_json::json!({

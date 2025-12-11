@@ -426,6 +426,40 @@ export function useNeptuneWallet() {
   }
 
   // ===== UTILITY METHODS =====
+  const selectUtxos = (
+    utxos: any[],
+    neededAmount: number,
+    fee: number
+  ): { selectedUtxos: any[]; totalAmount: number } => {
+    const totalNeeded = neededAmount + fee
+
+    const sortedUtxos = [...utxos].sort((a, b) => {
+      const amountA = parseFloat(a.amount || '0')
+      const amountB = parseFloat(b.amount || '0')
+      return amountB - amountA 
+    })
+
+    let totalSelected = 0
+    const selectedUtxos: any[] = []
+
+    for (const utxo of sortedUtxos) {
+      const amount = parseFloat(utxo.amount || '0')
+      if (isNaN(amount) || amount <= 0) continue
+
+      selectedUtxos.push(utxo)
+      totalSelected += amount
+
+      if (totalSelected >= totalNeeded) {
+        break
+      }
+    }
+
+    return {
+      selectedUtxos,
+      totalAmount: totalSelected,
+    }
+  }
+
   const clearWallet = () => {
     store.clearWallet()
     cachedViewKey = null
@@ -443,6 +477,7 @@ export function useNeptuneWallet() {
     getNetworkInfo,
     buildTransaction,
     broadcastSignedTransaction,
+    selectUtxos,
     decryptKeystore,
     createKeystore,
     saveKeystoreAs,

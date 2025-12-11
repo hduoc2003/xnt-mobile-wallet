@@ -3,7 +3,7 @@ import { STATUS_CODE_SUCCESS } from '@/utils'
 
 
 
-export const API_URL = import.meta.env.VITE_APP_API || 'https://66b4b9bd1e4c.ngrok-free.app'
+export const API_URL = import.meta.env.VITE_APP_API || 'https://api.xntscan.io'
 
 // Create axios instance
 const instance: AxiosInstance = axios.create({

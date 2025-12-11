@@ -6,7 +6,7 @@ import WalletBalanceCard from './components/WalletBalanceCard.vue'
 import WalletActions from './components/WalletActions.vue'
 import { useNeptuneWallet } from '@/composables'
 
-const { getBalance } = useNeptuneWallet()
+const { getUtxos, getBalance } = useNeptuneWallet()
 
 const availableBalance = ref('0')
 const pendingBalance = ref('0')
@@ -15,6 +15,7 @@ const loading = ref(false)
 const loadWalletData = async () => {
   try {
     loading.value = true
+    await getUtxos()
     const result = await getBalance()
     availableBalance.value = result?.balance ?? '0'
     pendingBalance.value = result?.pendingBalance ?? '0'
