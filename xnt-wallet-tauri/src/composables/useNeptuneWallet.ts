@@ -118,10 +118,20 @@ export function useNeptuneWallet() {
 
   const createKeystore = async (seed: string, password: string): Promise<string | null> => {
     try {
+      let currentHeight = DEFAULT_MIN_BLOCK_HEIGHT
+      try {
+        const bh = await API.getBlockHeight()
+        currentHeight = bh?.result?.height || bh?.height || DEFAULT_MIN_BLOCK_HEIGHT
+      } catch (e: any) {
+        await (window as any).logger?.warn?.(
+          `[Keystore] failed to fetch block height, fallback to default: ${e?.message || e}`
+        )
+      }
+
       const result = await (window as any).walletApi.createKeystore(seed, password)
       if (!result.success) return null
       store.setKeystoreFileName(result.fileName)
-      store.setMinBlockHeight(DEFAULT_MIN_BLOCK_HEIGHT)
+      store.setMinBlockHeight(toFiniteNumber(currentHeight))
       return result.fileName
     } catch (err: any) {
       await (window as any).logger?.error('Error creating keystore: ', err.message)
