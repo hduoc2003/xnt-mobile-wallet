@@ -15,7 +15,25 @@ const isScanning = ref(false)
 const displayedUtxos = ref<Utxo[]>([])
 const itemsPerPage = 20
 
-const utxosList = computed(() => [...(neptuneStore.getUtxos || [])])
+// Mock function to generate UTXO data
+const generateMockUtxo = (index: number): Utxo => {
+  const baseBlockHeight = 100000
+  const baseAmount = 0.1
+  return {
+    additionRecord: `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
+    amount: (baseAmount + Math.random() * 10).toFixed(8),
+    blockHeight: baseBlockHeight + index,
+    utxoHash: `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
+  }
+}
+
+// Generate 30 mock UTXOs
+const mockUtxos: Utxo[] = Array.from({ length: 30 }, (_, i) => generateMockUtxo(i))
+
+const utxosList = computed(() => {
+  const storeUtxos = neptuneStore.getUtxos || []
+  return [...storeUtxos, ...mockUtxos]
+})
 
 const hasMore = computed(() => {
   return displayedUtxos.value?.length < utxosList.value?.length
@@ -144,7 +162,7 @@ onMounted(async () => {
             :loading="loading"
             :has-more="hasMore"
             empty-message="No UTXOs found"
-            class="max-h-[550px]"
+            class="max-h-[550px] overflow-y-auto"
             @load-more="loadMoreUtxos"
           >
             <template #default="{ items }">

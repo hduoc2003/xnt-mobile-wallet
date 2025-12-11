@@ -71,7 +71,7 @@ const openExplorer = async (txid: string) => {
         :loading="loading"
         :has-more="hasMore"
         empty-message="No transactions yet"
-        class="max-h-[550px]"
+        class="max-h-[550px] overflow-y-auto"
         @load-more="loadMoreTransactions"
       >
         <template #default="{ items }">
