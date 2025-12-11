@@ -459,7 +459,6 @@ pub async fn scan_utxos_client_side(
 #[serde(rename_all = "camelCase")]
 pub struct GetPendingBalanceRequest {
     pub view_key_hex: String,
-    pub rpc_url: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -477,17 +476,10 @@ pub async fn get_pending_balance_from_mempool(
         .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-    let rpc_url = if !request.rpc_url.trim().is_empty() {
-        request.rpc_url
-    } else {
-        rpc_config::get_custom_rpc_endpoint(app)
-            .or_else(|| {
-                std::env::var("VITE_APP_API")
-                    .ok()
-                    .filter(|v| !v.trim().is_empty())
-            })
-            .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string())
-    };
+        
+    let rpc_url = rpc_config::get_custom_rpc_endpoint(app)
+        .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string());
+    
     
     let view_key_bytes = hex::decode(
         request.view_key_hex.trim_start_matches("0x")
@@ -527,7 +519,10 @@ pub async fn get_pending_balance_from_mempool(
             }
             
             let result = extract_rpc_result("mempool_getMempoolTxIds", &json)?;
-            serde_json::from_value(result)
+            let arr = result
+                .get("txIds")
+                .ok_or_else(|| "mempool_getMempoolTxIds missing txIds".to_string())?;
+            serde_json::from_value(arr.clone())
                 .map_err(|e| format!("Failed to deserialize tx IDs: {}", e))?
         }
         Err(e) => {

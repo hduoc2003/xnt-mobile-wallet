@@ -343,7 +343,7 @@ export function useNeptuneWallet() {
           })
           const pendingData = typeof pendingResult === 'string' ? JSON.parse(pendingResult) : pendingResult
           if (pendingData.success) {
-            pendingBalance = pendingData.pendingBalance || '0'
+            pendingBalance = pendingData.pending_balance || '0'
           }
         }
       }
