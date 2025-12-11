@@ -1,5 +1,4 @@
-import { useNeptuneStore } from '@/stores/neptuneStore'
-import { toast } from 'vue-sonner'
+import { useNeptuneStore } from '@/stores'
 
 export function useRpc() {
   const store = useNeptuneStore()

@@ -5,6 +5,7 @@ import { toast } from 'vue-sonner'
 import { Send, ArrowLeft } from 'lucide-vue-next'
 import { useNeptuneWallet, useFormat, useTransaction } from '@/composables'
 import ConfirmTransactionDrawer from './components/ConfirmTransactionDrawer.vue'
+import ProofGenerationModal from './components/ProofGenerationModal.vue'
 
 const router = useRouter()
 const { getBalance, getUtxos, buildTransaction, broadcastSignedTransaction, selectUtxos } = useNeptuneWallet()
@@ -15,6 +16,7 @@ const availableBalance = ref('0')
 const loading = ref(false)
 const sendLoading = ref(false)
 const showConfirmModal = ref(false)
+const showProofModal = ref(false)
 
 const outputAddress = ref('')
 const outputAmount = ref('')
@@ -113,7 +115,8 @@ const handleConfirmSend = async () => {
   try {
     sendLoading.value = true
     showConfirmModal.value = false
-
+    showProofModal.value = true
+    
     // Get UTXOs
     const utxosResult = await getUtxos()
     const utxos =
@@ -154,6 +157,8 @@ const handleConfirmSend = async () => {
         utxo.additionRecord ||
         utxo.addition_record
     )
+
+
 
     const txResult = await buildTransaction({
       inputAdditionRecords,
@@ -196,6 +201,7 @@ const handleConfirmSend = async () => {
     toast.error('Transaction Failed', { description: message })
   } finally {
     sendLoading.value = false
+    showProofModal.value = false
   }
 }
 
@@ -310,6 +316,9 @@ onMounted(() => {
       @confirm="handleConfirmSend"
       @cancel="handleCancelConfirm"
     />
+
+    <!-- Proof Generation Modal -->
+    <ProofGenerationModal v-model:open="showProofModal" />
   </div>
 </template>
 

@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { Database, RefreshCw } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
-import { useNeptuneStore } from '@/stores/neptuneStore'
+import { useNeptuneStore } from '@/stores'
 import { useNeptuneWallet, useFormat } from '@/composables'
 import type { Utxo } from '@/types'
 
@@ -11,6 +11,7 @@ const { getUtxos } = useNeptuneWallet()
 const { formatHash, formatAmount } = useFormat()
 
 const loading = ref(false)
+const isScanning = ref(false)
 const displayedUtxos = ref<Utxo[]>([])
 const itemsPerPage = 20
 
@@ -37,7 +38,6 @@ const inUseUtxosAmount = computed(() => {
   if (!utxosList.value?.length) return '0'
 
   const total = utxosList.value.reduce((sum: number, utxo: any) => {
-    // Amount is already in coins (decimal string), not nau
     const amount = parseFloat(utxo.amount || '0')
     if (isNaN(amount)) return sum
     return sum + amount
@@ -112,7 +112,15 @@ onMounted(async () => {
         <CardHeader>
           <CardTitle class="text-lg font-semibold">UTXO List</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent v-if="isScanning" class="space-y-4">
+          <div class="space-y-2">
+            <p class="text-sm text-muted-foreground">
+              Please wait while the system is scanning...
+            </p>
+            <Progress :model-value="50" color="bg-primary" />
+          </div>
+        </CardContent>
+        <CardContent v-else>
           <!-- Loading State -->
           <div v-if="loading" class="flex items-center justify-center py-4">
             <div

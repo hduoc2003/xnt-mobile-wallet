@@ -334,9 +334,9 @@ pub fn run() {
         android_logger::init_once(
             android_logger::Config::default()
                 .with_max_level(log::LevelFilter::Debug)
-                .with_tag("NeptuneWallet"),
+                .with_tag("XNT Wallet"),
         );
-        log::info!("[NeptuneWallet] Logger initialized for Android");
+        log::info!("[XNT Wallet] Logger initialized for Android");
     }
     
     #[cfg(not(target_os = "android"))]
@@ -346,7 +346,7 @@ pub fn run() {
             .filter_module("xnt_wallet_tauri", log::LevelFilter::Debug)
             .filter_module("neptune_privacy", log::LevelFilter::Warn)
             .init();
-        log::info!("[NeptuneWallet] Logger initialized for desktop");
+        log::info!("[XNT Wallet] Logger initialized for desktop");
     }
 
     tauri::Builder::default()
