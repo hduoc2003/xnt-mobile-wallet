@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { ChevronLeft, KeyRound, Shield } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 import RecoverSeedInput from './RecoverSeedInput.vue'
 import { ArrowLeftCommon, PasswordCreationForm } from '@/components/commons'
 import { useNeptuneWallet, useTransaction } from '@/composables'
@@ -13,11 +14,6 @@ const emit = defineEmits<{
 const { recoverWalletFromSeed, createKeystore } = useNeptuneWallet()
 const { clearTransactions } = useTransaction()
 
-onMounted(() => {
-  if ((window as any).logger) {
-    (window as any).logger.info('[RecoverWalletFlow] Component mounted')
-  }
-})
 
 const recoverSeedInputRef = ref<InstanceType<typeof RecoverSeedInput>>()
 const passwordFormRef = ref<InstanceType<typeof PasswordCreationForm>>()
@@ -54,19 +50,34 @@ const handlePasswordSubmit = async (submittedPassword: string) => {
 
   try {
     isLoading.value = true
+    
     const result = await recoverWalletFromSeed(seedPhrase.value)
-    if (result.address) {
-      await createKeystore(seedPhrase.value.join(' '), password.value)
-      clearTransactions()
-      
-      emit('accessWallet')
+    
+    if (!result.address) {
+      throw new Error('Failed to recover wallet: No address returned')
     }
+    
+    const keystoreFileName = await createKeystore(seedPhrase.value.join(' '), password.value, true)
+    
+    if (!keystoreFileName) {
+      throw new Error('Failed to create keystore')
+    }
+    
+    clearTransactions()
+    emit('accessWallet')
   } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    
     if (err instanceof Error && err.message.includes('Invalid seed phrase')) {
       isSeedPhraseValid.value = false
+      toast.error('Invalid Seed Phrase', {
+        description: 'The seed phrase you entered is invalid. Please check and try again.',
+      })
+    } else {
+      toast.error('Import Failed', {
+        description: errorMessage || 'Failed to import wallet. Please try again.',
+      })
     }
-    console.error('Failed to recover wallet:', err)
-    throw err
   } finally {
     isLoading.value = false
   }

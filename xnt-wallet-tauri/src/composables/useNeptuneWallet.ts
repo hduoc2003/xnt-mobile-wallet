@@ -50,6 +50,10 @@ export function useNeptuneWallet() {
 
   const recoverWalletFromSeed = async (seedPhrase: string[]): Promise<WalletState> => {
     try {
+      store.clearWallet()
+      cachedViewKey = null
+      await (window as any).walletApi.clearUtxoCache?.()
+
       const result = await getViewKeyFromSeed(seedPhrase)
       store.setReceiverId(result.receiver_identifier)
       store.setSpendingKey(result.spending_key_hex)
@@ -65,7 +69,7 @@ export function useNeptuneWallet() {
         address: addressResult,
       }
     } catch (err: any) {
-      await (window as any).logger?.error('Error recovering wallet from seed: ', err.message)
+      await (window as any).logger?.error('Error recovering wallet from seed:', err.message)
       throw err
     }
   }
@@ -78,8 +82,20 @@ export function useNeptuneWallet() {
 
   const decryptKeystore = async (password: string): Promise<{ seedPhrase: string[] }> => {
     try {
-      const keystoreFileName = store.getKeystoreFileName
-      if (!keystoreFileName) await checkKeystore()
+      let keystoreFileName = store.getKeystoreFileName
+      if (!keystoreFileName) {
+        await checkKeystore()
+        keystoreFileName = store.getKeystoreFileName
+      }
+
+      if (!keystoreFileName) {
+        throw new Error('No keystore file found')
+      }
+
+      store.clearWallet()
+      cachedViewKey = null
+      await (window as any).walletApi.clearUtxoCache?.()
+      store.setKeystoreFileName(keystoreFileName)
 
       const result = await (window as any).walletApi.decryptKeystore(
         keystoreFileName,
@@ -96,11 +112,8 @@ export function useNeptuneWallet() {
       const addressResult = (viewKeyResult as any).address || viewKeyResult.receiver_identifier
       store.setAddress(addressResult)
 
-      // Load min block height from keystore (but don't overwrite if it's 0)
-      const loadedHeight = await loadMinBlockHeightFromKeystore()
-      if (loadedHeight > 0) {
-        store.setMinBlockHeight(loadedHeight)
-      }
+      store.setMinBlockHeight(0)
+      await (window as any).walletApi.updateMinBlockHeight(keystoreFileName, 0)
 
       return { seedPhrase }
     } catch (err: any) {
@@ -116,25 +129,50 @@ export function useNeptuneWallet() {
     }
   }
 
-  const createKeystore = async (seed: string, password: string): Promise<string | null> => {
+  const createKeystore = async (seed: string, password: string, isImportedWallet: boolean = false): Promise<string | null> => {
     try {
-      let currentHeight = DEFAULT_MIN_BLOCK_HEIGHT
-      try {
-        const bh = await API.getBlockHeight()
-        currentHeight = bh?.result?.height || bh?.height || DEFAULT_MIN_BLOCK_HEIGHT
-      } catch (e: any) {
-        await (window as any).logger?.warn?.(
-          `[Keystore] failed to fetch block height, fallback to default: ${e?.message || e}`
-        )
+      const savedAddress = store.getAddress
+      const savedReceiverId = store.getReceiverId
+      const savedSpendingKey = store.getSpendingKey
+      const savedViewKey = cachedViewKey
+      
+      store.clearWallet()
+      cachedViewKey = null
+      store.setKeystoreFileName(null)
+      await (window as any).walletApi.clearUtxoCache?.()
+
+      let minBlockHeight = isImportedWallet ? 0 : DEFAULT_MIN_BLOCK_HEIGHT
+      
+      if (!isImportedWallet) {
+        try {
+          const bh = await API.getBlockHeight()
+          minBlockHeight = toFiniteNumber(bh?.result?.height || bh?.height || DEFAULT_MIN_BLOCK_HEIGHT)
+        } catch (e: any) {
+          await (window as any).logger?.warn('Failed to fetch block height:', e?.message || e)
+        }
       }
 
-      const result = await (window as any).walletApi.createKeystore(seed, password)
-      if (!result.success) return null
+      const resultRaw = await (window as any).walletApi.createKeystore(seed, password)
+      const result = typeof resultRaw === 'string' ? JSON.parse(resultRaw) : resultRaw
+      
+      if (!result?.success || !result.fileName) {
+        await (window as any).logger?.error('Keystore creation failed:', result?.error || 'Unknown error')
+        return null
+      }
+      
       store.setKeystoreFileName(result.fileName)
-      store.setMinBlockHeight(toFiniteNumber(currentHeight))
+      const finalMinBlockHeight = toFiniteNumber(minBlockHeight)
+      store.setMinBlockHeight(finalMinBlockHeight)
+      await (window as any).walletApi.updateMinBlockHeight(result.fileName, finalMinBlockHeight)
+      
+      if (savedAddress) store.setAddress(savedAddress)
+      if (savedReceiverId) store.setReceiverId(savedReceiverId)
+      if (savedSpendingKey) store.setSpendingKey(savedSpendingKey)
+      if (savedViewKey) cachedViewKey = savedViewKey
+      
       return result.fileName
     } catch (err: any) {
-      await (window as any).logger?.error('Error creating keystore: ', err.message)
+      await (window as any).logger?.error('Error creating keystore:', err.message)
       throw err
     }
   }
@@ -248,19 +286,24 @@ export function useNeptuneWallet() {
       }
 
       let lastScannedBlock: number | null = store.getMinBlockHeight
-      if (lastScannedBlock == null || lastScannedBlock === 0) {
+      let startBlock: number
+      
+      // If store has 0, it's an imported wallet - force full scan from block 0
+      if (lastScannedBlock === 0) {
+        startBlock = DEFAULT_MIN_BLOCK_HEIGHT
+      } else if (lastScannedBlock == null) {
         const loaded = await loadMinBlockHeightFromKeystore()
         if (loaded > 0) {
           lastScannedBlock = loaded
           store.setMinBlockHeight(loaded)
+          startBlock = Math.max(DEFAULT_MIN_BLOCK_HEIGHT, lastScannedBlock - 10)
         } else {
-          lastScannedBlock = null
+          lastScannedBlock = 0
+          store.setMinBlockHeight(0)
+          startBlock = DEFAULT_MIN_BLOCK_HEIGHT
         }
-      }
-
-      let startBlock: number
-      if (lastScannedBlock !== null && lastScannedBlock > 0) {
-        startBlock = lastScannedBlock
+      } else if (lastScannedBlock > 0) {
+        startBlock = Math.max(DEFAULT_MIN_BLOCK_HEIGHT, lastScannedBlock - 10)
       } else if (minBlockFromUtxos !== null) {
         startBlock = minBlockFromUtxos
       } else {

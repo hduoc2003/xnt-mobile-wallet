@@ -70,7 +70,7 @@ const handleAccessWallet = async () => {
     isLoading.value = true
 
     const seedPhraseString = seedPhrase.value.join(' ')
-    await createKeystore(seedPhraseString, password.value)
+    await createKeystore(seedPhraseString, password.value, false)
     clearTransactions()
 
     emit('accessWallet')

@@ -4,8 +4,11 @@
 set -e
 
 # Set Android NDK path
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$HOME/Library/Android/sdk/ndk/26.1.10909125}"
 export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
+export ANDROID_NDK="$ANDROID_NDK_HOME"
 
 # Verify NDK exists
 if [ ! -d "$ANDROID_NDK_HOME" ]; then
@@ -23,9 +26,12 @@ export CMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cma
 # Default Android build toolchain variables (can be overridden by caller)
 export ANDROID_ABI="${ANDROID_ABI:-arm64-v8a}"
 export ANDROID_PLATFORM="${ANDROID_PLATFORM:-android-24}"
-export CC="${CC:-aarch64-linux-android24-clang}"
-export CXX="${CXX:-aarch64-linux-android24-clang++}"
-export AR="${AR:-llvm-ar}"
+# Toolchain binaries (full paths to avoid lookup issues)
+export CC="${CC:-$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang}"
+export CXX="${CXX:-$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang++}"
+export AR="${AR:-$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar}"
+export RANLIB="${RANLIB:-$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ranlib}"
+export STRIP="${STRIP:-$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip}"
 
 # Verify CMake toolchain exists
 if [ ! -f "$CMAKE_TOOLCHAIN_FILE" ]; then
@@ -51,7 +57,7 @@ echo "  - x86_64"
 npm run tauri android build -- --target x86_64
 
 echo ""
-echo "Step 3: Patching WryActivity for libc++ load order..."
+echo "Step 3: Patching WryActivity to remove libc++_shared loading (using static C++ linking)..."
 ./patch-wry-activity.sh
 
 echo ""

@@ -53,9 +53,10 @@ android {
         }
         getByName("release") {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
                 *fileTree(".") { include("**/*.pro") }
-                    .plus(getDefaultProguardFile("proguard-android-optimize.txt"))
                     .toList().toTypedArray()
             )
             signingConfig = signingConfigs.getByName("release")

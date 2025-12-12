@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores'
 import { WelcomeTab, CreateWalletFlow, RecoverWalletFlow } from './components'
@@ -12,17 +12,7 @@ const { goToCreate, goToRecover, goBackToWelcome } = useAuthRouting()
 const currentState = computed(() => authStore.currentState.value)
 
 onMounted(() => {
-  if ((window as any).logger) {
-    (window as any).logger.info('[AuthView] Component mounted, currentState:', currentState.value)
-  }
-
   checkKeystore()
-})
-
-watch(currentState, (newState) => {
-  if ((window as any).logger) {
-    (window as any).logger.info('[AuthView] State changed to:', newState)
-  }
 })
 
 const handleGoToCreate = () => {

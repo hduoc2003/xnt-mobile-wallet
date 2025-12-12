@@ -8,7 +8,7 @@ fn main() {
             if let Ok(ndk_home) = std::env::var("ANDROID_NDK_HOME") {
                 println!("cargo:rustc-env=ANDROID_NDK_HOME={}", ndk_home);
                 println!("cargo:rustc-env=ANDROID_NDK_ROOT={}", ndk_home);
-                println!("cargo:rustc-link-lib=c++_shared");
+                println!("cargo:rustc-link-lib=c++_static");
                 
                 // Set CMake toolchain file
                 let toolchain_file = format!("{}/build/cmake/android.toolchain.cmake", ndk_home);
@@ -48,72 +48,6 @@ fn main() {
                     let snappy_lib_dir = format!("{}/build", out_dir);
                     println!("cargo:rustc-env=CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH");
                     println!("cargo:rustc-env=CMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH");
-                }
-                
-                // Copy libc++_shared.so to jniLibs directory for Android
-                let jni_libs_dir = std::path::Path::new("gen/android/app/src/main/jniLibs");
-                if jni_libs_dir.exists() {
-                    use std::path::{Path, PathBuf};
-
-                    let ndk_source = if target.contains("aarch64") {
-                        Some(PathBuf::from(format!("{}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so", ndk_home)))
-                    } else if target.contains("x86_64") {
-                        Some(PathBuf::from(format!("{}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/x86_64-linux-android/libc++_shared.so", ndk_home)))
-                    } else {
-                        None
-                    };
-
-                    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-                    let fallback_dir = if target.contains("aarch64") {
-                        manifest_dir.join("prebuilt-libs/arm64-v8a/libc++_shared.so")
-                    } else if target.contains("x86_64") {
-                        manifest_dir.join("prebuilt-libs/x86_64/libc++_shared.so")
-                    } else {
-                        manifest_dir.join("prebuilt-libs/libc++_shared.so")
-                    };
-
-                    let mut source_candidates = Vec::new();
-                    if let Some(path) = ndk_source {
-                        source_candidates.push(path);
-                    }
-                    source_candidates.push(fallback_dir);
-
-                    if let Some(source_path) = source_candidates.into_iter().find(|candidate| {
-                        candidate.exists()
-                            && candidate
-                                .metadata()
-                                .map(|m| m.len() > 0)
-                                .unwrap_or(false)
-                    }) {
-                        if let Some(arch_dir) = if target.contains("aarch64") {
-                            Some(jni_libs_dir.join("arm64-v8a"))
-                        } else if target.contains("x86_64") {
-                            Some(jni_libs_dir.join("x86_64"))
-                        } else {
-                            None
-                        } {
-                            if let Err(e) = std::fs::create_dir_all(&arch_dir) {
-                                eprintln!("Warning: Failed to create jniLibs directory: {}", e);
-                            } else {
-                                let dest = arch_dir.join("libc++_shared.so");
-                                if let Err(e) = std::fs::copy(&source_path, &dest) {
-                                    eprintln!(
-                                        "Warning: Failed to copy libc++_shared.so from {}: {}",
-                                        source_path.display(),
-                                        e
-                                    );
-                                } else {
-                                    println!(
-                                        "cargo:warning=Copied libc++_shared.so from {} to {}",
-                                        source_path.display(),
-                                        dest.display()
-                                    );
-                                }
-                            }
-                        }
-                    } else {
-                        eprintln!("Warning: Unable to locate a valid libc++_shared.so for target {}", target);
-                    }
                 }
             }
         }
