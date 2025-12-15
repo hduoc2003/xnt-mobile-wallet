@@ -112,8 +112,22 @@ export function useNeptuneWallet() {
       const addressResult = (viewKeyResult as any).address || viewKeyResult.receiver_identifier
       store.setAddress(addressResult)
 
-      store.setMinBlockHeight(0)
-      await (window as any).walletApi.updateMinBlockHeight(keystoreFileName, 0)
+      try {
+        const minBlockHeightResponse = await (window as any).walletApi.getMinBlockHeight(keystoreFileName)
+        const minBlockHeightData = typeof minBlockHeightResponse === 'string' 
+          ? JSON.parse(minBlockHeightResponse) 
+          : minBlockHeightResponse
+        
+        if (minBlockHeightData?.success && minBlockHeightData?.minBlockHeight !== undefined) {
+          const savedHeight = toFiniteNumber(minBlockHeightData.minBlockHeight)
+          store.setMinBlockHeight(savedHeight)
+        } else {
+          store.setMinBlockHeight(0)
+        }
+      } catch (err: any) {
+        await (window as any).logger?.warn('Error loading min block height from keystore, defaulting to 0:', err.message)
+        store.setMinBlockHeight(0)
+      }
 
       return { seedPhrase }
     } catch (err: any) {
@@ -254,6 +268,18 @@ export function useNeptuneWallet() {
   }
 
   // ===== API METHODS =====
+  const forceRescanUtxos = async (): Promise<any> => {
+    const keystoreFileName = store.getKeystoreFileName
+    if (keystoreFileName) {
+      store.setMinBlockHeight(0)
+      await (window as any).walletApi.updateMinBlockHeight(keystoreFileName, 0)
+    } else {
+      store.setMinBlockHeight(0)
+    }
+    
+    return await getUtxos()
+  }
+
   const getUtxos = async (): Promise<any> => {
     if (!cachedViewKey) {
       throw new Error('No view key available. Please import or generate a wallet first.')
@@ -525,6 +551,7 @@ export function useNeptuneWallet() {
     getAddressFromSeed,
 
     getUtxos,
+    forceRescanUtxos,
     getBalance,
     getBlockHeight,
     getNetworkInfo,

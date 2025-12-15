@@ -7,7 +7,7 @@ import { useNeptuneWallet, useFormat } from '@/composables'
 import type { Utxo } from '@/types'
 
 const neptuneStore = useNeptuneStore()
-const { getUtxos } = useNeptuneWallet()
+const { getUtxos, forceRescanUtxos } = useNeptuneWallet()
 const { formatHash, formatAmount } = useFormat()
 
 const loading = ref(false)
@@ -47,7 +47,16 @@ const inUseUtxosAmount = computed(() => {
 })
 
 const handleRefresh = async () => {
-  await getUtxosData()
+  try {
+    loading.value = true
+    toast.info('Starting full rescan from block 0...')
+    await forceRescanUtxos()
+    toast.success('Full rescan completed')
+  } catch (error) {
+    toast.error('Failed to force rescan UTXOs')
+  } finally {
+    loading.value = false
+  }
 }
 
 const getUtxosData = async () => {
@@ -81,7 +90,7 @@ onMounted(async () => {
           </div>
         </div>
 
-        <Button variant="outline" size="icon" @click="handleRefresh" :disabled="loading">
+        <Button variant="outline" size="icon" @click="handleRefresh" :disabled="loading" title="Force rescan from block 0">
           <RefreshCw :class="['size-4', loading && 'animate-spin']" />
         </Button>
       </div>
