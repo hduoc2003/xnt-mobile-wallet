@@ -6,11 +6,13 @@ export const useTickers = () => {
 
   const fetchXntPrice = async () => {
     try {
-      const response = await getXntPrice()
-      tickerStore.setXntPrice(response?.result?.price)
+      const { data } = await getXntPrice('https://api.coinmarketcap.com/data-api/v3/cryptocurrency/detail/lite?id=39109')
+      const price = data?.statistics?.price
+      tickerStore.setXntPrice(price)
+      localStorage.setItem('xntPriceLastFetchTime', Date.now().toString())
+      localStorage.setItem('xntPrice', price?.toString() || '')
     } catch (err: any) {
-      await (window as any).logger?.error('Error fetching XNT price: ', err.message)
-      throw err
+      console.log(err)
     }
   }
 

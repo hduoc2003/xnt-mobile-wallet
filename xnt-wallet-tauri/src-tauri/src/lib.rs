@@ -45,6 +45,8 @@ use rand::Rng;
 use std::str::FromStr;
 use log::Level;
 use reqwest::Client;
+use reqwest::header::USER_AGENT;
+use reqwest::header::HeaderMap;
 
 #[cfg(target_os = "android")]
 use android_logger;
@@ -286,6 +288,36 @@ async fn proxy_json_rpc(
 }
 
 #[tauri::command]
+async fn proxy_http_get(url: String) -> Result<String, String> {
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36".parse().unwrap());
+
+    let response = client
+        .get(&url)
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|e| format!("Request error: {e}"))?;
+
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response body: {e}"))?;
+
+    if !status.is_success() {
+        return Err(format!("Upstream error {status}: {text}"));
+    }
+
+    Ok(text)
+}
+
+#[tauri::command]
 async fn set_rpc_endpoint(
     app: tauri::AppHandle,
     endpoint: String,
@@ -371,6 +403,7 @@ pub fn run() {
             clear_utxo_cache,
             get_pending_balance,
             proxy_json_rpc,
+            proxy_http_get,
             set_rpc_endpoint,
             get_custom_rpc_endpoint,
             log_message,

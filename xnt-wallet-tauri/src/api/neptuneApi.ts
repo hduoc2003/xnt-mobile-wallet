@@ -1,8 +1,6 @@
 import request from './request'
 import { invoke } from '@tauri-apps/api/core'
 
-const DEFAULT_MIN_BLOCK_HEIGHT = 0
-
 const isTauriEnv =
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in (window as any)
 
@@ -53,10 +51,6 @@ export const broadcastSignedTransaction = async (transactionHex: string): Promis
   return await callJsonRpc('mempool_submitTransaction', params)
 }
 
-/**
- * Get XNT price
- */
-export const getXntPrice = async (): Promise<any> => {
-  return await callJsonRpc('node_getXntPrice')
+export const getXntPrice = async (url: string): Promise<any> => {
+  return await JSON.parse(await invoke<string>('proxy_http_get', { url }))
 }
-

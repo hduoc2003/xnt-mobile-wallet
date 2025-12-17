@@ -48,9 +48,30 @@ const handleCopyAddress = async () => {
 let intervalId: number | null = null
 
 onMounted(() => {
-  fetchXntPrice()
-  intervalId = window.setInterval(fetchXntPrice, POLLING_INTERVAL_XNT_PRICE)
+  const lastFetchTime = localStorage.getItem('xntPriceLastFetchTime')
+  const cachedPrice = localStorage.getItem('xntPrice')
+  const currentTime = Date.now()
+
+  if (lastFetchTime && cachedPrice) {
+    const timeSinceLastFetch = currentTime - Number(lastFetchTime)
+    if (timeSinceLastFetch < POLLING_INTERVAL_XNT_PRICE) {
+      tickerStore.setXntPrice(Number(cachedPrice))
+      const remainingTime = POLLING_INTERVAL_XNT_PRICE - timeSinceLastFetch
+      setTimeout(() => {
+        fetchAndSetInterval()
+      }, remainingTime)
+    } else {
+      fetchAndSetInterval()
+    }
+  } else {
+    fetchAndSetInterval()
+  }
 })
+
+const fetchAndSetInterval = async () => {
+  await fetchXntPrice()
+  intervalId = window.setInterval(fetchXntPrice, POLLING_INTERVAL_XNT_PRICE)
+}
 
 onUnmounted(() => {
   if (intervalId != null) {
@@ -82,7 +103,7 @@ onUnmounted(() => {
               {{ formatAmount(+availableBalance) }}
             </span>
             <span class="text-xl font-medium text-muted-foreground">XNT</span>
-            <span class="text-lg font-medium text-muted-foreground">
+            <span v-if="usdValue" class="text-lg font-medium text-muted-foreground">
               = ${{ formatAmount(usdValue, 2) }}
             </span>
           </div>
