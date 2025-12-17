@@ -543,7 +543,6 @@ export function useNeptuneWallet() {
   const clearWallet = () => {
     store.clearWallet()
     cachedViewKey = null
-    router.push('/auth')
   }
 
   return {
