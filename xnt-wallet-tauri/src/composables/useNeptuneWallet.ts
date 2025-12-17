@@ -1,4 +1,4 @@
-import { useNeptuneStore } from '@/stores/neptuneStore'
+import { useNeptuneStore } from '@/stores'
 import * as API from '@/api/neptuneApi'
 import type {
   BalanceResult,
@@ -7,11 +7,12 @@ import type {
   ViewKeyResult,
   WalletState,
 } from '@/types'
-import { DEFAULT_MIN_BLOCK_HEIGHT } from '@/utils'
-import { toFiniteNumber } from '@/utils'
+import { DEFAULT_MIN_BLOCK_HEIGHT, toFiniteNumber } from '@/utils'
+import { useRouter } from 'vue-router'
 
 let cachedViewKey: string | null = null
 
+const router = useRouter()
 
 export function useNeptuneWallet() {
   const store = useNeptuneStore()
@@ -542,6 +543,7 @@ export function useNeptuneWallet() {
   const clearWallet = () => {
     store.clearWallet()
     cachedViewKey = null
+    router.push('/auth')
   }
 
   return {

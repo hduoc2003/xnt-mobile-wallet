@@ -69,7 +69,7 @@ const isActiveRoute = (routePath: string) => {
     </header>
 
     <!-- Main Content Area (Scrollable) -->
-    <main class="flex-1 overflow-y-auto pb-16" :style="{ paddingTop: `calc(3.5rem + env(safe-area-inset-top, 0px))` }">
+    <main class="flex-1 overflow-y-auto pb-16" :style="{ paddingTop: `calc(4.5rem + env(safe-area-inset-top, 0px))` }">
       <router-view />
     </main>
 
@@ -104,7 +104,7 @@ const isActiveRoute = (routePath: string) => {
 
 <style scoped>
 .safe-area-top {
-  padding-top: env(safe-area-inset-top, 0);
+  padding-top: calc(env(safe-area-inset-top, 0) + 1rem);
 }
 
 .safe-area-bottom {

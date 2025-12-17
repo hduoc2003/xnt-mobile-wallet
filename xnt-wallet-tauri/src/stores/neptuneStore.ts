@@ -78,6 +78,7 @@ export const useNeptuneStore = defineStore('neptune', () => {
         utxos: [],
         minBlockHeight: null,
       }
+      keystoreFileName.value = null
     }
 
     // ===== GETTERS =====
