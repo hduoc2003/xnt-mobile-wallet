@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { AlertTriangle, ChevronLeft } from 'lucide-vue-next'
-import { SeedPhraseGrid } from '@/components/commons'
+import { SeedPhraseGrid } from '@/components'
+import { useAuthStore } from '@/stores'
 
+const authStore = useAuthStore()
 interface Props {
   seedPhrase: string[]
 }
@@ -15,7 +17,6 @@ const emit = defineEmits<{
 }>()
 
 const seedWords = computed(() => props.seedPhrase || [])
-const seedPhraseGridRef = ref<InstanceType<typeof SeedPhraseGrid>>()
 const isRevealed = ref(false)
 
 const handleNext = () => {
@@ -31,6 +32,14 @@ const handleBack = () => {
 const handleReveal = () => {
   isRevealed.value = true
 }
+
+onMounted(() => {
+  authStore.enableBackButton(handleBack)
+})
+
+onUnmounted(() => {
+  authStore.disableBackButton()
+})
 </script>
 
 <template>
@@ -57,7 +66,6 @@ const handleReveal = () => {
     <!-- Seed Words Grid -->
     <SeedPhraseGrid
       v-if="seedWords && seedWords.length > 0"
-      ref="seedPhraseGridRef"
       :seed-phrase="seedWords"
       :require-reveal="true"
       @reveal="handleReveal"

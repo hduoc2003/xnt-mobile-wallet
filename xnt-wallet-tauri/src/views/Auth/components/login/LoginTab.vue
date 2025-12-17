@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { PasswordForm, Logo } from '@/components/commons'
+import { PasswordForm, Logo } from '@/components'
 
 const props = withDefaults(defineProps<{
   loading?: boolean
@@ -31,12 +31,7 @@ const handleNewWallet = () => {
 </script>
 
 <template>
-  <div class="relative flex min-h-screen flex-col bg-gradient-to-br from-background via-background to-primary/5 p-4">
-    <!-- Theme Toggle -->
-    <div class="absolute right-4 top-4 z-10">
-      <ThemeToggle />
-    </div>
-
+  <div class="relative flex h-full bg-gradient-to-br p-4">
     <!-- Content Container -->
     <div class="flex flex-1 flex-col items-center justify-center">
       <div class="w-full max-w-md space-y-8">

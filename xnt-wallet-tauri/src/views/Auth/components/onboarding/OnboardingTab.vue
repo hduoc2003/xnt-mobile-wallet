@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { Wallet, KeyRound, Sparkles } from 'lucide-vue-next'
-import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { Card, CardContent } from '@/components/ui/card'
 import { Logo } from '@/components/commons'
 
@@ -20,10 +19,6 @@ const handleRecover = () => {
 
 <template>
   <div class="relative flex min-h-screen flex-col bg-linear-to-br from-background via-background to-primary/5 p-4">
-    <!-- Theme Toggle -->
-    <div class="absolute right-4 top-4 z-10">
-      <ThemeToggle />
-    </div>
 
     <!-- Content Container -->
     <div class="flex flex-1 flex-col items-center justify-center">
