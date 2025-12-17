@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue'
 import { Database, Wallet, History, Network } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
@@ -6,7 +7,38 @@ import { ThemeToggle } from '@/components/ui/theme-toggle'
 const route = useRoute()
 const router = useRouter()
 
-// Navigation items for bottom tab bar
+let backButtonUnlisten: (() => void) | null = null
+
+onMounted(async () => {
+  try {
+    // Dynamically import to avoid errors on non-Android platforms
+    const { onBackButtonPress } = await import('@tauri-apps/api/app')
+    
+    // Set up back button handler
+    const unlisten = await onBackButtonPress(() => {
+      const currentPath = router.currentRoute.value.path
+      const currentName = router.currentRoute.value.name
+      
+      if (currentPath !== '/' && currentName !== 'wallet') {
+        router.push({ name: 'wallet' })
+      }
+
+      return true
+    })
+    
+    backButtonUnlisten = unlisten as unknown as () => void
+  } catch (error) {
+    console.debug('Back button handler not available:', error)
+  }
+})
+
+onUnmounted(() => {
+  if (backButtonUnlisten) {
+    backButtonUnlisten()
+    backButtonUnlisten = null
+  }
+})
+
 const navItems = [
   { name: 'Wallet', icon: Wallet, route: '/', label: 'Wallet' },
   { name: 'UTXO', icon: Database, route: '/utxo', label: 'UTXO' },
@@ -22,7 +54,7 @@ const isActiveRoute = (routePath: string) => {
 <template>
   <div class="flex min-h-screen flex-col bg-background">
     <!-- Header -->
-    <header class="fixed top-0 left-0 right-0 z-10 border-b border-border bg-card">
+    <header class="safe-area-top fixed top-0 left-0 right-0 z-50 border-b border-border bg-card">
       <div class="flex h-14 items-center justify-between px-4">
         <div class="flex items-center gap-3">
           <img
@@ -37,7 +69,7 @@ const isActiveRoute = (routePath: string) => {
     </header>
 
     <!-- Main Content Area (Scrollable) -->
-    <main class="flex-1 overflow-y-auto pt-14 pb-16">
+    <main class="flex-1 overflow-y-auto pb-16" :style="{ paddingTop: `calc(3.5rem + env(safe-area-inset-top, 0px))` }">
       <router-view />
     </main>
 
@@ -71,7 +103,10 @@ const isActiveRoute = (routePath: string) => {
 </template>
 
 <style scoped>
-/* Safe area for notched devices (iPhone X, etc.) */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0);
+}
+
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }

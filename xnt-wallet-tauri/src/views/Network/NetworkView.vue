@@ -72,8 +72,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="p-4">
-    <div class="mx-auto max-w-2xl space-y-6">
+  <div class="min-h-full p-4">
+    <div class="mx-auto max-w-2xl space-y-6 pb-4">
       <!-- Page Header -->
       <NetworkStatusHeader :loading="loading" @refresh="handleRefresh" />
 
