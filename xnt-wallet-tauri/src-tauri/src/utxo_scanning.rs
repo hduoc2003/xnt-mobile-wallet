@@ -570,25 +570,13 @@ pub async fn get_pending_balance_from_mempool(
                     continue;
                 }
                 
-                let rpc_kernel: RpcTransactionKernel = 
+                let rpc_kernel: RpcTransactionKernel =
                     serde_json::from_value(kernel_result["kernel"].clone())
                         .map_err(|e| format!("Failed to deserialize RPC kernel: {}", e))?;
-                
-                let tx_kernel_proxy = TransactionKernelProxy {
-                    inputs: vec![],
-                    outputs: rpc_kernel.outputs.into_iter().map(|ar| ar.into()).collect(),
-                    announcements: rpc_kernel.announcements.into_iter().map(|ann| {
-                        use neptune_privacy::protocol::consensus::transaction::announcement::Announcement;
-                        Announcement::new(ann.0)
-                    }).collect(),
-                    fee: rpc_kernel.fee.0,
-                    coinbase: rpc_kernel.coinbase.map(|c| c.0),
-                    timestamp: rpc_kernel.timestamp,
-                    mutator_set_hash: rpc_kernel.mutator_set_hash,
-                    merge_bit: rpc_kernel.merge_bit,
-                };
-                
-                Some(tx_kernel_proxy.into_kernel())
+
+                let tx_kernel: TransactionKernel = rpc_kernel.into();
+
+                Some(tx_kernel)
             }
             Err(_e) => {
                 continue;

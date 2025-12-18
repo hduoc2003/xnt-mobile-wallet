@@ -25,7 +25,7 @@ serde_json = "1"
 
 # Core xnt-core dependency (formerly neptune-core/neptune-cash)
 # Path is relative to this Cargo.toml (src-tauri), up to workspace root then into xnt-core crate
-neptune-privacy = { path = "../../xnt-core" }
+neptune-privacy = { path = "../../xnt-core/xnt-core" }
 
 # Utilities
 hex = "0.4"

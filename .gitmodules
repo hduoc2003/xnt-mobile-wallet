@@ -1,0 +1,3 @@
+[submodule "xnt-core"]
+	path = xnt-core
+	url = https://git.softly.com/Neptune/xnt-core
