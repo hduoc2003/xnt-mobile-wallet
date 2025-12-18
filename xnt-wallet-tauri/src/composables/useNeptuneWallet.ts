@@ -8,11 +8,8 @@ import type {
   WalletState,
 } from '@/types'
 import { DEFAULT_MIN_BLOCK_HEIGHT, toFiniteNumber } from '@/utils'
-import { useRouter } from 'vue-router'
 
 let cachedViewKey: string | null = null
-
-const router = useRouter()
 
 export function useNeptuneWallet() {
   const store = useNeptuneStore()

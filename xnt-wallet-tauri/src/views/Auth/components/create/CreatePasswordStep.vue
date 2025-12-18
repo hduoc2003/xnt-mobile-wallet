@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { ThemeToggle } from '@/components/ui/theme-toggle'
-import { Logo, PasswordCreationForm } from '@/components/commons'
-import { ArrowLeftCommon } from '@/components/commons'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { onMounted, onUnmounted } from 'vue';
+import { Logo, PasswordCreationForm } from '@/components'
+import { useAuthStore } from '@/stores'
 
+const authStore = useAuthStore()  
 const emit = defineEmits<{
   next: [password: string]
   goToRecover: []
@@ -22,22 +21,20 @@ const handleIHaveWallet = () => {
 const handleGoToWelcome = () => {
   emit('goToWelcome')
 }
+
+// onMounted(() => {
+//   authStore.enableBackButton(handleGoToWelcome)
+// })
+
+// onUnmounted(() => {
+//   authStore.disableBackButton()
+// })
 </script>
 
 <template>
   <div
-    class="relative flex min-h-screen flex-col bg-linear-to-br from-background via-background to-primary/5 p-4"
+    class="relative flex h-full flex-col bg-linear-to-br from-background via-background to-primary/5 p-4"
   >
-    <!-- Theme Toggle -->
-    <div class="absolute right-4 top-4 z-10">
-      <ThemeToggle />
-    </div>
-
-    <!-- Back Button -->
-    <div class="absolute left-4 top-4 z-10">
-      <ArrowLeftCommon @click="handleGoToWelcome" />
-    </div>
-
     <!-- Content Container -->
     <div class="flex flex-1 flex-col items-center justify-center">
       <div class="w-full max-w-md space-y-8">

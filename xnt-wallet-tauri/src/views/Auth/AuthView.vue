@@ -4,12 +4,13 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores'
 import { WelcomeTab, CreateWalletFlow, RecoverWalletFlow } from './components'
 import { useAuthRouting, useNeptuneWallet } from '@/composables'
+import { AuthLayout } from '@/components'
 
 const authStore = useAuthStore()
 const router = useRouter()
 const { goToCreate, goToRecover, goBackToWelcome } = useAuthRouting()
 
-const currentState = computed(() => authStore.currentState.value)
+const currentState = computed(() => authStore.getCurrentState)
 
 onMounted(() => {
   checkKeystore()
@@ -38,7 +39,7 @@ const checkKeystore = async () => {
 </script>
 
 <template>
-  <div class="min-h-screen">
+  <AuthLayout>
     <!-- Welcome: Welcome screen with login -->
     <WelcomeTab
       v-if="currentState === 'welcome'"
@@ -61,5 +62,5 @@ const checkKeystore = async () => {
       @cancel="handleGoToWelcome"
       @access-wallet="handleAccessWallet"
     />
-  </div>
+  </AuthLayout>
 </template>

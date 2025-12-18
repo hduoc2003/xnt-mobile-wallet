@@ -1,6 +1,6 @@
-import { ref } from 'vue'
+import { defineStore } from 'pinia'
+import { computed, ref } from 'vue'
 
-// Auth flow states for the new UI
 export type AuthState =
   | 'welcome'
   | 'create'
@@ -8,13 +8,16 @@ export type AuthState =
   | 'confirm'
   | 'complete'
 
-// Singletons to preserve state across composables
-const currentState = ref<AuthState>('welcome')
-const previousState = ref<AuthState | null>(null)
+export const useAuthStore = defineStore('auth', () => {
+  const currentState = ref<AuthState>('welcome')
+  const previousState = ref<AuthState | null>(null)
+  const showBackButton  = ref(false)
+  const handleBackAction = ref<(() => void) | null>(null)
 
-export const useAuthStore = () => {
-  const getCurrentState = () => currentState.value
-  const getPreviousState = () => previousState.value
+  const getCurrentState = computed(() => currentState.value)
+  const getPreviousState = computed(() => previousState.value)
+  const getShowBackButton = computed(() => showBackButton.value)
+  const getHandleBackAction = computed(() => handleBackAction.value)
 
   const setState = (state: AuthState) => {
     previousState.value = currentState.value
@@ -37,15 +40,27 @@ export const useAuthStore = () => {
     previousState.value ? setState(previousState.value) : setState('welcome')
   }
 
+  const enableBackButton = (fn: () => void) => {
+    showBackButton.value = true
+    handleBackAction.value = fn
+  }
+
+  const disableBackButton = () => {
+    showBackButton.value = false
+    handleBackAction.value = null
+  }
+
   return {
-    currentState,
-    previousState,
     getCurrentState,
     getPreviousState,
+    getShowBackButton,
+    getHandleBackAction,
     setState,
     goToWelcome,
     goToCreate,
     goToRecover,
     goBack,
+    enableBackButton,
+    disableBackButton,
   }
-}
+})

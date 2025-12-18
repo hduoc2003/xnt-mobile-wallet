@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { ChevronLeft, KeyRound, Shield } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import RecoverSeedInput from './RecoverSeedInput.vue'
-import { ArrowLeftCommon, PasswordCreationForm } from '@/components/commons'
+import { PasswordCreationForm } from '@/components'
 import { useNeptuneWallet, useTransaction } from '@/composables'
+import { useAuthStore } from '@/stores'
 
 const emit = defineEmits<{
   cancel: []
@@ -14,7 +15,7 @@ const emit = defineEmits<{
 const { recoverWalletFromSeed, createKeystore } = useNeptuneWallet()
 const { clearTransactions } = useTransaction()
 
-
+const authStore = useAuthStore()
 const recoverSeedInputRef = ref<InstanceType<typeof RecoverSeedInput>>()
 const passwordFormRef = ref<InstanceType<typeof PasswordCreationForm>>()
 const showPasswordForm = ref(false)
@@ -36,13 +37,17 @@ const handleContinue = () => {
   recoverSeedInputRef.value?.handleSubmit?.()
 }
 
-const handleCancel = () => {
-  emit('cancel')
+const resetFlow = () => {
   showPasswordForm.value = false
   seedPhrase.value = []
   password.value = ''
   passwordFormRef.value?.reset()
   isSeedPhraseValid.value = true
+}
+
+const handleCancel = () => {
+  emit('cancel')
+  resetFlow()
 }
 
 const handlePasswordSubmit = async (submittedPassword: string) => {
@@ -82,20 +87,18 @@ const handlePasswordSubmit = async (submittedPassword: string) => {
     isLoading.value = false
   }
 }
+
+onMounted(() => {
+  authStore.enableBackButton(handleCancel)
+})
+
+onUnmounted(() => {
+  authStore.disableBackButton()
+})
 </script>
 
 <template>
-  <div class="relative flex min-h-screen flex-col bg-linear-to-br from-background via-background to-primary/5 p-4">
-    <!-- Theme Toggle -->
-    <div class="absolute right-4 top-4 z-10">
-      <ThemeToggle />
-    </div>
-
-    <!-- Back Button -->
-    <div class="absolute left-4 top-4 z-10">
-      <ArrowLeftCommon @click="handleCancel" />
-    </div>
-
+  <div class="relative flex h-full flex-col bg-linear-to-br from-background via-background to-primary/5 p-4">
     <!-- Content Container -->
     <div class="flex flex-1 flex-col items-center justify-center">
       <div class="w-full max-w-md space-y-8">
