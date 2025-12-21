@@ -6,8 +6,9 @@ import { useNeptuneStore } from '@/stores'
 const ifAuthenticated = (_to: any, _from: any, next: any) => {
   const neptuneStore = useNeptuneStore()
   const hasWallet = neptuneStore.hasWallet
+  const hasKeystore = !!neptuneStore.getKeystoreFileName
 
-  if (hasWallet) {
+  if (hasWallet || hasKeystore) {
     next()
     return
   }

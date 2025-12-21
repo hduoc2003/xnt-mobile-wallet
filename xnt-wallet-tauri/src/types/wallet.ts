@@ -14,6 +14,7 @@ export interface PayloadBuildTransaction {
   outputAddresses: string[]
   outputAmounts: string[]
   fee: string
+  timelockReleaseDate?: number | string
 }
 
 export interface WalletState {
@@ -32,4 +33,6 @@ export interface Utxo {
   amount: string
   blockHeight: number
   utxoHash: string
+  isTimelocked?: boolean
+  releaseDateMs?: number | null
 }

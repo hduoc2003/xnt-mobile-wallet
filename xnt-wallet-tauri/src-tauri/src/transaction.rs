@@ -317,6 +317,32 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         .filter_map(|v| v.as_str().map(|s| s.to_string()))
         .collect();
     
+    let transaction_timestamp = Timestamp::now();
+    let timelock_release_date: Option<Timestamp> = payload.get("timelockReleaseDate")
+        .and_then(|v| {
+            if let Some(ts_ms) = v.as_u64() {
+                let release_date = Timestamp::millis(ts_ms);
+                if release_date > transaction_timestamp {
+                    Some(release_date)
+                } else {
+                    None
+                }
+            } else if let Some(ts_str) = v.as_str() {
+                ts_str.parse::<u64>()
+                    .ok()
+                    .and_then(|ts_ms| {
+                        let release_date = Timestamp::millis(ts_ms);
+                        if release_date > transaction_timestamp {
+                            Some(release_date)
+                        } else {
+                            None
+                        }
+                    })
+            } else {
+                None
+            }
+        });
+    
     let fee = payload["fee"]
         .as_str()
         .ok_or_else(|| "Missing fee in payload".to_string())?;
@@ -477,11 +503,19 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
             let sender_randomness = rand::rng().random::<Digest>();
             let is_change = address == my_address && amount == change_amount;
             
-            Ok(if is_change {
+            let mut tx_output = if is_change {
                 TxOutput::onchain_native_currency_as_change(amount, sender_randomness, address)
             } else {
                 TxOutput::onchain_native_currency(amount, sender_randomness, address, false)
-            })
+            };
+            
+            if !is_change {
+                if let Some(release_date) = timelock_release_date {
+                    tx_output = tx_output.with_time_lock(release_date);
+                }
+            }
+            
+            Ok(tx_output)
         })
         .collect::<Result<Vec<_>, String>>()?;
     

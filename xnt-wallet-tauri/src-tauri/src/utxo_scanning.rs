@@ -42,6 +42,8 @@ pub struct UtxoInfo {
     pub amount: String,
     pub addition_record_hex: String,
     pub utxo_hash: String,
+    pub is_timelocked: bool,
+    pub release_date_ms: Option<u64>,
 }
 
 fn extract_rpc_result(method: &str, response: &serde_json::Value) -> Result<serde_json::Value, String> {
@@ -405,13 +407,21 @@ pub async fn scan_utxos_client_side(
                         }
                         
                         unspent_count += 1;
-                        let amount = utxo.utxo().get_native_currency_amount();
+                        let utxo_ref = utxo.utxo();
+                        let amount = utxo_ref.get_native_currency_amount();
                         let addition_record = utxo.addition_record();
-                        
-                        let utxo_hash = Tip5::hash(utxo.utxo());
-                        
+                        let utxo_hash = Tip5::hash(utxo_ref);
+
+                        // Timelock metadata
+                        let release_date_opt = utxo_ref.release_date();
+                        let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
+                            (true, Some(ts.to_millis()))
+                        } else {
+                            (false, None)
+                        };
+
                         let amount_str = format!("{}", amount);
-                        
+
                         all_utxos.push(UtxoInfo {
                             block_height: height,
                             amount: amount_str,
@@ -421,6 +431,8 @@ pub async fn scan_utxos_client_side(
                                     .map_err(|e| format!("Failed to serialize addition record: {}", e))?)
                             ),
                             utxo_hash: format!("0x{}", utxo_hash.to_hex()),
+                            is_timelocked,
+                            release_date_ms,
                         });
                         
                         cached_utxos.push(utxo.clone());
@@ -574,9 +586,29 @@ pub async fn get_pending_balance_from_mempool(
                     serde_json::from_value(kernel_result["kernel"].clone())
                         .map_err(|e| format!("Failed to deserialize RPC kernel: {}", e))?;
 
-                let tx_kernel: TransactionKernel = rpc_kernel.into();
+                let tx_kernel_proxy = TransactionKernelProxy {
+                    inputs: vec![],
+                    outputs: rpc_kernel
+                        .outputs
+                        .into_iter()
+                        .map(|ar| ar.into())
+                        .collect(),
+                    announcements: rpc_kernel
+                        .announcements
+                        .into_iter()
+                        .map(|rpc_bfes| {
+                            let message = rpc_bfes.0;
+                            Announcement::new(message)
+                        })
+                        .collect(),
+                    fee: rpc_kernel.fee.0,
+                    coinbase: rpc_kernel.coinbase.map(|c| c.0),
+                    timestamp: rpc_kernel.timestamp,
+                    mutator_set_hash: rpc_kernel.mutator_set_hash,
+                    merge_bit: rpc_kernel.merge_bit,
+                };
 
-                Some(tx_kernel)
+                Some(tx_kernel_proxy.into_kernel())
             }
             Err(_e) => {
                 continue;

@@ -143,11 +143,6 @@ export function useNeptuneWallet() {
 
   const createKeystore = async (seed: string, password: string, isImportedWallet: boolean = false): Promise<string | null> => {
     try {
-      const savedAddress = store.getAddress
-      const savedReceiverId = store.getReceiverId
-      const savedSpendingKey = store.getSpendingKey
-      const savedViewKey = cachedViewKey
-      
       store.clearWallet()
       cachedViewKey = null
       store.setKeystoreFileName(null)
@@ -177,10 +172,15 @@ export function useNeptuneWallet() {
       store.setMinBlockHeight(finalMinBlockHeight)
       await (window as any).walletApi.updateMinBlockHeight(result.fileName, finalMinBlockHeight)
       
-      if (savedAddress) store.setAddress(savedAddress)
-      if (savedReceiverId) store.setReceiverId(savedReceiverId)
-      if (savedSpendingKey) store.setSpendingKey(savedSpendingKey)
-      if (savedViewKey) cachedViewKey = savedViewKey
+      const seedPhrase = seed.trim().split(/\s+/)
+      const viewKeyResult = await getViewKeyFromSeed(seedPhrase)
+      
+      store.setReceiverId(viewKeyResult.receiver_identifier)
+      store.setSpendingKey(viewKeyResult.spending_key_hex)
+      cachedViewKey = viewKeyResult.view_key_hex
+      
+      const addressResult = (viewKeyResult as any).address || viewKeyResult.receiver_identifier
+      store.setAddress(addressResult)
       
       return result.fileName
     } catch (err: any) {
@@ -265,7 +265,6 @@ export function useNeptuneWallet() {
     }
   }
 
-  // ===== API METHODS =====
   const forceRescanUtxos = async (): Promise<any> => {
     const keystoreFileName = store.getKeystoreFileName
     if (keystoreFileName) {
@@ -280,12 +279,20 @@ export function useNeptuneWallet() {
 
   const getUtxos = async (): Promise<any> => {
     if (!cachedViewKey) {
+      const keystoreFileName = store.getKeystoreFileName
+      if (keystoreFileName && store.getAddress) {
+        throw new Error('No view key available. Please unlock your wallet first.')
+      }
       throw new Error('No view key available. Please import or generate a wallet first.')
     }
 
     try {
       if (!store.getKeystoreFileName) {
         await checkKeystore()
+      }
+      
+      if (!cachedViewKey && store.getAddress) {
+        throw new Error('Wallet state not fully initialized. Please unlock your wallet.')
       }
 
       const blockHeightResponse = await API.getBlockHeight()
@@ -312,7 +319,6 @@ export function useNeptuneWallet() {
       let lastScannedBlock: number | null = store.getMinBlockHeight
       let startBlock: number
       
-      // If store has 0, it's an imported wallet - force full scan from block 0
       if (lastScannedBlock === 0) {
         startBlock = DEFAULT_MIN_BLOCK_HEIGHT
       } else if (lastScannedBlock == null) {
@@ -359,6 +365,8 @@ export function useNeptuneWallet() {
         amount: u.amount?.toString?.() ?? '0',
         blockHeight: toFiniteNumber(u.block_height),
         additionRecord: u.addition_record_hex,
+        isTimelocked: !!u.is_timelocked,
+        releaseDateMs: u.release_date_ms ?? null,
       })
 
       const freshUtxos = (scanResult.utxos || []).map(normalizeUtxo)
@@ -468,13 +476,17 @@ export function useNeptuneWallet() {
       minBlockHeight = await loadMinBlockHeightFromKeystore()
     }
 
-    const payload = {
+    const payload: any = {
       spendingKeyHex: store.getSpendingKey,
       inputAdditionRecords: args.inputAdditionRecords,
       minBlockHeight: toFiniteNumber(minBlockHeight),
       outputAddresses: args.outputAddresses,
       outputAmounts: args.outputAmounts,
       fee: args.fee,
+    }
+
+    if (args.timelockReleaseDate !== undefined) {
+      payload.timelockReleaseDate = args.timelockReleaseDate
     }
     try {
       const response = await (window as any).walletApi.buildTransaction(payload)
@@ -502,7 +514,6 @@ export function useNeptuneWallet() {
     }
   }
 
-  // ===== UTILITY METHODS =====
   const selectUtxos = (
     utxos: any[],
     neededAmount: number,

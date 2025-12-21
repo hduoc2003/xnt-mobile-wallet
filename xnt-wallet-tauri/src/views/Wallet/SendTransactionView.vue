@@ -21,6 +21,9 @@ const showProofModal = ref(false)
 const outputAddress = ref('')
 const outputAmount = ref('')
 const priorityFee = ref('')
+const enableTimelock = ref(false)
+const timelockDate = ref('')
+const timelockTime = ref('12:00') // Default to noon
 
 const loadBalance = async () => {
   try {
@@ -64,8 +67,43 @@ const amountErrorMessage = computed(() => {
   return ''
 })
 
+const isTimelockValid = computed(() => {
+  if (!enableTimelock.value) return true
+  if (!timelockDate.value) return false
+  
+  const timeValue = timelockTime.value || '00:00'
+  const dateTimeString = `${timelockDate.value}T${timeValue}`
+  const selectedDate = new Date(dateTimeString)
+  const now = new Date()
+  
+  if (isNaN(selectedDate.getTime())) {
+    return false
+  }
+  
+  return selectedDate.getTime() > now.getTime()
+})
+
+const timelockErrorMessage = computed(() => {
+  if (!enableTimelock.value) return ''
+  if (!timelockDate.value) return 'Release date is required when timelock is enabled'
+  
+  const timeValue = timelockTime.value || '00:00'
+  const dateTimeString = `${timelockDate.value}T${timeValue}`
+  const selectedDate = new Date(dateTimeString)
+  const now = new Date()
+  
+  if (isNaN(selectedDate.getTime())) {
+    return 'Invalid date or time'
+  }
+  
+  if (selectedDate.getTime() <= now.getTime()) {
+    return 'Release date must be in the future'
+  }
+  return ''
+})
+
 const isFormValid = computed(
-  () => isAddressValid.value && isAmountValid.value && isFeeValid.value && !sendLoading.value
+  () => isAddressValid.value && isAmountValid.value && isFeeValid.value && isTimelockValid.value && !sendLoading.value
 )
 
 const formatDecimal = (value: string) => {
@@ -160,11 +198,32 @@ const handleConfirmSend = async () => {
 
 
 
+    let timelockReleaseDate: number | undefined = undefined
+    if (enableTimelock.value && timelockDate.value) {
+      const timeValue = timelockTime.value || '00:00'
+      const dateTimeString = `${timelockDate.value}T${timeValue}`
+      const selectedDate = new Date(dateTimeString)
+      const now = Date.now()
+      
+      if (isNaN(selectedDate.getTime())) {
+        toast.error('Invalid date or time')
+        return
+      }
+      
+      if (selectedDate.getTime() <= now) {
+        toast.error('Release date must be in the future')
+        return
+      }
+      
+      timelockReleaseDate = selectedDate.getTime()
+    }
+
     const txResult = await buildTransaction({
       inputAdditionRecords,
       outputAddresses: [outputAddress.value.trim()],
       outputAmounts: [outputAmount.value],
       fee: priorityFee.value,
+      timelockReleaseDate,
     })
 
     if (!txResult.success) {
@@ -293,6 +352,65 @@ onMounted(() => {
             </div>
           </div>
 
+          <!-- Timelock Section -->
+          <div class="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
+            <div class="flex items-center justify-between">
+              <div class="space-y-0.5">
+                <Label for="timelock" class="text-base font-medium">
+                  Time Lock
+                </Label>
+                <p class="text-xs text-muted-foreground">
+                  Lock the transaction outputs until a specific date
+                </p>
+              </div>
+              <Switch
+                id="timelock"
+                :checked="enableTimelock"
+                :disabled="sendLoading"
+                @click.stop="enableTimelock = !enableTimelock"
+              />
+            </div>
+
+            <!-- Date/time picker appears only when timelock is enabled -->
+            <div v-if="enableTimelock" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div class="space-y-2">
+                <Label for="timelock-date">
+                  Release Date <span class="text-destructive">*</span>
+                </Label>
+                <input
+                  id="timelock-date"
+                  v-model="timelockDate"
+                  type="date"
+                  :min="new Date().toISOString().split('T')[0]"
+                  :disabled="sendLoading"
+                  class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors
+                         placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring
+                         disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+              <div class="space-y-2">
+                <Label for="timelock-time">
+                  Release Time
+                </Label>
+                <input
+                  id="timelock-time"
+                  v-model="timelockTime"
+                  type="time"
+                  :disabled="sendLoading"
+                  class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors
+                         placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring
+                         disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+            </div>
+            <p v-if="timelockErrorMessage" class="text-xs text-destructive">
+              {{ timelockErrorMessage }}
+            </p>
+            <p v-if="enableTimelock && !timelockErrorMessage && timelockDate" class="text-xs text-muted-foreground">
+              Outputs will be locked until: {{ new Date(`${timelockDate}T${timelockTime || '00:00'}`).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) }}
+            </p>
+          </div>
+
           <!-- Send Button -->
           <Button
             class="w-full gap-2"
@@ -312,6 +430,9 @@ onMounted(() => {
       :recipient-address="outputAddress"
       :amount="outputAmount"
       :fee="priorityFee"
+      :timelock-enabled="enableTimelock"
+      :timelock-date="timelockDate"
+      :timelock-time="timelockTime"
       :loading="sendLoading"
       @confirm="handleConfirmSend"
       @cancel="handleCancelConfirm"

@@ -7,8 +7,14 @@ const props = withDefaults(defineProps<{
   recipientAddress: string
   amount: string
   fee: string
+  timelockEnabled?: boolean
+  timelockDate?: string
+  timelockTime?: string
   loading?: boolean
 }>(), {
+  timelockEnabled: false,
+  timelockDate: '',
+  timelockTime: '',
   loading: false,
 })
 
@@ -68,6 +74,22 @@ const handleCancel = () => {
               <div class="rounded-lg border border-border bg-muted/50 p-4 font-semibold text-lg">
                 {{ props.fee }} XNT
               </div>
+            </div>
+          </div>
+
+          <!-- Timelock Information -->
+          <div v-if="props.timelockEnabled && props.timelockDate" class="space-y-3">
+            <Label class="text-sm font-medium text-muted-foreground">Time Lock</Label>
+            <div class="rounded-lg border border-primary/50 bg-primary/10 p-4">
+              <div class="flex items-center gap-2">
+                <Badge variant="outline" class="text-xs">Locked Until</Badge>
+                <span class="font-semibold text-sm">
+                  {{ new Date(`${props.timelockDate}T${props.timelockTime || '00:00'}`).toLocaleString() }}
+                </span>
+              </div>
+              <p class="mt-2 text-xs text-muted-foreground">
+                Outputs will be locked and cannot be spent until the release date.
+              </p>
             </div>
           </div>
 

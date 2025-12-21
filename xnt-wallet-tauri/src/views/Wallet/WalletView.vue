@@ -2,11 +2,15 @@
 import { ref, onMounted } from 'vue'
 import { toast } from 'vue-sonner'
 import { Wallet } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+import { useNeptuneStore } from '@/stores'
 import WalletBalanceCard from './components/WalletBalanceCard.vue'
 import WalletActions from './components/WalletActions.vue'
 import { useNeptuneWallet } from '@/composables'
 
-const { getUtxos, getBalance } = useNeptuneWallet()
+const router = useRouter()
+const neptuneStore = useNeptuneStore()
+const { getUtxos, getBalance, checkKeystore } = useNeptuneWallet()
 
 const availableBalance = ref('0')
 const pendingBalance = ref('0')
@@ -15,12 +19,30 @@ const loading = ref(false)
 const loadWalletData = async () => {
   try {
     loading.value = true
+    
+    if (neptuneStore.getKeystoreFileName && !neptuneStore.hasWallet) {
+      await checkKeystore()
+      if (!neptuneStore.hasWallet) {
+        router.push({ name: 'auth' })
+        return
+      }
+    }
+    
     await getUtxos()
     const result = await getBalance()
     availableBalance.value = result?.balance ?? '0'
     pendingBalance.value = result?.pendingBalance ?? '0'
-  } catch (error) {
-    toast.error('Failed to load wallet data')
+  } catch (error: any) {
+    const errorMsg = error?.message || 'Failed to load wallet data'
+    console.error('Failed to load wallet data:', error)
+    
+    if (errorMsg.includes('view key') && neptuneStore.getKeystoreFileName) {
+      toast.error('Please unlock your wallet')
+      router.push({ name: 'auth' })
+      return
+    }
+    
+    toast.error(errorMsg)
   } finally {
     loading.value = false
   }

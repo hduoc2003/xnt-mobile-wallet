@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import { toast } from 'vue-sonner'
+import { useNeptuneStore } from '@/stores'
 import CreatePasswordStep from './CreatePasswordStep.vue'
 import SeedPhraseDisplayStep from './SeedPhraseDisplayStep.vue'
 import ConfirmSeedStep from './ConfirmSeedStep.vue'
@@ -13,6 +14,7 @@ const emit = defineEmits<{
   goToWelcome: []
 }>()
 
+const neptuneStore = useNeptuneStore()
 const { generateWallet, createKeystore } = useNeptuneWallet()
 const { clearTransactions } = useTransaction()
 
@@ -72,6 +74,14 @@ const handleAccessWallet = async () => {
     await createKeystore(seedPhraseString, password.value, false)
     clearTransactions()
 
+    await nextTick()
+    
+    if (!neptuneStore.hasWallet && !neptuneStore.getKeystoreFileName) {
+      throw new Error('Wallet state not properly initialized')
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
     emit('accessWallet')
   } catch (err) {
     console.error('Failed to create keystore:', err)

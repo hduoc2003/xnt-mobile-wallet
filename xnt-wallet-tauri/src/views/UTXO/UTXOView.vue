@@ -169,7 +169,7 @@ onMounted(async () => {
                       <code class="block text-xs text-foreground">{{ formatHash(utxo.utxoHash) }}</code>
                     </div>
                     <Separator />
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
                       <div class="space-y-1">
                         <Label class="text-xs text-muted-foreground">Amount</Label>
                         <p class="break-all font-mono text-sm font-semibold text-primary">
@@ -179,6 +179,15 @@ onMounted(async () => {
                       <div class="space-y-1">
                         <Label class="text-xs text-muted-foreground">Block Height</Label>
                         <p class="text-sm font-medium text-foreground">{{ utxo.blockHeight }}</p>
+                      </div>
+                      <div class="space-y-1">
+                        <Label class="text-xs text-muted-foreground">Time Lock</Label>
+                        <p v-if="utxo.releaseDateMs" class="text-sm font-medium text-foreground">
+                          Unlocks: {{ new Date(utxo.releaseDateMs).toLocaleString() }}
+                        </p>
+                        <p v-else class="text-sm text-muted-foreground">
+                          Not timelocked
+                        </p>
                       </div>
                     </div>
                   </CardContent>
