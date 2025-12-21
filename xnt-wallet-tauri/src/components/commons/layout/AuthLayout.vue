@@ -12,7 +12,7 @@ const handleBack = () => {
 <template>
   <div class="flex min-h-screen flex-col bg-background">
     <header class="safe-area-top relative bg-transparent">
-      <div class="flex h-10 items-center justify-between px-4">
+      <div class="flex h-10 items-center justify-between px-4 pt-5">
         <div>
           <ArrowLeftCommon v-if="authStore.getShowBackButton" @click="handleBack" />
         </div>
