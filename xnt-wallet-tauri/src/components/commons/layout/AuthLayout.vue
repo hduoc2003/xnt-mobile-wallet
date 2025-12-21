@@ -11,15 +11,15 @@ const handleBack = () => {
 
 <template>
   <div class="flex min-h-screen flex-col bg-background">
-    <header class="safe-area-top bg-card relative">
-      <div class="flex h-14 items-center justify-between px-4">
+    <header class="safe-area-top relative bg-transparent">
+      <div class="flex h-10 items-center justify-between px-4">
         <div>
           <ArrowLeftCommon v-if="authStore.getShowBackButton" @click="handleBack" />
         </div>
         <ThemeToggle />
       </div>
     </header>
-    <main class="main-content flex-1 overflow-y-auto from-background via-background to-primary/5">
+    <main class="main-content flex-1 overflow-y-auto from-background via-background to-primary/5 pt-10">
       <slot />
     </main>
   </div>
