@@ -44,7 +44,7 @@ const generateQuiz = (): {
     if (attempts > maxAttempts) return null
   } while (askedPositions.value.has(randomPosition))
 
-  currentQuestionIndex.value = randomPosition - 1
+  currentQuestionIndex.value++
 
   const correctWord = seedWords.value[randomPosition - 1]
   const options = [correctWord]
@@ -86,8 +86,7 @@ const handleNext = () => {
   if (isCorrect.value) {
     correctCount.value++
     askedPositions.value.add(quizData.value!.position)
-    answeredQuestions.value.push(quizData.value!.position)
-
+    answeredQuestions.value.push(currentQuestionIndex.value)
     if (correctCount.value >= totalQuestions) {
       emit('next')
     } else {
@@ -142,8 +141,7 @@ onMounted(() => {
                 : 'bg-muted text-muted-foreground'
           "
         >
-          <CheckCircle2 v-if="answeredQuestions.includes(i)" :size="16" />
-          <span v-else class="text-xs font-bold">{{ i }}</span>
+          <span class="text-xs font-bold">{{ i }}</span>
         </div>
       </div>
       <p class="text-center text-sm font-semibold">
@@ -227,21 +225,6 @@ onMounted(() => {
             />
           </div>
         </button>
-      </div>
-
-      <!-- Result Message -->
-      <div v-if="showResult" class="animate-in fade-in slide-in-from-top-4 duration-500">
-        <Alert :variant="isCorrect ? 'default' : 'destructive'" class="border-2">
-          <CheckCircle2 v-if="isCorrect" :size="20" class="text-green-500" />
-          <XCircle v-else :size="20" class="text-destructive" />
-          <AlertDescription class="text-base font-medium">
-            <span v-if="isCorrect && correctCount + 1 >= totalQuestions">
-              Perfect! You've verified your recovery phrase. 🎉
-            </span>
-            <span v-else-if="isCorrect"> Correct! Moving to next question... </span>
-            <span v-else> That's not correct. Please try again. </span>
-          </AlertDescription>
-        </Alert>
       </div>
     </div>
 

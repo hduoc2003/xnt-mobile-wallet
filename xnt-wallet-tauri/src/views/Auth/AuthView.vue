@@ -13,6 +13,7 @@ const { goToCreate, goToRecover, goBackToWelcome } = useAuthRouting()
 const currentState = computed(() => authStore.getCurrentState)
 
 onMounted(() => {
+  authStore.goToWelcome()
   checkKeystore()
 })
 

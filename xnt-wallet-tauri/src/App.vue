@@ -13,32 +13,30 @@ const { clearWallet } = useNeptuneWallet()
 let unlistenFocus: UnlistenFn | null = null
 let unlistenBlur: UnlistenFn | null = null
 
-const setTimeoutRedirect = () => {
-  setTimeout(() => {
-    if (!neptuneStore.hasWallet) {
-      const currentRoute = router.currentRoute.value
-      if (currentRoute.path !== '/auth' && currentRoute.name !== 'auth') {
-        router.replace('/auth').catch(() => {
-          router.push('/auth').catch(() => {})
-        })
-      }
-    }
-  }, 50)
-}
+let shouldRedirect = false
 
 onMounted(async () => {
   unlistenBlur = await listen('tauri://blur', () => {
+    if(router.currentRoute.value.name === 'auth') return
     clearWallet()
+    shouldRedirect = true
   })
 
   unlistenFocus = await listen('tauri://focus', () => {
-    setTimeoutRedirect()
+    if (!shouldRedirect) return
+    shouldRedirect = false
+
+    requestAnimationFrame(() => {
+      if (!neptuneStore.hasWallet) {
+        router.replace('/auth').catch(() => {})
+      }
+    })
   })
 })
 
 onUnmounted(() => {
-  if (unlistenFocus) unlistenFocus()
-  if (unlistenBlur) unlistenBlur()
+  unlistenFocus?.()
+  unlistenBlur?.()
   unlistenFocus = null
   unlistenBlur = null
 })
