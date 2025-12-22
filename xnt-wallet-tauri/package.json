@@ -12,7 +12,11 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:ios:dev": "tauri ios dev --verbose",
+    "tauri:ios:dev:simulator": "tauri ios dev --verbose \"iPhone 17 Pro\"",
+    "tauri:ios:dev:open": "tauri ios dev --open",
+    "tauri:ios:build": "tauri ios build"
   },
   "dependencies": {
     "@neptune/wasm": "file:../neptune-wasm",
