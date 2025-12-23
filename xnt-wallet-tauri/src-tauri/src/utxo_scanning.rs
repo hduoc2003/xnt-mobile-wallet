@@ -12,7 +12,7 @@ use neptune_privacy::util_types::mutator_set::mutator_set_accumulator::MutatorSe
 use neptune_privacy::application::json_rpc::core::model::message::GetArchivalMutatorSetResponse;
 use num_traits::Zero;
 use reqwest::Client;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use crate::rpc_config;
 use serde::{Deserialize, Serialize};
 
@@ -34,6 +34,17 @@ pub struct ScanUtxosResponse {
     pub utxos: Vec<UtxoInfo>,
     pub last_scanned_block: u64,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanProgress {
+    pub current_block: u64,
+    pub end_block: u64,
+    pub start_block: u64,
+    pub utxos_found: usize,
+    pub percentage: f64,
+    pub status: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -163,9 +174,39 @@ pub async fn scan_utxos_client_side(
     let batch_size = 1000;
     let mut current_block = request.start_block;
     
+    let total_blocks = request.end_block.saturating_sub(request.start_block) + 1;
+    
+    // Emit initial progress
+    let initial_progress = ScanProgress {
+        current_block: request.start_block,
+        end_block: request.end_block,
+        start_block: request.start_block,
+        utxos_found: 0,
+        percentage: 0.0,
+        status: "Starting scan...".to_string(),
+    };
+    let _ = app.emit("utxo-scan-progress", &initial_progress);
 
     while current_block <= request.end_block {
         let batch_end = std::cmp::min(current_block + batch_size - 1, request.end_block);
+        
+        let blocks_scanned = current_block.saturating_sub(request.start_block);
+        let percentage = if total_blocks > 0 {
+            (blocks_scanned as f64 / total_blocks as f64 * 100.0).min(100.0)
+        } else {
+            0.0
+        };
+        
+        // Emit progress
+        let progress = ScanProgress {
+            current_block,
+            end_block: request.end_block,
+            start_block: request.start_block,
+            utxos_found: all_utxos.len(),
+            percentage,
+            status: format!("Scanning blocks {}-{}...", current_block, batch_end),
+        };
+        let _ = app.emit("utxo-scan-progress", &progress);
         
         let mut retries = 3;
         let mut response_result = None;
@@ -455,6 +496,17 @@ pub async fn scan_utxos_client_side(
         
         current_block = batch_end + 1;
     }
+    
+    // Emit progress
+    let completion_progress = ScanProgress {
+        current_block: request.end_block,
+        end_block: request.end_block,
+        start_block: request.start_block,
+        utxos_found: all_utxos.len(),
+        percentage: 100.0,
+        status: format!("Scan completed! Found {} UTXO(s)", all_utxos.len()),
+    };
+    let _ = app.emit("utxo-scan-progress", &completion_progress);
     
     let response = ScanUtxosResponse {
         success: true,

@@ -1,10 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Database, RefreshCw } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useNeptuneStore } from '@/stores'
 import { useNeptuneWallet, useFormat } from '@/composables'
 import type { Utxo } from '@/types'
+import { listen } from '@tauri-apps/api/event'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
+import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
+import InfiniteScrollList from '@/components/commons/infinite-scroll-list/InfiniteScrollList.vue'
 
 const neptuneStore = useNeptuneStore()
 const { getUtxos, forceRescanUtxos } = useNeptuneWallet()
@@ -12,8 +19,18 @@ const { formatHash, formatAmount } = useFormat()
 
 const loading = ref(false)
 const isScanning = ref(false)
+const scanProgress = ref({
+  currentBlock: 0,
+  endBlock: 0,
+  startBlock: 0,
+  utxosFound: 0,
+  percentage: 0,
+  status: '',
+})
 const displayedUtxos = ref<Utxo[]>([])
 const itemsPerPage = 20
+
+let progressUnlisten: (() => void) | null = null
 
 const utxosList = computed(() => [...(neptuneStore.getUtxos || [])])
 
@@ -62,16 +79,57 @@ const handleRefresh = async () => {
 const getUtxosData = async () => {
   try {
     loading.value = true
+    isScanning.value = true
+    scanProgress.value = {
+      currentBlock: 0,
+      endBlock: 0,
+      startBlock: 0,
+      utxosFound: 0,
+      percentage: 0,
+      status: 'Starting scan...',
+    }
     await getUtxos()
   } catch (error) {
     toast.error('Failed to get UTXOs')
   } finally {
     loading.value = false
+    isScanning.value = false
   }
 }
 
 onMounted(async () => {
+  // Listen for UTXO scan progress events
+  try {
+    progressUnlisten = await listen('utxo-scan-progress', (event: any) => {
+      const progress = event.payload as {
+        currentBlock: number
+        endBlock: number
+        startBlock: number
+        utxosFound: number
+        percentage: number
+        status: string
+      }
+      scanProgress.value = progress
+      isScanning.value = progress.percentage < 100
+      
+      if (progress.percentage >= 100) {
+        setTimeout(() => {
+          isScanning.value = false
+        }, 1000)
+      }
+    })
+  } catch (error) {
+    console.error('Failed to listen for scan progress:', error)
+  }
+  
   await getUtxosData()
+})
+
+onUnmounted(() => {
+  if (progressUnlisten) {
+    progressUnlisten()
+    progressUnlisten = null
+  }
 })
 </script>
 
@@ -122,11 +180,24 @@ onMounted(async () => {
           <CardTitle class="text-lg font-semibold">UTXO List</CardTitle>
         </CardHeader>
         <CardContent v-if="isScanning" class="space-y-4">
-          <div class="space-y-2">
-            <p class="text-sm text-muted-foreground">
-              Please wait while the system is scanning...
-            </p>
-            <Progress :model-value="50" color="bg-primary" />
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <p class="text-sm font-medium text-foreground">
+                {{ scanProgress.status }}
+              </p>
+              <p class="text-sm font-semibold text-primary">
+                {{ Math.round(scanProgress.percentage) }}%
+              </p>
+            </div>
+            <Progress :model-value="scanProgress.percentage" class="h-2" />
+            <div class="grid grid-cols-2 gap-4 text-xs text-muted-foreground">
+              <div>
+                <span class="font-medium">Blocks:</span> {{ scanProgress.currentBlock.toLocaleString() }} / {{ scanProgress.endBlock.toLocaleString() }}
+              </div>
+              <div>
+                <span class="font-medium">UTXOs Found:</span> {{ scanProgress.utxosFound }}
+              </div>
+            </div>
           </div>
         </CardContent>
         <CardContent v-else>
