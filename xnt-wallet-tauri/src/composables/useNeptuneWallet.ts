@@ -92,7 +92,6 @@ export function useNeptuneWallet() {
 
       store.clearWallet()
       cachedViewKey = null
-      await (window as any).walletApi.clearUtxoCache?.()
       store.setKeystoreFileName(keystoreFileName)
 
       const result = await (window as any).walletApi.decryptKeystore(
@@ -109,6 +108,29 @@ export function useNeptuneWallet() {
 
       const addressResult = (viewKeyResult as any).address || viewKeyResult.receiver_identifier
       store.setAddress(addressResult)
+
+      try {
+        const cached = await (window as any).walletApi.getCachedUtxosLocal?.()
+        const cachedResult = typeof cached === 'string' ? JSON.parse(cached) : cached
+        if (cachedResult?.success && Array.isArray(cachedResult.utxos)) {
+          const normalizeUtxo = (u: any) => ({
+            utxoHash: u.utxo_hash || u.utxoHash,
+            amount: u.amount?.toString?.() ?? '0',
+            blockHeight: toFiniteNumber(u.block_height || u.blockHeight || 0),
+            additionRecord: u.addition_record_hex || u.additionRecord || '',
+            isTimelocked: !!(u.is_timelocked ?? u.isTimelocked),
+            releaseDateMs: u.release_date_ms ?? u.releaseDateMs ?? null,
+          })
+          const cachedUtxos = (cachedResult.utxos || []).map(normalizeUtxo)
+          store.setUtxos(cachedUtxos)
+          if (Number.isFinite(cachedResult.last_scanned_block)) {
+            const h = toFiniteNumber(cachedResult.last_scanned_block)
+            if (h > 0) store.setMinBlockHeight(h)
+          }
+        }
+      } catch (e) {
+        await (window as any).logger?.warn('Load cached UTXOs at unlock failed (will scan later):', e?.message || e)
+      }
 
       try {
         const minBlockHeightResponse = await (window as any).walletApi.getMinBlockHeight(keystoreFileName)
@@ -289,6 +311,30 @@ export function useNeptuneWallet() {
     try {
       if (!store.getKeystoreFileName) {
         await checkKeystore()
+      }
+
+      //Load cached UTXOs from disk
+      try {
+        const cached = await (window as any).walletApi.getCachedUtxosLocal?.()
+        const cachedResult = typeof cached === 'string' ? JSON.parse(cached) : cached
+        if (cachedResult?.success && Array.isArray(cachedResult.utxos)) {
+          const normalizeUtxo = (u: any) => ({
+            utxoHash: u.utxo_hash || u.utxoHash,
+            amount: u.amount?.toString?.() ?? '0',
+            blockHeight: toFiniteNumber(u.block_height || u.blockHeight || 0),
+            additionRecord: u.addition_record_hex || u.additionRecord || '',
+            isTimelocked: !!(u.is_timelocked ?? u.isTimelocked),
+            releaseDateMs: u.release_date_ms ?? u.releaseDateMs ?? null,
+          })
+          const cachedUtxos = (cachedResult.utxos || []).map(normalizeUtxo)
+          store.setUtxos(cachedUtxos)
+          if (Number.isFinite(cachedResult.last_scanned_block)) {
+            const h = toFiniteNumber(cachedResult.last_scanned_block)
+            if (h > 0) store.setMinBlockHeight(h)
+          }
+        }
+      } catch (e) {
+        await (window as any).logger?.warn('Load cached UTXOs failed (continue to scan):', e?.message || e)
       }
       
       if (!cachedViewKey && store.getAddress) {

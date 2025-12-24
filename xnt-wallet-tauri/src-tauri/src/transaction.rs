@@ -25,14 +25,12 @@ use neptune_privacy::protocol::consensus::transaction::validity::removal_records
 };
 use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
 use neptune_privacy::protocol::proof_abstractions::timestamp::Timestamp;
-use neptune_privacy::state::wallet::address::generation_address::GenerationSpendingKey;
 use neptune_privacy::state::wallet::address::SpendingKey;
 use neptune_privacy::state::wallet::incoming_utxo::IncomingUtxo;
 use neptune_privacy::state::wallet::transaction_input::{TxInput, TxInputList};
 use neptune_privacy::state::wallet::transaction_output::{TxOutput, TxOutputList};
 use neptune_privacy::state::wallet::unlocked_utxo::UnlockedUtxo;
 use neptune_privacy::state::wallet::utxo_notification::UtxoNotificationMedium;
-use neptune_privacy::util_types::mutator_set::addition_record::AdditionRecord;
 use neptune_privacy::util_types::mutator_set::ms_membership_proof::MsMembershipProof;
 use neptune_privacy::util_types::mutator_set::removal_record::absolute_index_set::AbsoluteIndexSet;
 use neptune_privacy::util_types::mutator_set::removal_record::chunk::Chunk;
@@ -301,7 +299,7 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         .filter_map(|v| v.as_str().map(|s| s.to_string()))
         .collect();
     
-    let min_block_height = payload["minBlockHeight"].as_i64().unwrap_or(0);
+    let _min_block_height = payload["minBlockHeight"].as_i64().unwrap_or(0);
     
     let output_addresses: Vec<String> = payload["outputAddresses"]
         .as_array()
@@ -405,7 +403,7 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
     
     let mut total_input_amount = NativeCurrencyAmount::zero();
     for utxo in &matched_utxos {
-        total_input_amount = total_input_amount + utxo.utxo().get_native_currency_amount();
+        total_input_amount = total_input_amount + utxo.utxo.utxo().get_native_currency_amount();
     }
     
     let fee_amount = NativeCurrencyAmount::coins_from_str(fee)
@@ -478,14 +476,14 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
     let mut tx_inputs = Vec::new();
     for incoming_utxo in matched_utxos {
         let msmp = generate_membership_proof_client_side(
-            &incoming_utxo,
+            &incoming_utxo.utxo,
             &mutator_set_accumulator,
             &rpc_url,
             &client,
         ).await?;
         
         tx_inputs.push(TxInput::from(UnlockedUtxo::unlock(
-            incoming_utxo.utxo().clone(),
+            incoming_utxo.utxo.utxo().clone(),
             lock_script_and_witness.clone(),
             msmp,
         )));

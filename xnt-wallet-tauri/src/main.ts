@@ -223,6 +223,15 @@ if (!(window as any).walletApi) {
             }
         },
 
+        getCachedUtxosLocal: async () => {
+            try {
+                const result = await safeInvoke<string>('get_cached_utxos_local')
+                return JSON.parse(result)
+            } catch (error: any) {
+                return { success: false, error: error?.message || error || 'Failed to get cached UTXOs local' }
+            }
+        },
+
         setRpcEndpoint: async (endpoint: string) => {
             try {
                 await safeInvoke('set_rpc_endpoint', { endpoint })
@@ -247,6 +256,15 @@ if (!(window as any).walletApi) {
                 return JSON.parse(result)
             } catch (error: any) {
                 return { success: false, error: error?.message || error || 'Failed to scan UTXOs' }
+            }
+        },
+
+        getCachedUtxos: async () => {
+            try {
+                const result = await safeInvoke<string>('get_cached_utxos')
+                return JSON.parse(result)
+            } catch (error: any) {
+                return { success: false, error: error?.message || error || 'Failed to get cached UTXOs' }
             }
         },
 

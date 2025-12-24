@@ -4,7 +4,6 @@ use neptune_privacy::protocol::consensus::transaction::announcement::Announcemen
 use neptune_privacy::protocol::consensus::transaction::transaction_kernel::{TransactionKernel, TransactionKernelProxy};
 use neptune_privacy::application::json_rpc::core::model::block::transaction_kernel::RpcTransactionKernel;
 use neptune_privacy::state::wallet::address::view_key::ViewKey;
-use neptune_privacy::state::wallet::incoming_utxo::IncomingUtxo;
 use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
 use neptune_privacy::protocol::proof_abstractions::timestamp::Timestamp;
 use neptune_privacy::prelude::twenty_first::tip5::digest::Digest;
@@ -25,11 +24,20 @@ pub struct ScanUtxosRequest {
     pub view_key_hex: String,
     pub start_block: u64,
     pub end_block: u64,
-    pub rpc_url: String,
+    pub rpc_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ScanUtxosResponse {
+    pub success: bool,
+    pub utxos: Vec<UtxoInfo>,
+    pub last_scanned_block: u64,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetCachedUtxosResponse {
     pub success: bool,
     pub utxos: Vec<UtxoInfo>,
     pub last_scanned_block: u64,
@@ -135,7 +143,7 @@ pub async fn scan_utxos_client_side(
         "[UTXO Scan] start_block={} end_block={} rpc_url={}",
         request.start_block,
         request.end_block,
-        request.rpc_url
+        request.rpc_url.as_deref().unwrap_or("<default>")
     );
 
     let client = Client::builder()
@@ -143,8 +151,18 @@ pub async fn scan_utxos_client_side(
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
     let rpc_url = {
-        if !request.rpc_url.trim().is_empty() {
-            request.rpc_url
+        if let Some(ref v) = request.rpc_url {
+            if !v.trim().is_empty() {
+                v.clone()
+            } else {
+                rpc_config::get_custom_rpc_endpoint(app)
+                    .or_else(|| {
+                        std::env::var("VITE_APP_API")
+                            .ok()
+                            .filter(|v| !v.trim().is_empty())
+                    })
+                    .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string())
+            }
         } else {
             rpc_config::get_custom_rpc_endpoint(app)
                 .or_else(|| {
@@ -156,8 +174,6 @@ pub async fn scan_utxos_client_side(
         }
     };
 
-    utxo_cache::clear_cache().await;
-    
     let view_key_bytes = hex::decode(
         request.view_key_hex.trim_start_matches("0x")
     )
@@ -168,11 +184,70 @@ pub async fn scan_utxos_client_side(
     
     let mutator_set_accumulator = get_current_mutator_set_accumulator(&client, &rpc_url).await?;
     
-    let mut all_utxos = Vec::new();
-    let mut last_scanned = request.start_block;
+    let force_rescan = request.start_block == 0;
+
+    if force_rescan {
+        utxo_cache::clear_cache().await;
+    }
+
+    // Load cached UTXOs from disk and re-validate
+    let mut validated_cached_utxos: Vec<utxo_cache::CachedUtxo> = Vec::new();
+    if !force_rescan {
+        let cached_utxos = utxo_cache::get_all_utxos().await;
+        for utxo in cached_utxos {
+            if let Ok(msmp) = transaction::generate_membership_proof_client_side(
+                &utxo.utxo,
+                &mutator_set_accumulator,
+                &rpc_url,
+                &client,
+            ).await {
+                let item = Tip5::hash(utxo.utxo.utxo());
+                if mutator_set_accumulator.verify(item, &msmp) {
+                    validated_cached_utxos.push(utxo);
+                }
+            }
+        }
+    }
+    
+    let mut utxo_infos: Vec<UtxoInfo> = validated_cached_utxos.iter().map(|utxo| {
+        let utxo_ref = utxo.utxo.utxo();
+        let amount = utxo_ref.get_native_currency_amount();
+        let addition_record = utxo.utxo.addition_record();
+        let utxo_hash = Tip5::hash(utxo_ref);
+        let release_date_opt = utxo_ref.release_date();
+        let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
+            (true, Some(ts.to_millis()))
+        } else {
+            (false, None)
+        };
+        UtxoInfo {
+            block_height: utxo.block_height,
+            amount: format!("{}", amount),
+            addition_record_hex: format!(
+                "0x{}",
+                hex::encode(bincode::serialize(&addition_record).unwrap())
+            ),
+            utxo_hash: format!("0x{}", utxo_hash.to_hex()),
+            is_timelocked,
+            release_date_ms,
+        }
+    }).collect();
+    
+    let mut incoming_utxos_for_persist = validated_cached_utxos.clone();
+    
+    let persisted_last_scanned = if force_rescan { 0 } else { utxo_cache::get_last_scanned_block().await };
+    let mut last_scanned = if persisted_last_scanned > 0 {
+        persisted_last_scanned
+    } else {
+        request.start_block
+    };
     
     let batch_size = 1000;
-    let mut current_block = request.start_block;
+    let mut current_block = if force_rescan {
+        request.start_block
+    } else {
+        std::cmp::max(request.start_block, persisted_last_scanned.saturating_sub(10))
+    };
     
     let total_blocks = request.end_block.saturating_sub(request.start_block) + 1;
     
@@ -202,7 +277,7 @@ pub async fn scan_utxos_client_side(
             current_block,
             end_block: request.end_block,
             start_block: request.start_block,
-            utxos_found: all_utxos.len(),
+            utxos_found: utxo_infos.len(),
             percentage,
             status: format!("Scanning blocks {}-{}...", current_block, batch_end),
         };
@@ -405,7 +480,6 @@ pub async fn scan_utxos_client_side(
                     height, announcements.len());
             }
             
-            // Build TransactionKernel
             let tx_kernel = TransactionKernelProxy {
                 inputs: vec![],
                 outputs: vec![],
@@ -421,15 +495,15 @@ pub async fn scan_utxos_client_side(
             let scan_result = view_key.scan_for_announced_utxos(&tx_kernel);
             match scan_result {
                 Ok(incoming_utxos) => {
-                    // Verify UTXOs are unspent and store them
-                    let mut cached_utxos = Vec::new();
+                    // Verify UTXOs are unspent and store
+                    let mut cached_utxos: Vec<utxo_cache::CachedUtxo> = Vec::new();
                     let mut unspent_count = 0;
                     
                     for utxo in &incoming_utxos {
-                        // Verify UTXO is unspent by checking membership proof against current accumulator
+                        // Verify UTXO is unspent
                         let item = Tip5::hash(utxo.utxo());
                         
-                        // Generate membership proof
+                        
                         let msmp = match transaction::generate_membership_proof_client_side(
                             utxo,
                             &mutator_set_accumulator,
@@ -442,7 +516,7 @@ pub async fn scan_utxos_client_side(
                             }
                         };
                         
-                        // Verify the membership proof against current accumulator
+                       
                         if !mutator_set_accumulator.verify(item, &msmp) {
                             continue;
                         }
@@ -453,7 +527,6 @@ pub async fn scan_utxos_client_side(
                         let addition_record = utxo.addition_record();
                         let utxo_hash = Tip5::hash(utxo_ref);
 
-                        // Timelock metadata
                         let release_date_opt = utxo_ref.release_date();
                         let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
                             (true, Some(ts.to_millis()))
@@ -463,7 +536,7 @@ pub async fn scan_utxos_client_side(
 
                         let amount_str = format!("{}", amount);
 
-                        all_utxos.push(UtxoInfo {
+                        utxo_infos.push(UtxoInfo {
                             block_height: height,
                             amount: amount_str,
                             addition_record_hex: format!(
@@ -476,7 +549,8 @@ pub async fn scan_utxos_client_side(
                             release_date_ms,
                         });
                         
-                        cached_utxos.push(utxo.clone());
+                        cached_utxos.push(utxo_cache::CachedUtxo { utxo: utxo.clone(), block_height: height });
+                        incoming_utxos_for_persist.push(utxo_cache::CachedUtxo { utxo: utxo.clone(), block_height: height });
                     }
                     
                     if unspent_count > 0 {
@@ -502,21 +576,139 @@ pub async fn scan_utxos_client_side(
         current_block: request.end_block,
         end_block: request.end_block,
         start_block: request.start_block,
-        utxos_found: all_utxos.len(),
+        utxos_found: utxo_infos.len(),
         percentage: 100.0,
-        status: format!("Scan completed! Found {} UTXO(s)", all_utxos.len()),
+        status: format!("Scan completed! Found {} UTXO(s)", utxo_infos.len()),
     };
     let _ = app.emit("utxo-scan-progress", &completion_progress);
     
+    utxo_cache::replace_cache_and_persist(incoming_utxos_for_persist.clone(), last_scanned).await;
+    
     let response = ScanUtxosResponse {
         success: true,
-        utxos: all_utxos,
+        utxos: utxo_infos,
         last_scanned_block: last_scanned,
         error: None,
     };
     
     Ok(serde_json::to_string(&response)
         .map_err(|e| format!("Failed to serialize response: {}", e))?)
+}
+
+pub async fn get_cached_utxos(app: &AppHandle) -> Result<String, String> {
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    let rpc_url = rpc_config::get_custom_rpc_endpoint(app)
+        .or_else(|| {
+            std::env::var("VITE_APP_API")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+        })
+        .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string());
+
+    let mutator_set_accumulator = get_current_mutator_set_accumulator(&client, &rpc_url).await?;
+
+    let cached_utxos = utxo_cache::get_all_utxos().await;
+    let last_scanned = utxo_cache::get_last_scanned_block().await;
+
+    // Revalidate cached UTXOs
+    let mut valid_utxos = Vec::new();
+    for utxo in cached_utxos {
+        if let Ok(msmp) = transaction::generate_membership_proof_client_side(
+            &utxo.utxo,
+            &mutator_set_accumulator,
+            &rpc_url,
+            &client,
+        ).await {
+            let item = Tip5::hash(utxo.utxo.utxo());
+            if mutator_set_accumulator.verify(item, &msmp) {
+                valid_utxos.push(utxo);
+            }
+        }
+    }
+
+    utxo_cache::replace_cache_and_persist(valid_utxos.clone(), last_scanned).await;
+
+    let utxos: Vec<UtxoInfo> = valid_utxos
+        .iter()
+        .map(|utxo| {
+            let utxo_ref = utxo.utxo.utxo();
+            let amount = utxo_ref.get_native_currency_amount();
+            let addition_record = utxo.utxo.addition_record();
+            let utxo_hash = Tip5::hash(utxo_ref);
+            let release_date_opt = utxo_ref.release_date();
+            let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
+                (true, Some(ts.to_millis()))
+            } else {
+                (false, None)
+            };
+            UtxoInfo {
+                block_height: utxo.block_height,
+                amount: format!("{}", amount),
+                addition_record_hex: format!(
+                    "0x{}",
+                    hex::encode(bincode::serialize(&addition_record).unwrap_or_default())
+                ),
+                utxo_hash: format!("0x{}", utxo_hash.to_hex()),
+                is_timelocked,
+                release_date_ms,
+            }
+        })
+        .collect();
+
+    let response = GetCachedUtxosResponse {
+        success: true,
+        utxos,
+        last_scanned_block: last_scanned,
+        error: None,
+    };
+
+    Ok(serde_json::to_string(&response)
+        .map_err(|e| format!("Failed to serialize cached UTXOs: {}", e))?)
+}
+
+pub async fn get_cached_utxos_local() -> Result<String, String> {
+    let cached_utxos = utxo_cache::get_all_utxos().await;
+    let last_scanned = utxo_cache::get_last_scanned_block().await;
+
+    let utxos: Vec<UtxoInfo> = cached_utxos
+        .iter()
+        .map(|utxo| {
+            let utxo_ref = utxo.utxo.utxo();
+            let amount = utxo_ref.get_native_currency_amount();
+            let addition_record = utxo.utxo.addition_record();
+            let utxo_hash = Tip5::hash(utxo_ref);
+            let release_date_opt = utxo_ref.release_date();
+            let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
+                (true, Some(ts.to_millis()))
+            } else {
+                (false, None)
+            };
+            UtxoInfo {
+                block_height: utxo.block_height,
+                amount: format!("{}", amount),
+                addition_record_hex: format!(
+                    "0x{}",
+                    hex::encode(bincode::serialize(&addition_record).unwrap_or_default())
+                ),
+                utxo_hash: format!("0x{}", utxo_hash.to_hex()),
+                is_timelocked,
+                release_date_ms,
+            }
+        })
+        .collect();
+
+    let response = GetCachedUtxosResponse {
+        success: true,
+        utxos,
+        last_scanned_block: last_scanned,
+        error: None,
+    };
+
+    Ok(serde_json::to_string(&response)
+        .map_err(|e| format!("Failed to serialize cached UTXOs: {}", e))?)
 }
 
 #[derive(Debug, Serialize, Deserialize)]

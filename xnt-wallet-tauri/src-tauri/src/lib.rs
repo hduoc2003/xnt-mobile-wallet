@@ -1,52 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(non_snake_case)]
-use neptune_privacy::api::export::{ReceivingAddress, TransactionDetails};
-use neptune_privacy::api::tx_initiation::builder::transaction_builder::TransactionBuilder;
-use neptune_privacy::api::tx_initiation::builder::tx_output_list_builder::OutputFormat;
 use neptune_privacy::application::config::network::Network;
-use neptune_privacy::application::json_rpc::core::model::message::{
-    GetArchivalMutatorSetResponse, GetStateResponse,
-};
-use neptune_privacy::prelude::twenty_first::prelude::Digest;
-use neptune_privacy::protocol::consensus::shared::Hash;
-use neptune_privacy::protocol::consensus::transaction::primitive_witness::PrimitiveWitness;
-use neptune_privacy::protocol::consensus::transaction::transaction_proof::TransactionProof;
-use neptune_privacy::protocol::consensus::transaction::validity::collect_lock_scripts::{
-    CollectLockScripts, CollectLockScriptsWitness,
-};
-use neptune_privacy::protocol::consensus::transaction::validity::collect_type_scripts::{
-    CollectTypeScripts, CollectTypeScriptsWitness,
-};
-use neptune_privacy::protocol::consensus::transaction::validity::kernel_to_outputs::{
-    KernelToOutputs, KernelToOutputsWitness,
-};
-use neptune_privacy::protocol::consensus::transaction::validity::neptune_proof::Proof as NeptuneProof;
-use neptune_privacy::protocol::consensus::transaction::validity::proof_collection::ProofCollection;
-use neptune_privacy::protocol::consensus::transaction::validity::removal_records_integrity::{
-    RemovalRecordsIntegrity, RemovalRecordsIntegrityWitness,
-};
-use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
-use neptune_privacy::protocol::proof_abstractions::timestamp::Timestamp;
-use neptune_privacy::state::wallet::address::generation_address::GenerationSpendingKey;
 use neptune_privacy::state::wallet::address::view_key::ViewKey;
 use neptune_privacy::state::wallet::address::SpendingKey;
-use neptune_privacy::state::wallet::incoming_utxo::IncomingUtxo;
-use neptune_privacy::state::wallet::transaction_input::{TxInput, TxInputList};
-use neptune_privacy::state::wallet::transaction_output::{TxOutput, TxOutputList};
-use neptune_privacy::state::wallet::unlocked_utxo::UnlockedUtxo;
-use neptune_privacy::state::wallet::utxo_notification::UtxoNotificationMedium;
 use neptune_privacy::state::wallet::wallet_entropy::WalletEntropy;
 use neptune_privacy::state::wallet::secret_key_material::SecretKeyMaterial;
-use neptune_privacy::util_types::mutator_set::addition_record::AdditionRecord;
-use neptune_privacy::util_types::mutator_set::ms_membership_proof::MsMembershipProof;
-use num_traits::identities::Zero;
-use num_traits::ops::checked::CheckedSub;
 use rand::Rng;
 use std::str::FromStr;
 use log::Level;
 use reqwest::Client;
-use reqwest::header::USER_AGENT;
-use reqwest::header::HeaderMap;
+use reqwest::header::{HeaderMap, USER_AGENT};
 
 #[cfg(target_os = "android")]
 use android_logger;
@@ -58,10 +21,6 @@ mod wallet;
 mod transaction;
 mod utxo_scanning;
 mod utxo_cache;
-
-use keystore::*;
-use wallet::*;
-use transaction::*;
 
 mod rpc_config;
 
@@ -233,6 +192,16 @@ async fn scan_utxos_client_side(app: tauri::AppHandle, request: serde_json::Valu
 }
 
 #[tauri::command]
+async fn get_cached_utxos(app: tauri::AppHandle) -> Result<String, String> {
+    utxo_scanning::get_cached_utxos(&app).await
+}
+
+#[tauri::command]
+async fn get_cached_utxos_local() -> Result<String, String> {
+    utxo_scanning::get_cached_utxos_local().await
+}
+
+#[tauri::command]
 async fn get_pending_balance(app: tauri::AppHandle, request: serde_json::Value) -> Result<String, String> {
     let pending_request: utxo_scanning::GetPendingBalanceRequest = serde_json::from_value(request)
         .map_err(|e| format!("Invalid request: {}", e))?;
@@ -385,6 +354,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .setup(|app| {
+            utxo_cache::init_cache_path(app.handle());
+            tauri::async_runtime::spawn(async {
+                utxo_cache::reload_cache_from_disk().await;
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             generate_seed,
             generate_keys_from_seed,
@@ -400,6 +376,8 @@ pub fn run() {
             get_keystore_path,
             build_transaction,
             scan_utxos_client_side,
+            get_cached_utxos,
+            get_cached_utxos_local,
             clear_utxo_cache,
             get_pending_balance,
             proxy_json_rpc,
