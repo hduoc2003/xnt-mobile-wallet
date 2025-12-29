@@ -66,7 +66,7 @@ pub(crate) async fn generate_membership_proof_client_side(
 ) -> Result<MsMembershipProof, String> {
     let serialize_hex = |data: &[u8]| format!("0x{}", hex::encode(data));
     
-    // Step 1: Find AOCL leaf index
+    // Find AOCL leaf index
     let addition_record = incoming_utxo.addition_record();
     let addition_record_hex = serialize_hex(&bincode::serialize(&addition_record)
         .map_err(|e| format!("Failed to serialize addition record: {}", e))?);

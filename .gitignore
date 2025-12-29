@@ -1,3 +1,22 @@
 target
 .vscode
 .idea
+
+# macOS
+.DS_Store
+*.DS_Store
+
+# Vite cache
+**/vite.config.ts.timestamp-*.mjs
+
+# Xcode user data
+**/xcuserdata/
+**/*.xcuserstate
+**/UserInterfaceState.xcuserstate
+
+# iOS provisioning profiles
+**/*.mobileprovision
+
+# Build artifacts
+**/build/
+**/Externals/
