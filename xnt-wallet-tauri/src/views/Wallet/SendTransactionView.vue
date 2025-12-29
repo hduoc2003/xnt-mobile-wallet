@@ -239,12 +239,21 @@ const handleConfirmSend = async () => {
       return
     }
 
+    // Use first output UTXO digest
+    const firstDigest =
+      submitResult.outputUtxoDigests?.[0]
+
+    if (!firstDigest || typeof firstDigest !== 'string') {
+      toast.error('Transaction submitted but no UTXO digest returned')
+      return
+    }
+
     // Store transaction locally for history view
     const amountNum = parseFloat(outputAmount.value)
     const feeNum = parseFloat(priorityFee.value)
 
     addTransaction({
-      id: submitResult.txid,
+      id: firstDigest,
       toAddress: outputAddress.value.trim(),
       amount: Number.isFinite(amountNum) ? amountNum : 0,
       fee: Number.isFinite(feeNum) ? feeNum : 0,

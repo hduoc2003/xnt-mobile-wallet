@@ -41,10 +41,10 @@ const formatDateTime = (iso: string) => {
   return d.toLocaleString()
 }
 
-const openExplorer = async (txid: string) => {
+const openExplorer = async (utxoDigest: string) => {
   try {
-    const cleanTxid = txid.startsWith('0x') ? txid.slice(2) : txid
-    await openUrl(`http://neptunescan.io/tx?id=${cleanTxid}`)
+    const cleanDigest = utxoDigest.startsWith('0x') ? utxoDigest.slice(2) : utxoDigest
+    await openUrl(`https://neptunescan.io/utxo/${cleanDigest}`)
   } catch (error) {
     console.error('Failed to open explorer:', error)
   }

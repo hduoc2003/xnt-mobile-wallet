@@ -1,7 +1,9 @@
 use neptune_privacy::prelude::twenty_first::math::b_field_element::BFieldElement;
 use neptune_privacy::prelude::triton_vm::prelude::Tip5;
 use neptune_privacy::protocol::consensus::transaction::announcement::Announcement;
-use neptune_privacy::protocol::consensus::transaction::transaction_kernel::{TransactionKernel, TransactionKernelProxy};
+use neptune_privacy::protocol::consensus::transaction::transaction_kernel::{
+    TransactionKernel, TransactionKernelProxy,
+};
 use neptune_privacy::application::json_rpc::core::model::block::transaction_kernel::RpcTransactionKernel;
 use neptune_privacy::state::wallet::address::view_key::ViewKey;
 use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
@@ -11,6 +13,7 @@ use neptune_privacy::util_types::mutator_set::mutator_set_accumulator::MutatorSe
 use neptune_privacy::application::json_rpc::core::model::message::GetArchivalMutatorSetResponse;
 use num_traits::Zero;
 use reqwest::Client;
+use std::collections::HashSet;
 use tauri::{AppHandle, Emitter};
 use crate::rpc_config;
 use serde::{Deserialize, Serialize};
@@ -209,29 +212,32 @@ pub async fn scan_utxos_client_side(
         }
     }
     
-    let mut utxo_infos: Vec<UtxoInfo> = validated_cached_utxos.iter().map(|utxo| {
-        let utxo_ref = utxo.utxo.utxo();
-        let amount = utxo_ref.get_native_currency_amount();
-        let addition_record = utxo.utxo.addition_record();
-        let utxo_hash = Tip5::hash(utxo_ref);
-        let release_date_opt = utxo_ref.release_date();
-        let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
-            (true, Some(ts.to_millis()))
-        } else {
-            (false, None)
-        };
-        UtxoInfo {
-            block_height: utxo.block_height,
-            amount: format!("{}", amount),
-            addition_record_hex: format!(
-                "0x{}",
-                hex::encode(bincode::serialize(&addition_record).unwrap())
-            ),
-            utxo_hash: format!("0x{}", utxo_hash.to_hex()),
-            is_timelocked,
-            release_date_ms,
-        }
-    }).collect();
+    let mut utxo_infos: Vec<UtxoInfo> = validated_cached_utxos
+        .iter()
+        .map(|utxo| {
+            let utxo_ref = utxo.utxo.utxo();
+            let amount = utxo_ref.get_native_currency_amount();
+            let addition_record = utxo.utxo.addition_record();
+            let utxo_hash = Tip5::hash(utxo_ref);
+            let release_date_opt = utxo_ref.release_date();
+            let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
+                (true, Some(ts.to_millis()))
+            } else {
+                (false, None)
+            };
+            UtxoInfo {
+                block_height: utxo.block_height,
+                amount: format!("{}", amount),
+                addition_record_hex: format!(
+                    "0x{}",
+                    hex::encode(bincode::serialize(&addition_record).unwrap())
+                ),
+                utxo_hash: format!("0x{}", utxo_hash.to_hex()),
+                is_timelocked,
+                release_date_ms,
+            }
+        })
+        .collect();
     
     let mut incoming_utxos_for_persist = validated_cached_utxos.clone();
     
@@ -571,6 +577,42 @@ pub async fn scan_utxos_client_side(
         current_block = batch_end + 1;
     }
     
+    let mut seen_hashes: HashSet<String> = HashSet::new();
+    utxo_infos.retain(|u| {
+        let key = if !u.utxo_hash.is_empty() {
+            u.utxo_hash.clone()
+        } else {
+            u.addition_record_hex.clone()
+        };
+        if key.is_empty() {
+            return false;
+        }
+        if seen_hashes.contains(&key) {
+            false
+        } else {
+            seen_hashes.insert(key);
+            true
+        }
+    });
+
+    let mut final_seen: HashSet<String> = HashSet::new();
+    utxo_infos.retain(|u| {
+        let key = if !u.utxo_hash.is_empty() {
+            u.utxo_hash.clone()
+        } else {
+            u.addition_record_hex.clone()
+        };
+        if key.is_empty() {
+            return false;
+        }
+        if final_seen.contains(&key) {
+            false
+        } else {
+            final_seen.insert(key);
+            true
+        }
+    });
+
     // Emit progress
     let completion_progress = ScanProgress {
         current_block: request.end_block,

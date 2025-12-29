@@ -35,6 +35,24 @@ struct PersistedUtxo {
     block_height: u64,
 }
 
+fn get_utxo_key(utxo: &CachedUtxo) -> String {
+    let ar = utxo.utxo.addition_record();
+    format!("0x{}", hex::encode(bincode::serialize(&ar.canonical_commitment).unwrap()))
+}
+
+fn deduplicate_utxos(utxos: Vec<CachedUtxo>) -> Vec<CachedUtxo> {
+    let mut seen = std::collections::HashSet::new();
+    let mut unique = Vec::new();
+    for utxo in utxos {
+        let key = get_utxo_key(&utxo);
+        if !seen.contains(&key) {
+            seen.insert(key);
+            unique.push(utxo);
+        }
+    }
+    unique
+}
+
 fn get_cache() -> &'static UtxoCache {
     UTXO_CACHE.get_or_init(|| {
         let (initial_map, last_scanned) = if CACHE_PATH.get().is_some() {
@@ -84,9 +102,9 @@ fn get_last_scanned_lock() -> Arc<RwLock<u64>> {
 pub async fn store_utxos(utxos: Vec<CachedUtxo>) {
     let cache = get_cache();
     let mut cache_guard = cache.write().await;
-    for cu in utxos {
-        let ar = cu.utxo.addition_record();
-        let key = format!("0x{}", hex::encode(bincode::serialize(&ar.canonical_commitment).unwrap()));
+    let unique_utxos = deduplicate_utxos(utxos);
+    for cu in unique_utxos {
+        let key = get_utxo_key(&cu);
         cache_guard.insert(key, cu);
     }
 }
@@ -116,13 +134,13 @@ pub async fn get_all_utxos() -> Vec<CachedUtxo> {
 }
 
 pub async fn replace_cache_and_persist(utxos: Vec<CachedUtxo>, last_scanned_block: u64) {
+    let unique_utxos = deduplicate_utxos(utxos);
     {
         let cache = get_cache();
         let mut cache_guard = cache.write().await;
         cache_guard.clear();
-        for utxo in utxos.iter() {
-            let ar = utxo.utxo.addition_record();
-            let key = format!("0x{}", hex::encode(bincode::serialize(&ar.canonical_commitment).unwrap()));
+        for utxo in unique_utxos.iter() {
+            let key = get_utxo_key(utxo);
             cache_guard.insert(key, utxo.clone());
         }
     }
@@ -133,7 +151,7 @@ pub async fn replace_cache_and_persist(utxos: Vec<CachedUtxo>, last_scanned_bloc
         *last = last_scanned_block;
     }
 
-    if let Err(e) = persist_cache_to_disk(utxos, last_scanned_block) {
+    if let Err(e) = persist_cache_to_disk(unique_utxos, last_scanned_block) {
         log::warn!("[UTXO Cache] Failed to persist cache to disk: {}", e);
     }
 }
@@ -210,10 +228,15 @@ fn load_persisted_cache() -> (HashMap<String, CachedUtxo>, u64) {
         match bincode::deserialize::<PersistedUtxoCache>(&buf) {
             Ok(persisted) => {
                 last_scanned_block = persisted.last_scanned_block;
-                for pu in persisted.utxos {
-                    let ar = pu.utxo.addition_record();
-                    let key = format!("0x{}", hex::encode(bincode::serialize(&ar.canonical_commitment).unwrap()));
-                    map.insert(key, CachedUtxo { utxo: pu.utxo, block_height: pu.block_height });
+                // Deduplicate UTXOs when loading from disk
+                let cached_utxos: Vec<CachedUtxo> = persisted.utxos
+                    .into_iter()
+                    .map(|pu| CachedUtxo { utxo: pu.utxo, block_height: pu.block_height })
+                    .collect();
+                let unique_utxos = deduplicate_utxos(cached_utxos);
+                for utxo in unique_utxos {
+                    let key = get_utxo_key(&utxo);
+                    map.insert(key, utxo);
                 }
                 log::info!("[UTXO Cache] Loaded {} cached UTXOs from disk", map.len());
             }
@@ -228,8 +251,10 @@ fn load_persisted_cache() -> (HashMap<String, CachedUtxo>, u64) {
 fn persist_cache_to_disk(utxos: Vec<CachedUtxo>, last_scanned_block: u64) -> io::Result<()> {
     let path = cache_file_path();
     ensure_cache_dir(&path)?;
+    // Deduplicate before persisting to ensure no duplicates on disk
+    let unique_utxos = deduplicate_utxos(utxos);
     let payload = PersistedUtxoCache {
-        utxos: utxos
+        utxos: unique_utxos
             .into_iter()
             .map(|u| PersistedUtxo {
                 utxo: u.utxo,
