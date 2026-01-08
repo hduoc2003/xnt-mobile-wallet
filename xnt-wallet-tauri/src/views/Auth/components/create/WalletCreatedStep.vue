@@ -27,24 +27,6 @@ onMounted(() => {
 
 <template>
   <div class="space-y-8">
-    <div class="flex justify-center">
-      <div class="relative">
-        <div class="absolute -inset-4 rounded-full bg-green-500/20 blur-xl"></div>
-        <div
-          class="relative rounded-full bg-linear-to-br from-green-400 to-emerald-600 p-6 shadow-2xl"
-        >
-          <CheckCircle2 :size="80" class="text-white" />
-        </div>
-      </div>
-    </div>
-
-    <div class="space-y-3 text-center">
-      <h1 class="text-4xl font-bold tracking-tight text-foreground">Congratulations!</h1>
-      <p class="text-lg text-muted-foreground">Your XNT Wallet is ready</p>
-    </div>
-
-    <Separator />
-
     <div class="space-y-6">
       <div class="flex justify-center">
         <Logo />

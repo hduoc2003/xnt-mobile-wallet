@@ -48,7 +48,7 @@ export const broadcastSignedTransaction = async (transactionHex: string): Promis
   const params = {
     transactionHex,
   }
-  return await callJsonRpc('mempool_submitTransaction', params)
+  return await callJsonRpc('mempool_walletSubmitTransaction', params)
 }
 
 export const getXntPrice = async (url: string): Promise<any> => {

@@ -167,6 +167,10 @@
     @apply border-border;
   }
 
+  html {
+    height: 100%;
+  }
+
   body {
     @apply bg-background text-foreground;
     font-family:
@@ -181,6 +185,12 @@
     -webkit-tap-highlight-color: transparent;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    height: 100%;
+  }
+
+  #app {
+    min-height: 100%;
+    /* Components handle safe-area-inset-top individually via safe-area-top class */
   }
 
   /* Hide scrollbar for all browsers */

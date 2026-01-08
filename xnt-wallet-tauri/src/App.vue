@@ -14,24 +14,46 @@ let unlistenFocus: UnlistenFn | null = null
 let unlistenBlur: UnlistenFn | null = null
 
 let shouldRedirect = false
+let visibilityChangeHandler: (() => void) | null = null
+
+const handleAppBlur = () => {
+  if(router.currentRoute.value.name === 'auth') return
+  clearWallet()
+  shouldRedirect = true
+}
+
+const handleAppFocus = () => {
+  if (!shouldRedirect) return
+  shouldRedirect = false
+
+  requestAnimationFrame(() => {
+    if (!neptuneStore.hasWallet) {
+      router.replace('/auth').catch(() => {})
+    }
+  })
+}
 
 onMounted(async () => {
-  unlistenBlur = await listen('tauri://blur', () => {
-    if(router.currentRoute.value.name === 'auth') return
-    clearWallet()
-    shouldRedirect = true
-  })
+  try {
+    unlistenBlur = await listen('tauri://blur', handleAppBlur)
+    unlistenFocus = await listen('tauri://focus', handleAppFocus)
+  } catch (error) {
+    console.warn('Failed to listen to Tauri blur/focus events:', error)
+  }
 
-  unlistenFocus = await listen('tauri://focus', () => {
-    if (!shouldRedirect) return
-    shouldRedirect = false
-
-    requestAnimationFrame(() => {
-      if (!neptuneStore.hasWallet) {
-        router.replace('/auth').catch(() => {})
+  // Page Visibility API 
+  if (typeof document !== 'undefined') {
+    visibilityChangeHandler = () => {
+      if (document.hidden) {
+        // App went to background
+        handleAppBlur()
+      } else {
+        // App came to foreground
+        handleAppFocus()
       }
-    })
-  })
+    }
+    document.addEventListener('visibilitychange', visibilityChangeHandler)
+  }
 })
 
 onUnmounted(() => {
@@ -39,6 +61,11 @@ onUnmounted(() => {
   unlistenBlur?.()
   unlistenFocus = null
   unlistenBlur = null
+  
+  if (visibilityChangeHandler && typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', visibilityChangeHandler)
+    visibilityChangeHandler = null
+  }
 })
 </script>
 

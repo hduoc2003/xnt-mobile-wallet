@@ -53,6 +53,9 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        UIViewControllerBasedStatusBarAppearance: false
+        UIStatusBarStyle: UIStatusBarStyleDefault
+        UIStatusBarHidden: false
         CFBundleShortVersionString: 0.1.9
         CFBundleVersion: "0.1.9"
     entitlements:
