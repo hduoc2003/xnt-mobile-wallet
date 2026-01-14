@@ -5,7 +5,7 @@ use neptune_privacy::protocol::consensus::transaction::transaction_kernel::{
     TransactionKernel, TransactionKernelProxy,
 };
 use neptune_privacy::application::json_rpc::core::model::block::transaction_kernel::RpcTransactionKernel;
-use neptune_privacy::state::wallet::address::view_key::ViewKey;
+use neptune_privacy::state::wallet::address::SpendingKey;
 use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
 use neptune_privacy::protocol::proof_abstractions::timestamp::Timestamp;
 use neptune_privacy::prelude::twenty_first::tip5::digest::Digest;
@@ -24,7 +24,7 @@ use crate::transaction;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanUtxosRequest {
-    pub view_key_hex: String,
+    pub spending_key_hex: String,
     pub start_block: u64,
     pub end_block: u64,
     pub rpc_url: Option<String>,
@@ -113,7 +113,165 @@ async fn get_current_mutator_set_accumulator(
     let msa_response: GetArchivalMutatorSetResponse = serde_json::from_value(result)
         .map_err(|e| format!("Failed to deserialize mutator set accumulator: {}", e))?;
 
-    Ok(msa_response.archival_mutator_set)
+    Ok(msa_response.archival_mutator_set.into())
+}
+
+async fn get_spent_status_from_rpc(
+    client: &Client,
+    rpc_url: &str,
+    absolute_index_set_hashes: &[Digest],
+) -> Result<Vec<Option<u64>>, String> {
+    let hashes_vec: Vec<String> = absolute_index_set_hashes
+        .iter()
+        .map(|d| d.to_hex())
+        .collect();
+    
+    let response = client
+        .post(rpc_url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "archival_getSpentStatus",
+            "params": {
+                "absoluteIndexSetHashes": hashes_vec
+            },
+            "id": 1
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get spent status: {}", e))?;
+
+    let status = response.status();
+    let response_text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read spent status response: {}", e))?;
+
+    if !status.is_success() {
+        return Err(format!("Non-success status {}: {}", status, response_text));
+    }
+
+    let response_json: serde_json::Value = serde_json::from_str(&response_text)
+        .map_err(|e| format!("Failed to parse spent status response: {}", e))?;
+
+    let result = extract_rpc_result("archival_getSpentStatus", &response_json)?;
+    
+    let spent_at_heights: Vec<Option<u64>> = result
+        .get("spentAtHeights")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "Missing spentAtHeights".to_string())?
+        .iter()
+        .map(|v| {
+            if v.is_null() {
+                None
+            } else {
+                v.as_u64()
+            }
+        })
+        .collect();
+
+    Ok(spent_at_heights)
+}
+
+pub async fn validate_utxos_with_rpc(
+    client: &Client,
+    rpc_url: &str,
+    cached_utxos: &[utxo_cache::CachedUtxo],
+) -> Result<Vec<utxo_cache::CachedUtxo>, String> {
+    use neptune_privacy::util_types::mutator_set::removal_record::absolute_index_set::AbsoluteIndexSet;
+    use neptune_privacy::util_types::mutator_set::commit;
+    
+    if cached_utxos.is_empty() {
+        return Ok(Vec::new());
+    }
+    
+    let mut commitments: Vec<String> = Vec::new();
+    let mut utxo_data: Vec<(usize, Digest, Digest, Digest)> = Vec::new();
+    
+    for (idx, cached_utxo) in cached_utxos.iter().enumerate() {
+        let utxo_ref = &cached_utxo.utxo.utxo;
+        let utxo_hash = Tip5::hash(utxo_ref);
+        let sender_randomness = cached_utxo.utxo.sender_randomness;
+        let receiver_preimage = cached_utxo.utxo.receiver_preimage;
+        
+        let addition_record = commit(
+            utxo_hash,
+            sender_randomness,
+            receiver_preimage.hash(),
+        );
+        
+        let commitment_hex = addition_record.canonical_commitment.to_hex();
+        commitments.push(commitment_hex);
+        utxo_data.push((idx, utxo_hash, sender_randomness, receiver_preimage));
+    }
+    let aocl_response = client
+        .post(rpc_url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "archival_getAoclLeafIndices",
+            "params": {
+                "commitments": commitments
+            },
+            "id": 1
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get AOCL indices: {}", e))?;
+    
+    let aocl_status = aocl_response.status();
+    let aocl_text = aocl_response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read AOCL response: {}", e))?;
+    
+    if !aocl_status.is_success() {
+        return Err(format!("Failed to get AOCL indices: status {}", aocl_status));
+    }
+    
+    let aocl_json: serde_json::Value = serde_json::from_str(&aocl_text)
+        .map_err(|e| format!("Failed to parse AOCL response: {}", e))?;
+    
+    let aocl_result = extract_rpc_result("archival_getAoclLeafIndices", &aocl_json)?;
+    let indices = aocl_result
+        .get("indices")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "Missing indices".to_string())?;
+    
+    let mut absolute_index_set_hashes: Vec<Digest> = Vec::new();
+    let mut utxo_to_hash_map: Vec<usize> = Vec::new();
+    
+    for (i, (utxo_idx, utxo_hash, sender_randomness, receiver_preimage)) in utxo_data.iter().enumerate() {
+        if let Some(aocl_index) = indices.get(i).and_then(|v| v.as_u64()) {
+            let abs_indices = AbsoluteIndexSet::compute(
+                *utxo_hash,
+                *sender_randomness,
+                *receiver_preimage,
+                aocl_index,
+            );
+            let abs_hash = Tip5::hash(&abs_indices);
+            absolute_index_set_hashes.push(abs_hash);
+            utxo_to_hash_map.push(*utxo_idx);
+        }
+    }
+    
+    if absolute_index_set_hashes.is_empty() {
+        return Ok(Vec::new());
+    }
+    
+    let spent_statuses = get_spent_status_from_rpc(client, rpc_url, &absolute_index_set_hashes).await?;
+    
+    let validated: Vec<utxo_cache::CachedUtxo> = utxo_to_hash_map
+        .iter()
+        .enumerate()
+        .filter_map(|(hash_idx, &utxo_idx)| {
+            if spent_statuses.get(hash_idx).and_then(|s| *s).is_none() {
+                Some(cached_utxos[utxo_idx].clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+    
+    Ok(validated)
 }
 
 fn parse_rpc_bfield_elements(hex_str: &str) -> Result<Vec<BFieldElement>, String> {
@@ -177,15 +335,26 @@ pub async fn scan_utxos_client_side(
         }
     };
 
-    let view_key_bytes = hex::decode(
-        request.view_key_hex.trim_start_matches("0x")
+    let spending_key_bytes = hex::decode(
+        request.spending_key_hex.trim_start_matches("0x")
     )
-    .map_err(|e| format!("Invalid view key hex: {}", e))?;
+    .map_err(|e| format!("Invalid spending key hex: {}", e))?;
     
-    let view_key: ViewKey = bincode::deserialize(&view_key_bytes)
-        .map_err(|e| format!("Failed to deserialize view key: {}", e))?;
+    let spending_key: SpendingKey = bincode::deserialize(&spending_key_bytes)
+        .map_err(|e| format!("Failed to deserialize spending key: {}", e))?;
     
-    let mutator_set_accumulator = get_current_mutator_set_accumulator(&client, &rpc_url).await?;
+    let generation_spending_key = match spending_key {
+        SpendingKey::Generation(key) => key,
+        SpendingKey::Symmetric(_) => {
+            return Err("Symmetric spending keys not supported".to_string());
+        }
+    };
+    
+    use neptune_privacy::prelude::twenty_first::prelude::Tip5;
+    let receiver_identifier = generation_spending_key.receiver_identifier();
+    let receiver_id_hash = Tip5::hash_varlen(&[receiver_identifier]);
+    let receiver_id_hash_hex = receiver_id_hash.to_hex();
+    let receiver_preimage = generation_spending_key.receiver_preimage();
     
     let force_rescan = request.start_block == 0;
 
@@ -193,21 +362,16 @@ pub async fn scan_utxos_client_side(
         utxo_cache::clear_cache().await;
     }
 
-    // Load cached UTXOs from disk and re-validate
     let mut validated_cached_utxos: Vec<utxo_cache::CachedUtxo> = Vec::new();
     if !force_rescan {
         let cached_utxos = utxo_cache::get_all_utxos().await;
-        for utxo in cached_utxos {
-            if let Ok(msmp) = transaction::generate_membership_proof_client_side(
-                &utxo.utxo,
-                &mutator_set_accumulator,
-                &rpc_url,
-                &client,
-            ).await {
-                let item = Tip5::hash(utxo.utxo.utxo());
-                if mutator_set_accumulator.verify(item, &msmp) {
-                    validated_cached_utxos.push(utxo);
-                }
+        match validate_utxos_with_rpc(&client, &rpc_url, &cached_utxos).await {
+            Ok(validated) => {
+                validated_cached_utxos = validated;
+                log::info!("[UTXO Scan] Validated {} cached UTXOs using archival_getSpentStatus", validated_cached_utxos.len());
+            }
+            Err(e) => {
+                log::warn!("[UTXO Scan] Failed to validate cached UTXOs using archival_getSpentStatus: {}. Skipping cached UTXOs.", e);
             }
         }
     }
@@ -215,13 +379,13 @@ pub async fn scan_utxos_client_side(
     let mut utxo_infos: Vec<UtxoInfo> = validated_cached_utxos
         .iter()
         .map(|utxo| {
-            let utxo_ref = utxo.utxo.utxo();
+            let utxo_ref = &utxo.utxo.utxo;
             let amount = utxo_ref.get_native_currency_amount();
             let addition_record = utxo.utxo.addition_record();
             let utxo_hash = Tip5::hash(utxo_ref);
             let release_date_opt = utxo_ref.release_date();
             let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
-                (true, Some(ts.to_millis()))
+                (true, Some(ts.to_millis() as u64))
             } else {
                 (false, None)
             };
@@ -248,7 +412,7 @@ pub async fn scan_utxos_client_side(
         request.start_block
     };
     
-    let batch_size = 1000;
+    let batch_size = 10000;
     let mut current_block = if force_rescan {
         request.start_block
     } else {
@@ -257,7 +421,6 @@ pub async fn scan_utxos_client_side(
     
     let total_blocks = request.end_block.saturating_sub(request.start_block) + 1;
     
-    // Emit initial progress
     let initial_progress = ScanProgress {
         current_block: request.start_block,
         end_block: request.end_block,
@@ -269,6 +432,7 @@ pub async fn scan_utxos_client_side(
     let _ = app.emit("utxo-scan-progress", &initial_progress);
 
     while current_block <= request.end_block {
+        let batch_start_time = std::time::Instant::now();
         let batch_end = std::cmp::min(current_block + batch_size - 1, request.end_block);
         
         let blocks_scanned = current_block.saturating_sub(request.start_block);
@@ -278,7 +442,6 @@ pub async fn scan_utxos_client_side(
             0.0
         };
         
-        // Emit progress
         let progress = ScanProgress {
             current_block,
             end_block: request.end_block,
@@ -295,17 +458,29 @@ pub async fn scan_utxos_client_side(
         while retries > 0 {
             let request_body = serde_json::json!({
                 "jsonrpc": "2.0",
-                "method": "archival_getBlockAnnouncementsRange",
-                "params": [current_block, batch_end],
+                "method": "archival_getUtxosByReceiver",
+                "params": {
+                    "receiverIdHash": receiver_id_hash_hex,
+                    "fromBlockHeight": current_block,
+                    "toBlockHeight": batch_end
+                },
                 "id": 1
             });
-                
+            
+            let request_start_time = std::time::Instant::now();
+            let request_body_str = serde_json::to_string(&request_body)
+                .unwrap_or_else(|_| "Failed to serialize".to_string());
+            
             log::info!(
-                "[UTXO Scan] req archival_getBlockAnnouncementsRange {}-{} retry={} url={}",
+                "[UTXO Scan] [REQUEST] Blocks {}-{} | Retry {}/3 | URL: {}",
                 current_block,
                 batch_end,
                 4 - retries,
                 rpc_url
+            );
+            log::info!(
+                "[UTXO Scan] [REQUEST BODY] {}",
+                request_body_str
             );
 
             match client
@@ -315,21 +490,72 @@ pub async fn scan_utxos_client_side(
                 .await
             {
                 Ok(resp) => {
-                    response_result = Some(resp);
+                    let request_duration = request_start_time.elapsed();
+                    let status = resp.status();
+                    let response_start_time = std::time::Instant::now();
+                    
+                    let response_text = match resp.text().await {
+                        Ok(text) => {
+                            let response_duration = response_start_time.elapsed();
+                            let total_request_time = request_start_time.elapsed();
+                            
+                            log::info!(
+                                "[UTXO Scan] [RESPONSE] Blocks {}-{} | Status: {} | Request time: {:.2}ms | Response read time: {:.2}ms | Total time: {:.2}ms | Body size: {} bytes",
+                                current_block,
+                                batch_end,
+                                status,
+                                request_duration.as_secs_f64() * 1000.0,
+                                response_duration.as_secs_f64() * 1000.0,
+                                total_request_time.as_secs_f64() * 1000.0,
+                                text.len()
+                            );
+                            
+                            if text.len() < 10000 {
+                                log::info!(
+                                    "[UTXO Scan] [RESPONSE BODY] {}",
+                                    text
+                                );
+                            } else {
+                                log::info!(
+                                    "[UTXO Scan] [RESPONSE BODY] (truncated, {} bytes) First 500 chars: {}",
+                                    text.len(),
+                                    text.chars().take(500).collect::<String>()
+                                );
+                            }
+                            
+                            text
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "[UTXO Scan] [ERROR] Failed to read response body: {}",
+                                e
+                            );
+                            retries -= 1;
+                            if retries == 0 {
+                                response_result = None;
+                                break;
+                            }
+                            continue;
+                        }
+                    };
+                    
+                    response_result = Some((status, response_text));
                     break;
                 }
                 Err(e) => {
+                    let request_duration = request_start_time.elapsed();
                     retries -= 1;
                     log::warn!(
-                        "[UTXO Scan] HTTP error for blocks {}-{}: {} (remaining retries: {})",
+                        "[UTXO Scan] [ERROR] Blocks {}-{} | Request failed after {:.2}ms | Error: {} | Remaining retries: {}",
                         current_block,
                         batch_end,
+                        request_duration.as_secs_f64() * 1000.0,
                         e,
                         retries
                     );
                     if retries == 0 {
                         log::warn!(
-                            "[UTXO Scan] Giving up on batch {}-{} after retries",
+                            "[UTXO Scan] [ERROR] Giving up on batch {}-{} after all retries",
                             current_block,
                             batch_end
                         );
@@ -342,28 +568,13 @@ pub async fn scan_utxos_client_side(
             }
         }
         
-        let response = match response_result {
-            Some(r) => r,
+        let (status, response_text) = match response_result {
+            Some((s, t)) => (s, t),
             None => {
                 log::warn!(
-                    "[UTXO Scan] No response for batch {}-{} (all retries failed)",
+                    "[UTXO Scan] [ERROR] No response for batch {}-{} (all retries failed)",
                     current_block,
                     batch_end
-                );
-                current_block = batch_end + 1;
-                continue;
-            }
-        };
-        
-        let status = response.status();
-        let response_text = match response.text().await {
-            Ok(text) => text,
-            Err(e) => {
-                log::warn!(
-                    "[UTXO Scan] Failed to read batch response for blocks {}-{}: {}",
-                    current_block,
-                    batch_end,
-                    e
                 );
                 current_block = batch_end + 1;
                 continue;
@@ -403,139 +614,108 @@ pub async fn scan_utxos_client_side(
                 continue;
             }
         };
-        let result = match extract_rpc_result("archival_getBlockAnnouncementsRange", &response_json) {
+        let result = match extract_rpc_result("archival_getUtxosByReceiver", &response_json) {
             Ok(r) => r,
             Err(e) => {
-                log::warn!("[UTXO Scan] Error getting batch announcements for blocks {} to {}: {}. Skipping batch.", 
+                log::warn!("[UTXO Scan] Error getting indexed UTXOs for blocks {} to {}: {}. Skipping batch.", 
                     current_block, batch_end, e);
                 current_block = batch_end + 1;
                 continue;
             }
         };
         
-        let blocks_array = match result.get("blocks") {
+        let indexed_utxos = match result.get("utxos") {
             Some(serde_json::Value::Array(arr)) => arr,
             _ => {
-                log::warn!("[UTXO Scan] Invalid blocks array in response for batch {} to {}", current_block, batch_end);
+                log::warn!("[UTXO Scan] Invalid utxos array in response for batch {} to {}", current_block, batch_end);
                 current_block = batch_end + 1;
                 continue;
             }
         };
         
-        for block_entry in blocks_array {
-            let height = match block_entry.get("height") {
-                Some(serde_json::Value::Number(n)) => n.as_u64().unwrap_or(0),
-                _ => {
-                    log::warn!("[UTXO Scan] Missing height in block entry");
-                    continue;
+        let mut cached_utxos: Vec<utxo_cache::CachedUtxo> = Vec::new();
+        let mut unspent_count = 0;
+        let mut last_block_height_in_batch = 0u64;
+        
+        for indexed_utxo in indexed_utxos {
+            let block_height = indexed_utxo.get("blockHeight")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            last_block_height_in_batch = block_height;
+            
+            let block_digest_hex = indexed_utxo.get("blockDigest")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            
+            let ciphertext_bfes: Vec<u64> = match indexed_utxo.get("ciphertext") {
+                Some(serde_json::Value::Array(arr)) => {
+                    arr.iter()
+                        .filter_map(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                        .collect()
                 }
+                _ => Vec::new(),
             };
             
-            let announcements = match block_entry.get("announcements") {
-                Some(serde_json::Value::Array(arr)) => arr,
-                Some(serde_json::Value::Null) => {
-                    // Block not found or no announcements
-                    last_scanned = height;
-                    continue;
-                }
-                _ => {
-                    continue;
-                }
-            };
+            let ciphertext_bytes: Vec<u8> = ciphertext_bfes
+                .iter()
+                .flat_map(|&v| v.to_le_bytes())
+                .collect();
             
-            if announcements.is_empty() {
-                last_scanned = height;
-                continue;
-            }
+            use neptune_privacy::prelude::twenty_first::prelude::BFieldElement;
+            let ciphertext: Vec<BFieldElement> = ciphertext_bytes
+                .chunks(8)
+                .map(|chunk| {
+                    let mut arr = [0u8; 8];
+                    arr[..chunk.len()].copy_from_slice(chunk);
+                    BFieldElement::new(u64::from_le_bytes(arr))
+                })
+                .collect();
             
-            let mut announcement_vec = Vec::new();
-            let mut parse_errors = 0;
-            
-            for ann in announcements.iter() {
-                let hex_str = match ann.as_str() {
-                    Some(s) => s,
-                    None => {
-                        parse_errors += 1;
+            let (utxo, sender_randomness, _payment_id) = match generation_spending_key.decrypt(&ciphertext) {
+                Ok(result) => result,
+                Err(_) => {
                         continue;
                     }
                 };
                 
-                match parse_rpc_bfield_elements(hex_str) {
-                    Ok(elements) => {
-                        if elements.is_empty() {
-                            parse_errors += 1;
-                            continue;
-                        }
-                        announcement_vec.push(Announcement::new(elements));
-                    }
-                    Err(_e) => {
-                        parse_errors += 1;
-                    }
-                }
-            }
+            use neptune_privacy::state::wallet::incoming_utxo::IncomingUtxo;
+            let incoming_utxo = IncomingUtxo {
+                utxo: utxo.clone(),
+                sender_randomness,
+                receiver_preimage,
+                is_guesser_fee: false,
+                payment_id: BFieldElement::new(0),
+            };
             
-            if announcement_vec.is_empty() {
-                last_scanned = height;
-                continue;
-            }
+            let temp_cached_utxo = utxo_cache::CachedUtxo {
+                utxo: incoming_utxo.clone(),
+                block_height,
+            };
             
-            let _announcement_count = announcement_vec.len();
-            
-            if parse_errors > 0 && parse_errors == announcements.len() {
-                log::warn!("[UTXO Scan] Block {}: Failed to parse all {} announcements", 
-                    height, announcements.len());
-            }
-            
-            let tx_kernel = TransactionKernelProxy {
-                inputs: vec![],
-                outputs: vec![],
-                announcements: announcement_vec,
-                fee: NativeCurrencyAmount::zero(),
-                coinbase: None,
-                timestamp: Timestamp::zero(),
-                mutator_set_hash: Digest::default(),
-                merge_bit: false,
-            }
-            .into_kernel();
-            
-            let scan_result = view_key.scan_for_announced_utxos(&tx_kernel);
-            match scan_result {
-                Ok(incoming_utxos) => {
-                    // Verify UTXOs are unspent and store
-                    let mut cached_utxos: Vec<utxo_cache::CachedUtxo> = Vec::new();
-                    let mut unspent_count = 0;
-                    
-                    for utxo in &incoming_utxos {
-                        // Verify UTXO is unspent
-                        let item = Tip5::hash(utxo.utxo());
-                        
-                        
-                        let msmp = match transaction::generate_membership_proof_client_side(
-                            utxo,
-                            &mutator_set_accumulator,
-                            &rpc_url,
-                            &client,
-                        ).await {
-                            Ok(proof) => proof,
-                            Err(_e) => {
+            let validated_utxos = match validate_utxos_with_rpc(&client, &rpc_url, &[temp_cached_utxo.clone()]).await {
+                Ok(validated) => validated,
+                Err(e) => {
+                    log::warn!("[UTXO Scan] Failed to validate UTXO using archival_getSpentStatus: {}. Skipping.", e);
                                 continue;
                             }
                         };
                         
-                       
-                        if !mutator_set_accumulator.verify(item, &msmp) {
+            if validated_utxos.is_empty() {
                             continue;
                         }
                         
                         unspent_count += 1;
-                        let utxo_ref = utxo.utxo();
+            
+            for utxo in &validated_utxos {
+                let utxo_ref = &utxo.utxo.utxo;
                         let amount = utxo_ref.get_native_currency_amount();
-                        let addition_record = utxo.addition_record();
+                let addition_record = utxo.utxo.addition_record();
                         let utxo_hash = Tip5::hash(utxo_ref);
 
                         let release_date_opt = utxo_ref.release_date();
                         let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
-                            (true, Some(ts.to_millis()))
+                    (true, Some(ts.to_millis() as u64))
                         } else {
                             (false, None)
                         };
@@ -543,7 +723,7 @@ pub async fn scan_utxos_client_side(
                         let amount_str = format!("{}", amount);
 
                         utxo_infos.push(UtxoInfo {
-                            block_height: height,
+                    block_height: block_height,
                             amount: amount_str,
                             addition_record_hex: format!(
                                 "0x{}",
@@ -555,34 +735,43 @@ pub async fn scan_utxos_client_side(
                             release_date_ms,
                         });
                         
-                        cached_utxos.push(utxo_cache::CachedUtxo { utxo: utxo.clone(), block_height: height });
-                        incoming_utxos_for_persist.push(utxo_cache::CachedUtxo { utxo: utxo.clone(), block_height: height });
+                cached_utxos.push(utxo.clone());
+                incoming_utxos_for_persist.push(utxo.clone());
+            }
                     }
                     
                     if unspent_count > 0 {
-                        log::info!("[UTXO Scan] Block {}: Found {} unspent UTXO(s)", height, unspent_count);
+                        log::info!("[UTXO Scan] Batch {} to {}: Found {} unspent UTXO(s)", current_block, batch_end, unspent_count);
                     }
                     
+                    let cached_count = cached_utxos.len();
                     if !cached_utxos.is_empty() {
                         utxo_cache::store_utxos(cached_utxos).await;
                     }
-                }
-                Err(_e) => {
-                }
+            
+            if last_block_height_in_batch > 0 {
+                last_scanned = last_block_height_in_batch;
             }
             
-            last_scanned = height;
-        }
+            let batch_total_time = batch_start_time.elapsed();
+            log::info!(
+                "[UTXO Scan] [BATCH COMPLETE] Blocks {}-{} | Total batch time: {:.2}ms | UTXOs found: {} | Cached: {}",
+                current_block,
+                batch_end,
+                batch_total_time.as_secs_f64() * 1000.0,
+                unspent_count,
+                cached_count
+            );
         
         current_block = batch_end + 1;
     }
     
     let mut seen_hashes: HashSet<String> = HashSet::new();
     utxo_infos.retain(|u| {
-        let key = if !u.utxo_hash.is_empty() {
-            u.utxo_hash.clone()
-        } else {
+        let key = if !u.addition_record_hex.is_empty() {
             u.addition_record_hex.clone()
+        } else {
+            u.utxo_hash.clone()
         };
         if key.is_empty() {
             return false;
@@ -597,10 +786,10 @@ pub async fn scan_utxos_client_side(
 
     let mut final_seen: HashSet<String> = HashSet::new();
     utxo_infos.retain(|u| {
-        let key = if !u.utxo_hash.is_empty() {
-            u.utxo_hash.clone()
-        } else {
+        let key = if !u.addition_record_hex.is_empty() {
             u.addition_record_hex.clone()
+        } else {
+            u.utxo_hash.clone()
         };
         if key.is_empty() {
             return false;
@@ -613,7 +802,6 @@ pub async fn scan_utxos_client_side(
         }
     });
 
-    // Emit progress
     let completion_progress = ScanProgress {
         current_block: request.end_block,
         end_block: request.end_block,
@@ -650,39 +838,32 @@ pub async fn get_cached_utxos(app: &AppHandle) -> Result<String, String> {
         })
         .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string());
 
-    let mutator_set_accumulator = get_current_mutator_set_accumulator(&client, &rpc_url).await?;
-
     let cached_utxos = utxo_cache::get_all_utxos().await;
     let last_scanned = utxo_cache::get_last_scanned_block().await;
 
-    // Revalidate cached UTXOs
-    let mut valid_utxos = Vec::new();
-    for utxo in cached_utxos {
-        if let Ok(msmp) = transaction::generate_membership_proof_client_side(
-            &utxo.utxo,
-            &mutator_set_accumulator,
-            &rpc_url,
-            &client,
-        ).await {
-            let item = Tip5::hash(utxo.utxo.utxo());
-            if mutator_set_accumulator.verify(item, &msmp) {
-                valid_utxos.push(utxo);
-            }
+    let valid_utxos = match validate_utxos_with_rpc(&client, &rpc_url, &cached_utxos).await {
+        Ok(validated) => {
+            log::info!("[Get Cached UTXOs] Validated {} UTXOs using archival_getSpentStatus", validated.len());
+            validated
         }
-    }
+        Err(e) => {
+            log::warn!("[Get Cached UTXOs] Failed to validate using archival_getSpentStatus: {}. Returning cached UTXOs without validation.", e);
+            cached_utxos
+        }
+    };
 
     utxo_cache::replace_cache_and_persist(valid_utxos.clone(), last_scanned).await;
 
     let utxos: Vec<UtxoInfo> = valid_utxos
         .iter()
         .map(|utxo| {
-            let utxo_ref = utxo.utxo.utxo();
+            let utxo_ref = &utxo.utxo.utxo;
             let amount = utxo_ref.get_native_currency_amount();
             let addition_record = utxo.utxo.addition_record();
             let utxo_hash = Tip5::hash(utxo_ref);
             let release_date_opt = utxo_ref.release_date();
             let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
-                (true, Some(ts.to_millis()))
+                (true, Some(ts.to_millis() as u64))
             } else {
                 (false, None)
             };
@@ -718,13 +899,13 @@ pub async fn get_cached_utxos_local() -> Result<String, String> {
     let utxos: Vec<UtxoInfo> = cached_utxos
         .iter()
         .map(|utxo| {
-            let utxo_ref = utxo.utxo.utxo();
+            let utxo_ref = &utxo.utxo.utxo;
             let amount = utxo_ref.get_native_currency_amount();
             let addition_record = utxo.utxo.addition_record();
             let utxo_hash = Tip5::hash(utxo_ref);
             let release_date_opt = utxo_ref.release_date();
             let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
-                (true, Some(ts.to_millis()))
+                (true, Some(ts.to_millis() as u64))
             } else {
                 (false, None)
             };
@@ -756,7 +937,7 @@ pub async fn get_cached_utxos_local() -> Result<String, String> {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetPendingBalanceRequest {
-    pub view_key_hex: String,
+    pub spending_key_hex: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -779,13 +960,24 @@ pub async fn get_pending_balance_from_mempool(
         .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string());
     
     
-    let view_key_bytes = hex::decode(
-        request.view_key_hex.trim_start_matches("0x")
+    let spending_key_bytes = hex::decode(
+        request.spending_key_hex.trim_start_matches("0x")
     )
-    .map_err(|e| format!("Invalid view key hex: {}", e))?;
+    .map_err(|e| format!("Invalid spending key hex: {}", e))?;
     
-    let view_key: ViewKey = bincode::deserialize(&view_key_bytes)
-        .map_err(|e| format!("Failed to deserialize view key: {}", e))?;
+    let spending_key: SpendingKey = bincode::deserialize(&spending_key_bytes)
+        .map_err(|e| format!("Failed to deserialize spending key: {}", e))?;
+    
+    let generation_spending_key = match spending_key {
+        SpendingKey::Generation(key) => key,
+        SpendingKey::Symmetric(_) => {
+            return Ok(serde_json::to_string(&GetPendingBalanceResponse {
+                success: true,
+                pending_balance: "0".to_string(),
+                error: Some("Symmetric spending keys not supported".to_string()),
+            }).map_err(|e| format!("Failed to serialize response: {}", e))?);
+        }
+    };
     
     let mut pending_total = NativeCurrencyAmount::zero();
     
@@ -793,7 +985,7 @@ pub async fn get_pending_balance_from_mempool(
         .post(&rpc_url)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
-            "method": "mempool_getMempoolTxIds",
+            "method": "mempool_transactions",
             "params": [],
             "id": 1
         }))
@@ -803,32 +995,32 @@ pub async fn get_pending_balance_from_mempool(
     let tx_ids: Vec<String> = match mempool_tx_ids_result {
         Ok(response) => {
             let text = response.text().await
-                .map_err(|e| format!("Failed to read mempool tx IDs response: {}", e))?;
+                .map_err(|e| format!("Failed to read mempool transactions response: {}", e))?;
             let json: serde_json::Value = serde_json::from_str(&text)
-                .map_err(|e| format!("Failed to parse mempool tx IDs: {}", e))?;
+                .map_err(|e| format!("Failed to parse mempool transactions: {}", e))?;
             
-            if let Some(error) = json.get("error") {
-                log::warn!("Mempool tx IDs method error: {}", error);
+            if let Some(_error) = json.get("error") {
                 return Ok(serde_json::to_string(&GetPendingBalanceResponse {
                     success: true,
                     pending_balance: "0".to_string(),
-                    error: Some(format!("Mempool method error: {}", error)),
+                    error: None,
                 }).map_err(|e| format!("Failed to serialize response: {}", e))?);
             }
             
-            let result = extract_rpc_result("mempool_getMempoolTxIds", &json)?;
+            let result = extract_rpc_result("mempool_transactions", &json)?;
             let arr = result
-                .get("txIds")
-                .ok_or_else(|| "mempool_getMempoolTxIds missing txIds".to_string())?;
-            serde_json::from_value(arr.clone())
-                .map_err(|e| format!("Failed to deserialize tx IDs: {}", e))?
+                .get("transactions")
+                .ok_or_else(|| "mempool_transactions missing transactions field".to_string())?;
+            
+            let tx_kernel_ids: Vec<String> = serde_json::from_value(arr.clone())
+                .map_err(|e| format!("Failed to deserialize transaction IDs: {}", e))?;
+            tx_kernel_ids
         }
-        Err(e) => {
-            log::warn!("Failed to get mempool tx IDs: {}", e);
+        Err(_e) => {
             return Ok(serde_json::to_string(&GetPendingBalanceResponse {
                 success: true,
                 pending_balance: "0".to_string(),
-                error: Some(format!("Failed to get mempool tx IDs: {}", e)),
+                error: None,
             }).map_err(|e| format!("Failed to serialize response: {}", e))?);
         }
     };
@@ -846,10 +1038,8 @@ pub async fn get_pending_balance_from_mempool(
             .post(&rpc_url)
             .json(&serde_json::json!({
                 "jsonrpc": "2.0",
-                "method": "mempool_getMempoolTxKernel",
-                "params": {
-                    "txId": tx_id_hex
-                },
+                "method": "mempool_getTransactionKernel",
+                "params": [tx_id_hex],
                 "id": 1
             }))
             .send()
@@ -862,7 +1052,7 @@ pub async fn get_pending_balance_from_mempool(
                 let json: serde_json::Value = serde_json::from_str(&text)
                     .map_err(|e| format!("Failed to parse mempool tx kernel: {}", e))?;
                 
-                let kernel_result = extract_rpc_result("mempool_getMempoolTxKernel", &json)?;
+                let kernel_result = extract_rpc_result("mempool_getTransactionKernel", &json)?;
                 
                 if kernel_result.get("kernel").is_none() || kernel_result["kernel"].is_null() {
                     continue;
@@ -883,7 +1073,7 @@ pub async fn get_pending_balance_from_mempool(
                         .announcements
                         .into_iter()
                         .map(|rpc_bfes| {
-                            let message = rpc_bfes.0;
+                            let message: Vec<BFieldElement> = rpc_bfes.0.into();
                             Announcement::new(message)
                         })
                         .collect(),
@@ -902,14 +1092,34 @@ pub async fn get_pending_balance_from_mempool(
         };
         
         if let Some(tx_kernel) = tx_kernel {
-            match view_key.scan_for_announced_utxos(&tx_kernel) {
-                Ok(incoming_utxos) => {
-                    for utxo in incoming_utxos {
-                        pending_total = pending_total + utxo.utxo().get_native_currency_amount();
-                    }
-                }
-                Err(_e) => {
+            use neptune_privacy::prelude::twenty_first::prelude::BFieldElement;
+            use neptune_privacy::state::wallet::address::common::{ciphertext_from_announcement, receiver_identifier_from_announcement, key_type_from_announcement};
+            use neptune_privacy::state::wallet::address::KeyType;
+            use neptune_privacy::util_types::mutator_set::addition_record::AdditionRecord;
+            use neptune_privacy::util_types::mutator_set::commit;
+            use neptune_privacy::prelude::twenty_first::tip5::Tip5;
+            
+            let receiver_identifier = generation_spending_key.receiver_identifier();
+            let generation_key_type_flag: BFieldElement = KeyType::Generation.into();
+            let generation_subaddr_flag: BFieldElement = KeyType::GenerationSubAddr.into();
+
+            for announcement in &tx_kernel.announcements {
+                if !matches!(key_type_from_announcement(announcement), Ok(kt) if kt == generation_key_type_flag || kt == generation_subaddr_flag) {
                     continue;
+                }
+
+                if !matches!(receiver_identifier_from_announcement(announcement), Ok(rid) if rid == receiver_identifier) {
+                    continue;
+                }
+
+                let ciphertext_bfes = match ciphertext_from_announcement(announcement) {
+                    Ok(ct) => ct,
+                    Err(_) => continue,
+                };
+
+                if let Ok((utxo, _sender_randomness, _payment_id)) = generation_spending_key.decrypt(&ciphertext_bfes) {
+                    let amount = utxo.get_native_currency_amount();
+                    pending_total = pending_total + amount;
                 }
             }
         }

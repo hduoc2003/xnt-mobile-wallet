@@ -44,11 +44,11 @@ export const getNetworkInfo = async (): Promise<any> => {
 /**
  * Broadcast signed transaction
  */
-export const broadcastSignedTransaction = async (transactionHex: string): Promise<any> => {
+export const broadcastSignedTransaction = async (transaction: string): Promise<any> => {
   const params = {
-    transactionHex,
+    transaction,
   }
-  return await callJsonRpc('mempool_walletSubmitTransaction', params)
+  return await callJsonRpc('mempool_submitTransaction', params)
 }
 
 export const getXntPrice = async (url: string): Promise<any> => {

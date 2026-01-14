@@ -1,7 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(non_snake_case)]
 use neptune_privacy::application::config::network::Network;
-use neptune_privacy::state::wallet::address::view_key::ViewKey;
 use neptune_privacy::state::wallet::address::SpendingKey;
 use neptune_privacy::state::wallet::wallet_entropy::WalletEntropy;
 use neptune_privacy::state::wallet::secret_key_material::SecretKeyMaterial;
@@ -10,6 +9,7 @@ use std::str::FromStr;
 use log::Level;
 use reqwest::Client;
 use reqwest::header::{HeaderMap, USER_AGENT};
+use tauri::Manager;
 
 #[cfg(target_os = "android")]
 use android_logger;
@@ -63,8 +63,6 @@ fn generate_keys_from_seed(
 
     let spending_key = wallet_entropy.nth_generation_spending_key(0);
     let spending_key_enum = SpendingKey::Generation(spending_key.clone());
-    let view_key = ViewKey::from_spending_key(&spending_key_enum)
-        .map_err(|e| format!("Failed to derive view key: {}", e))?;
     let receiver_id = spending_key.receiver_identifier();
     let receiving_address = spending_key_enum.to_address();
     
@@ -83,13 +81,10 @@ fn generate_keys_from_seed(
 
     let spending_key_bytes = bincode::serialize(&spending_key_enum)
         .map_err(|e| format!("Failed to serialize spending key: {}", e))?;
-    let view_key_bytes = bincode::serialize(&view_key)
-        .map_err(|e| format!("Failed to serialize view key: {}", e))?;
 
     Ok(serde_json::json!({
         "success": true,
         "spending_key_hex": format!("0x{}", hex::encode(&spending_key_bytes)),
-        "view_key_hex": format!("0x{}", hex::encode(&view_key_bytes)),
         "receiver_identifier": format!("0x{:016x}", receiver_id.value()),
         "address": address_string,
     })
@@ -221,6 +216,9 @@ async fn proxy_json_rpc(
     method: String,
     params: serde_json::Value,
 ) -> Result<String, String> {
+    use neptune_privacy::api::export::Transaction;
+    use neptune_privacy::application::json_rpc::core::model::wallet::transaction::RpcTransaction;
+    
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(60))
         .build()
@@ -229,7 +227,7 @@ async fn proxy_json_rpc(
     let rpc_url = rpc_config::get_custom_rpc_endpoint(&app)
         .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string());
 
-    let body = serde_json::json!({
+        let body = serde_json::json!({
         "jsonrpc": "2.0",
         "method": method,
         "params": params,

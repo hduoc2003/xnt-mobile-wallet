@@ -3,10 +3,10 @@ use neptune_privacy::api::tx_initiation::builder::transaction_builder::Transacti
 use neptune_privacy::api::tx_initiation::builder::tx_output_list_builder::OutputFormat;
 use neptune_privacy::application::config::network::Network;
 use neptune_privacy::application::json_rpc::core::model::message::{
-    GetArchivalMutatorSetResponse, StateInfo,
+    GetArchivalMutatorSetResponse,
 };
 use neptune_privacy::prelude::twenty_first::prelude::Digest;
-use neptune_privacy::protocol::consensus::shared::Hash;
+use neptune_privacy::protocol::consensus::Hash;
 use neptune_privacy::protocol::consensus::transaction::primitive_witness::PrimitiveWitness;
 use neptune_privacy::protocol::consensus::transaction::transaction_proof::TransactionProof;
 use neptune_privacy::protocol::consensus::transaction::validity::collect_lock_scripts::{
@@ -64,205 +64,211 @@ pub(crate) async fn generate_membership_proof_client_side(
     rpc_url: &str,
     client: &Client,
 ) -> Result<MsMembershipProof, String> {
-    let serialize_hex = |data: &[u8]| format!("0x{}", hex::encode(data));
-    
-    // Find AOCL leaf index
+    // Find AOCL leaf index using archival_getAoclLeafIndices
     let addition_record = incoming_utxo.addition_record();
-    let addition_record_hex = serialize_hex(&bincode::serialize(&addition_record)
-        .map_err(|e| format!("Failed to serialize addition record: {}", e))?);
+    let commitment = addition_record.canonical_commitment;
+    let commitment_hex = commitment.to_hex();
     
-    let creation_block_text = client
+    let aocl_response = client
         .post(rpc_url)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
-            "method": "archival_getUtxoCreationBlock",
+            "method": "archival_getAoclLeafIndices",
             "params": {
-                "additionRecord": addition_record_hex,
-                "maxSearchDepth": MAX_SEARCH_DEPTH,
+                "commitments": [commitment_hex]
             },
             "id": 1
         }))
         .send()
         .await
-        .map_err(|e| format!("Failed to get UTXO creation block: {}", e))?
+        .map_err(|e| format!("Failed to get AOCL leaf index: {}", e))?
         .text()
         .await
         .map_err(|e| format!("Failed to get response: {}", e))?;
     
-    let creation_block_json: serde_json::Value = serde_json::from_str(&creation_block_text)
-        .map_err(|e| format!("Failed to parse: {}", e))?;
+    let aocl_json: serde_json::Value = serde_json::from_str(&aocl_response)
+        .map_err(|e| format!("Failed to parse AOCL response: {}", e))?;
     
-    let creation_result = extract_rpc_result("archival_getUtxoCreationBlock", &creation_block_json)?;
+    let aocl_result = extract_rpc_result("archival_getAoclLeafIndices", &aocl_json)?;
+    let indices = aocl_result
+        .get("indices")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "Missing indices array".to_string())?;
     
-    let last_aocl_index = creation_result["lastAoclIndexInBlock"]
-        .as_u64()
-        .ok_or_else(|| "Missing lastAoclIndexInBlock".to_string())?;
-    
-    let num_outputs = creation_result["numOutputsInBlock"]
-        .as_u64()
-        .ok_or_else(|| "Missing numOutputsInBlock".to_string())?;
-    
-    // Find exact AOCL leaf index by searching backwards
-    let mut aocl_leaf_index = last_aocl_index;
-    let min_aocl_leaf_index = last_aocl_index.saturating_sub(num_outputs) + 1;
-    
-    while aocl_leaf_index >= min_aocl_leaf_index {
-        let digest_text = client
-            .post(rpc_url)
-            .json(&serde_json::json!({
-                "jsonrpc": "2.0",
-                "method": "archival_getUtxoDigest",
-                "params": [aocl_leaf_index],
-                "id": 1
-            }))
-            .send()
-            .await
-            .map_err(|e| format!("Failed to get AOCL digest: {}", e))?
-            .text()
-            .await
-            .map_err(|e| format!("Failed to get response: {}", e))?;
-        
-        let digest_json: serde_json::Value = serde_json::from_str(&digest_text)
-            .map_err(|e| format!("Failed to parse: {}", e))?;
-        
-        let digest_result = extract_rpc_result("archival_getUtxoDigest", &digest_json)?;
-        
-        if let Some(digest_opt) = digest_result.get("digest") {
-            if let Some(digest_hex) = digest_opt.as_str() {
-                let digest_bytes = hex::decode(digest_hex.trim_start_matches("0x"))
-                    .map_err(|e| format!("Invalid digest hex: {}", e))?;
-                let digest: Digest = bincode::deserialize(&digest_bytes)
-                    .map_err(|e| format!("Failed to deserialize digest: {}", e))?;
-                
-                if digest == addition_record.canonical_commitment {
-                    break;
-                }
-            }
-        }
-        
-        if aocl_leaf_index == 0 {
-            break;
-        }
-        aocl_leaf_index -= 1;
+    if indices.is_empty() {
+        return Err("UTXO not found in AOCL (may not be confirmed yet)".to_string());
     }
     
-    if aocl_leaf_index < min_aocl_leaf_index {
-        return Err("UTXO addition record not found in block".to_string());
-    }
+    let aocl_leaf_index = indices[0]
+        .as_u64()
+        .ok_or_else(|| "UTXO not found in AOCL (may not be confirmed yet)".to_string())?;
     
-    //Get AOCL authentication path
-    let auth_path_text = client
-        .post(rpc_url)
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "archival_getAoclAuthenticationPath",
-            "params": [aocl_leaf_index],
-            "id": 1
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to get AOCL auth path: {}", e))?
-        .text()
-        .await
-        .map_err(|e| format!("Failed to get response: {}", e))?;
-    
-    let auth_path_json: serde_json::Value = serde_json::from_str(&auth_path_text)
-        .map_err(|e| format!("Failed to parse: {}", e))?;
-    
-    let auth_path_result = extract_rpc_result("archival_getAoclAuthenticationPath", &auth_path_json)?;
-    
-    let auth_path_aocl_hex = auth_path_result["authPathHex"]
-        .as_str()
-        .ok_or_else(|| "Missing authPathHex".to_string())?;
-    
-    let auth_path_aocl: MmrMembershipProof = 
-        bincode::deserialize(
-            &hex::decode(auth_path_aocl_hex.trim_start_matches("0x"))
-                .map_err(|e| format!("Invalid hex: {}", e))?
-        )
-        .map_err(|e| format!("Failed to deserialize auth path: {}", e))?;
-    
-    // Compute chunk indices needed
-    let item = Tip5::hash(incoming_utxo.utxo());
-    let swbf_indices = AbsoluteIndexSet::compute(
+    // Compute AbsoluteIndexSet needed for restoreMembershipProof
+    let item = Tip5::hash(&incoming_utxo.utxo);
+    let absolute_index_set = AbsoluteIndexSet::compute(
         item,
-        incoming_utxo.sender_randomness(),
-        incoming_utxo.receiver_preimage(),
+        incoming_utxo.sender_randomness,
+        incoming_utxo.receiver_preimage,
         aocl_leaf_index,
     );
     
-    let batch_index = mutator_set_accumulator.get_batch_index();
-    let window_start = u128::from(batch_index) * u128::from(CHUNK_SIZE);
+    // Serialize AbsoluteIndexSet to JSON value
+    // RestoreMembershipProofRequest uses Serialize_tuple, so params is array: [absolute_index_sets]
+    // absolute_index_sets is Vec<RpcAbsoluteIndexSet>, so we need array containing Vec of AbsoluteIndexSet
+    let absolute_index_set_json = serde_json::to_value(&absolute_index_set)
+        .map_err(|e| format!("Failed to serialize AbsoluteIndexSet to JSON: {}", e))?;
     
-    let chunk_indices: Vec<u64> = swbf_indices
-        .to_array()
-        .iter()
-        .filter(|bi| **bi < window_start)
-        .map(|bi| (*bi / u128::from(CHUNK_SIZE)) as u64)
-        .collect();
-    
-    // Get chunks and their auth paths
-    let chunks_text = client
+    // Call archival_restoreMembershipProof to get both AOCL auth paths and chunks
+    // Format: params = [absolute_index_sets] where absolute_index_sets is Vec<AbsoluteIndexSet>
+    let restore_proof_text = client
         .post(rpc_url)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
-            "method": "archival_getChunksAndAuthPaths",
-            "params": {
-                "chunkIndices": chunk_indices,
-            },
+            "method": "archival_restoreMembershipProof",
+            "params": [[absolute_index_set_json]], // [Vec<AbsoluteIndexSet>] = [[single_absolute_index_set]]
             "id": 1
         }))
         .send()
         .await
-        .map_err(|e| format!("Failed to get chunks: {}", e))?
+        .map_err(|e| format!("Failed to restore membership proof: {}", e))?
         .text()
         .await
         .map_err(|e| format!("Failed to get response: {}", e))?;
     
-    let chunks_json: serde_json::Value = serde_json::from_str(&chunks_text)
+    let restore_proof_json: serde_json::Value = serde_json::from_str(&restore_proof_text)
         .map_err(|e| format!("Failed to parse: {}", e))?;
     
-    let chunks_result = extract_rpc_result("archival_getChunksAndAuthPaths", &chunks_json)?;
+    let restore_result = extract_rpc_result("archival_restoreMembershipProof", &restore_proof_json)?;
     
-    let chunks_array = chunks_result["chunks"]
-        .as_array()
-        .ok_or_else(|| "Missing chunks array".to_string())?;
+    // Extract membership proof from response
+    let snapshot = restore_result.get("snapshot")
+        .ok_or_else(|| "Missing snapshot in response".to_string())?;
+    
+    let membership_proofs = snapshot.get("membershipProofs")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "Missing membershipProofs array".to_string())?;
+    
+    if membership_proofs.is_empty() {
+        return Err("No membership proof returned".to_string());
+    }
+    
+    let rpc_proof = &membership_proofs[0];
+    
+    // Debug: log the structure of rpc_proof
+    log::debug!("[BuildTx] rpc_proof keys: {:?}", rpc_proof.as_object().map(|o| o.keys().collect::<Vec<_>>()));
+    
+    // Extract AOCL auth paths
+    // RpcIndexedAoclAuthPaths is a struct containing BTreeMap, which serializes directly as object
+    let aocl_auth_paths_value = rpc_proof.get("aoclAuthPaths")
+        .ok_or_else(|| {
+            log::error!("[BuildTx] rpc_proof structure: {}", serde_json::to_string_pretty(rpc_proof).unwrap_or_default());
+            "Missing aoclAuthPaths".to_string()
+        })?;
+    
+    // RpcIndexedAoclAuthPaths is a tuple struct, may serialize as array [BTreeMap] or directly as object
+    let aocl_auth_paths_map = if let Some(arr) = aocl_auth_paths_value.as_array() {
+        if arr.is_empty() {
+            return Err("Empty aoclAuthPaths array".to_string());
+        }
+        arr[0].as_object()
+            .ok_or_else(|| "aoclAuthPaths array element is not an object".to_string())?
+    } else {
+        aocl_auth_paths_value.as_object()
+            .ok_or_else(|| "aoclAuthPaths is neither array nor object".to_string())?
+    };
+    
+    // Find the auth path for our aocl_leaf_index
+    // BTreeMap keys serialize as strings
+    let aocl_leaf_index_str = aocl_leaf_index.to_string();
+    let aocl_auth_path_array = aocl_auth_paths_map.get(&aocl_leaf_index_str)
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| format!("Missing AOCL auth path for leaf index {}", aocl_leaf_index))?;
+    
+    // Convert array of hex strings to Vec<Digest>
+    // RpcMmrMembershipProof is Vec<Digest>, serializes as array
+    let mut auth_path_digests = Vec::new();
+    for digest_hex in aocl_auth_path_array {
+        let digest_str = digest_hex.as_str()
+            .ok_or_else(|| "Invalid digest format".to_string())?;
+        let digest_bytes = hex::decode(digest_str.trim_start_matches("0x"))
+            .map_err(|e| format!("Invalid digest hex: {}", e))?;
+        let digest: Digest = bincode::deserialize(&digest_bytes)
+            .map_err(|e| format!("Failed to deserialize digest: {}", e))?;
+        auth_path_digests.push(digest);
+    }
+    
+    let auth_path_aocl = MmrMembershipProof::new(auth_path_digests);
+    
+    // Extract target chunks
+    // RpcChunkDictionary is a tuple struct, which may serialize as array [BTreeMap] or directly as object
+    let target_chunks_value = rpc_proof.get("targetChunks")
+        .ok_or_else(|| "Missing targetChunks".to_string())?;
+    
+    // Try as array first (tuple struct serializes as array), then as object
+    let target_chunks_map = if let Some(arr) = target_chunks_value.as_array() {
+        if arr.is_empty() {
+            return Err("Empty targetChunks array".to_string());
+        }
+        arr[0].as_object()
+            .ok_or_else(|| "targetChunks array element is not an object".to_string())?
+    } else {
+        target_chunks_value.as_object()
+            .ok_or_else(|| "targetChunks is neither array nor object".to_string())?
+    };
     
     let mut target_chunks = ChunkDictionary::default();
     
-    for chunk_data in chunks_array {
-        let chunk_index = chunk_data["chunkIndex"]
-            .as_u64()
-            .ok_or_else(|| "Missing chunkIndex".to_string())?;
+    for (chunk_index_str, chunk_tuple) in target_chunks_map {
+        let chunk_index = chunk_index_str.parse::<u64>()
+            .map_err(|e| format!("Invalid chunk index: {}", e))?;
         
-        let chunk_hex = chunk_data["chunkHex"]
-            .as_str()
-            .ok_or_else(|| "Missing chunkHex".to_string())?;
+        // chunk_tuple is (RpcMmrMembershipProof, Vec<u32>), serializes as array [auth_path, relative_indices]
+        let chunk_tuple_array = chunk_tuple.as_array()
+            .ok_or_else(|| format!("Invalid chunk tuple format for chunk {}", chunk_index))?;
         
-        let chunk_bytes = hex::decode(chunk_hex.trim_start_matches("0x"))
-            .map_err(|e| format!("Invalid chunk hex: {}", e))?;
+        if chunk_tuple_array.len() != 2 {
+            return Err(format!("Invalid chunk tuple length for chunk {}", chunk_index));
+        }
         
-        let chunk: Chunk = bincode::deserialize(&chunk_bytes)
-            .map_err(|e| format!("Failed to deserialize chunk: {}", e))?;
+        // Extract auth path (first element)
+        let auth_path_array = chunk_tuple_array[0]
+            .as_array()
+            .ok_or_else(|| format!("Missing auth path for chunk {}", chunk_index))?;
         
-        let auth_path_hex = chunk_data["authPathHex"]
-            .as_str()
-            .ok_or_else(|| "Missing authPathHex".to_string())?;
+        let mut chunk_auth_path_digests = Vec::new();
+        for digest_hex in auth_path_array {
+            let digest_str = digest_hex.as_str()
+                .ok_or_else(|| "Invalid digest format".to_string())?;
+            let digest_bytes = hex::decode(digest_str.trim_start_matches("0x"))
+                .map_err(|e| format!("Invalid digest hex: {}", e))?;
+            let digest: Digest = bincode::deserialize(&digest_bytes)
+                .map_err(|e| format!("Failed to deserialize digest: {}", e))?;
+            chunk_auth_path_digests.push(digest);
+        }
         
-        let chunk_auth_path: MmrMembershipProof = 
-            bincode::deserialize(
-                &hex::decode(auth_path_hex.trim_start_matches("0x"))
-                    .map_err(|e| format!("Invalid auth path hex: {}", e))?
-            )
-            .map_err(|e| format!("Failed to deserialize auth path: {}", e))?;
+        let chunk_auth_path = MmrMembershipProof::new(chunk_auth_path_digests);
+        
+        // Extract relative_indices (second element)
+        let relative_indices_array = chunk_tuple_array[1]
+            .as_array()
+            .ok_or_else(|| format!("Missing relative_indices for chunk {}", chunk_index))?;
+        
+        let mut relative_indices = Vec::new();
+        for idx in relative_indices_array {
+            let idx_val = idx.as_u64()
+                .ok_or_else(|| "Invalid relative index".to_string())?;
+            relative_indices.push(idx_val as u32);
+        }
+        
+        let chunk = Chunk { relative_indices };
         
         target_chunks.insert(chunk_index, (chunk_auth_path, chunk));
     }
     
     // Build membership proof
     Ok(MsMembershipProof {
-        sender_randomness: incoming_utxo.sender_randomness(),
-        receiver_preimage: incoming_utxo.receiver_preimage(),
+        sender_randomness: incoming_utxo.sender_randomness,
+        receiver_preimage: incoming_utxo.receiver_preimage,
         auth_path_aocl,
         aocl_leaf_index,
         target_chunks,
@@ -349,29 +355,31 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-    let state_text = client
+    // Get network from node_network RPC
+    let network_text = client
         .post(&rpc_url)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
-            "method": "node_getState",
+            "method": "node_network",
             "params": [],
             "id": 1
         }))
         .send()
         .await
-        .map_err(|e| format!("Failed to get state: {}", e))?
+        .map_err(|e| format!("Failed to get network: {}", e))?
         .text()
         .await
-        .map_err(|e| format!("Failed to get state response: {}", e))?;
+        .map_err(|e| format!("Failed to get network response: {}", e))?;
 
-    let state_json: serde_json::Value = serde_json::from_str(&state_text)
-        .map_err(|e| format!("Failed to parse state: {}", e))?;
-
-    let state_result = extract_rpc_result("node_getState", &state_json)?;
-    let state_info: StateInfo = serde_json::from_value(state_result["state"].clone())
-        .map_err(|e| format!("Failed to deserialize state: {}", e))?;
-    let network = Network::from_str(&state_info.network)
+    let network_json: serde_json::Value = serde_json::from_str(&network_text)
         .map_err(|e| format!("Failed to parse network: {}", e))?;
+
+    let network_result = extract_rpc_result("node_network", &network_json)?;
+    let network_str = network_result.get("network")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Missing network in response".to_string())?;
+    let network = Network::from_str(network_str)
+        .map_err(|e| format!("Failed to parse network '{}': {}", network_str, e))?;
     
     // Parse spending key
     let spending_key_bytes = hex::decode(spending_key_hex.trim_start_matches("0x"))
@@ -401,9 +409,22 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         ));
     }
     
+    // Validate UTXOs using archival_getSpentStatus RPC before building transaction
+    use crate::utxo_scanning;
+    let validated_utxos = utxo_scanning::validate_utxos_with_rpc(&client, &rpc_url, &matched_utxos).await
+        .map_err(|e| format!("Failed to validate UTXOs: {}. Some UTXOs may have been spent.", e))?;
+    
+    if validated_utxos.len() != matched_utxos.len() {
+        return Err(format!(
+            "Some UTXOs have been spent. Validated {}/{} UTXOs. Please refresh and try again.",
+            validated_utxos.len(),
+            matched_utxos.len()
+        ));
+    }
+    
     let mut total_input_amount = NativeCurrencyAmount::zero();
     for utxo in &matched_utxos {
-        total_input_amount = total_input_amount + utxo.utxo.utxo().get_native_currency_amount();
+        total_input_amount = total_input_amount + utxo.utxo.utxo.get_native_currency_amount();
     }
     
     let fee_amount = NativeCurrencyAmount::coins_from_str(fee)
@@ -468,13 +489,16 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         return Err("archival_getArchivalMutatorSet missing archivalMutatorSet field".to_string());
     }
     
-    let mutator_set_accumulator = serde_json::from_value::<GetArchivalMutatorSetResponse>(result_obj.clone())
+    let rpc_mutator_set_accumulator = serde_json::from_value::<GetArchivalMutatorSetResponse>(result_obj.clone())
         .map_err(|e| format!("Failed to deserialize archival mutator set: {}", e))?
         .archival_mutator_set;
     
+    // Convert RpcMutatorSetAccumulator to MutatorSetAccumulator
+    let mutator_set_accumulator: MutatorSetAccumulator = rpc_mutator_set_accumulator.into();
+    
     // Generate membership proofs client-side
     let mut tx_inputs = Vec::new();
-    for incoming_utxo in matched_utxos {
+    for incoming_utxo in validated_utxos {
         let msmp = generate_membership_proof_client_side(
             &incoming_utxo.utxo,
             &mutator_set_accumulator,
@@ -483,7 +507,7 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         ).await?;
         
         tx_inputs.push(TxInput::from(UnlockedUtxo::unlock(
-            incoming_utxo.utxo.utxo().clone(),
+            incoming_utxo.utxo.utxo.clone(),
             lock_script_and_witness.clone(),
             msmp,
         )));
@@ -538,14 +562,25 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         .build()
         .map_err(|e| format!("Failed to build transaction: {}", e))?;
     
-    let tx_bytes = bincode::serialize(&transaction)
-        .map_err(|e| format!("Failed to serialize transaction: {}", e))?;
+    // Compute output UTXO digests from transaction kernel outputs (client-side)
+    // Output UTXO digest = canonical_commitment from AdditionRecord
+    let output_utxo_digests: Vec<String> = transaction.kernel.outputs
+        .iter()
+        .map(|addition_record| addition_record.canonical_commitment.to_hex())
+        .collect();
     
-    let tx_hex_with_prefix = format!("0x{}", hex::encode(&tx_bytes));
+    // Convert Transaction to RpcTransaction for JSON-RPC
+    use neptune_privacy::application::json_rpc::core::model::wallet::transaction::RpcTransaction;
+    let rpc_transaction: RpcTransaction = transaction.into();
+    
+    // Serialize RpcTransaction to JSON
+    let transaction_json = serde_json::to_value(&rpc_transaction)
+        .map_err(|e| format!("Failed to serialize RpcTransaction: {}", e))?;
     
     Ok(serde_json::json!({
         "success": true,
-        "transaction": tx_hex_with_prefix,
+        "transaction": transaction_json,
+        "outputUtxoDigests": output_utxo_digests,
     })
     .to_string())
 }

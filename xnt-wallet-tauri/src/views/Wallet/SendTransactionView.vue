@@ -231,6 +231,14 @@ const handleConfirmSend = async () => {
       return
     }
 
+    // Get output UTXO digests from buildTransaction response (client-side computed)
+    const outputUtxoDigests = txResult.outputUtxoDigests || []
+    
+    if (!outputUtxoDigests || outputUtxoDigests.length === 0) {
+      toast.error('Failed to get output UTXO digests from transaction')
+      return
+    }
+
     // Broadcast transaction
     const submitResult = await broadcastSignedTransaction(txResult.transaction)
 
@@ -239,12 +247,11 @@ const handleConfirmSend = async () => {
       return
     }
 
-    // Use first output UTXO digest
-    const firstDigest =
-      submitResult.outputUtxoDigests?.[0]
+    // Use first output UTXO digest (from buildTransaction, not server response)
+    const firstDigest = outputUtxoDigests[0]
 
     if (!firstDigest || typeof firstDigest !== 'string') {
-      toast.error('Transaction submitted but no UTXO digest returned')
+      toast.error('Transaction submitted but no UTXO digest available')
       return
     }
 
@@ -261,6 +268,16 @@ const handleConfirmSend = async () => {
     })
 
     toast.success('Transaction sent successfully!')
+
+    // Wait a bit for transaction to be added to mempool, then refresh balance
+    setTimeout(async () => {
+      try {
+        await getBalance()
+      } catch (err) {
+        // Log error but don't block navigation
+        console.error('Failed to refresh balance after transaction:', err)
+      }
+    }, 1000) // 1 second delay to allow mempool to update
 
     // Navigate back to wallet
     router.push('/')

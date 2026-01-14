@@ -4,12 +4,11 @@ import type {
   BalanceResult,
   GenerateSeedResult,
   PayloadBuildTransaction,
-  ViewKeyResult,
+  SpendingKeyResult,
   WalletState,
 } from '@/types'
 import { DEFAULT_MIN_BLOCK_HEIGHT, toFiniteNumber } from '@/utils'
 
-let cachedViewKey: string | null = null
 
 export function useNeptuneWallet() {
   const store = useNeptuneStore()
@@ -23,11 +22,10 @@ export function useNeptuneWallet() {
 
       store.setReceiverId(result.receiver_identifier)
 
-      const viewKeyResult = await getViewKeyFromSeed(result.seed_phrase)
-      cachedViewKey = viewKeyResult.view_key_hex
-      store.setSpendingKey(viewKeyResult.spending_key_hex)
+      const spendingKeyResult = await getSpendingKeyFromSeed(result.seed_phrase)
+      store.setSpendingKey(spendingKeyResult.spending_key_hex)
 
-      const addressResult = (viewKeyResult as any).address || viewKeyResult.receiver_identifier
+      const addressResult = (spendingKeyResult as any).address || spendingKeyResult.receiver_identifier
       store.setAddress(addressResult)
 
       return result
@@ -37,11 +35,11 @@ export function useNeptuneWallet() {
     }
   }
 
-  const getViewKeyFromSeed = async (seedPhrase: string[]): Promise<ViewKeyResult> => {
+  const getSpendingKeyFromSeed = async (seedPhrase: string[]): Promise<SpendingKeyResult> => {
     const network = store.getNetwork === 'mainnet' ? 'main' : 'testnet'
     const result = await (window as any).walletApi.generateKeysFromSeed([...seedPhrase], network)
     if (!result.success) {
-      throw new Error(result.error || 'Failed to get view key from seed')
+      throw new Error(result.error || 'Failed to get spending key from seed')
     }
     return result
   }
@@ -49,13 +47,11 @@ export function useNeptuneWallet() {
   const recoverWalletFromSeed = async (seedPhrase: string[]): Promise<WalletState> => {
     try {
       store.clearWallet()
-      cachedViewKey = null
       await (window as any).walletApi.clearUtxoCache?.()
 
-      const result = await getViewKeyFromSeed(seedPhrase)
+      const result = await getSpendingKeyFromSeed(seedPhrase)
       store.setReceiverId(result.receiver_identifier)
       store.setSpendingKey(result.spending_key_hex)
-      cachedViewKey = result.view_key_hex
 
       const addressResult = (result as any).address || result.receiver_identifier
       store.setAddress(addressResult)
@@ -91,7 +87,6 @@ export function useNeptuneWallet() {
       }
 
       store.clearWallet()
-      cachedViewKey = null
       store.setKeystoreFileName(keystoreFileName)
 
       const result = await (window as any).walletApi.decryptKeystore(
@@ -100,13 +95,12 @@ export function useNeptuneWallet() {
       )
 
       const seedPhrase = result.phrase.trim().split(/\s+/)
-      const viewKeyResult = await getViewKeyFromSeed(seedPhrase)
+      const spendingKeyResult = await getSpendingKeyFromSeed(seedPhrase)
 
-      store.setReceiverId(viewKeyResult.receiver_identifier)
-      store.setSpendingKey(viewKeyResult.spending_key_hex)
-      cachedViewKey = viewKeyResult.view_key_hex
+      store.setReceiverId(spendingKeyResult.receiver_identifier)
+      store.setSpendingKey(spendingKeyResult.spending_key_hex)
 
-      const addressResult = (viewKeyResult as any).address || viewKeyResult.receiver_identifier
+      const addressResult = (spendingKeyResult as any).address || spendingKeyResult.receiver_identifier
       store.setAddress(addressResult)
 
       try {
@@ -166,7 +160,6 @@ export function useNeptuneWallet() {
   const createKeystore = async (seed: string, password: string, isImportedWallet: boolean = false): Promise<string | null> => {
     try {
       store.clearWallet()
-      cachedViewKey = null
       store.setKeystoreFileName(null)
       await (window as any).walletApi.clearUtxoCache?.()
 
@@ -195,13 +188,12 @@ export function useNeptuneWallet() {
       await (window as any).walletApi.updateMinBlockHeight(result.fileName, finalMinBlockHeight)
       
       const seedPhrase = seed.trim().split(/\s+/)
-      const viewKeyResult = await getViewKeyFromSeed(seedPhrase)
+      const spendingKeyResult = await getSpendingKeyFromSeed(seedPhrase)
       
-      store.setReceiverId(viewKeyResult.receiver_identifier)
-      store.setSpendingKey(viewKeyResult.spending_key_hex)
-      cachedViewKey = viewKeyResult.view_key_hex
+      store.setReceiverId(spendingKeyResult.receiver_identifier)
+      store.setSpendingKey(spendingKeyResult.spending_key_hex)
       
-      const addressResult = (viewKeyResult as any).address || viewKeyResult.receiver_identifier
+      const addressResult = (spendingKeyResult as any).address || spendingKeyResult.receiver_identifier
       store.setAddress(addressResult)
       
       return result.fileName
@@ -300,12 +292,13 @@ export function useNeptuneWallet() {
   }
 
   const getUtxos = async (): Promise<any> => {
-    if (!cachedViewKey) {
+    const spendingKey = store.getSpendingKey
+    if (!spendingKey) {
       const keystoreFileName = store.getKeystoreFileName
       if (keystoreFileName && store.getAddress) {
-        throw new Error('No view key available. Please unlock your wallet first.')
+        throw new Error('No spending key available. Please unlock your wallet first.')
       }
-      throw new Error('No view key available. Please import or generate a wallet first.')
+      throw new Error('No spending key available. Please import or generate a wallet first.')
     }
 
     try {
@@ -337,7 +330,7 @@ export function useNeptuneWallet() {
         await (window as any).logger?.warn('Load cached UTXOs failed (continue to scan):', e?.message || e)
       }
       
-      if (!cachedViewKey && store.getAddress) {
+      if (!spendingKey && store.getAddress) {
         throw new Error('Wallet state not fully initialized. Please unlock your wallet.')
       }
 
@@ -393,7 +386,7 @@ export function useNeptuneWallet() {
       }
 
       const scanRequest = {
-        viewKeyHex: cachedViewKey,
+        spendingKeyHex: spendingKey,
         startBlock: toFiniteNumber(startBlock),
         endBlock: currentHeight,
         rpcUrl: rpcUrl,
@@ -464,12 +457,13 @@ export function useNeptuneWallet() {
       store.setBalance(balanceStr)
 
       let pendingBalance = '0'
-      if (cachedViewKey) {
+      const spendingKey = store.getSpendingKey
+      if (spendingKey) {
         const customRpc = await (window as any).walletApi.getCustomRpcEndpoint?.()
         const rpcUrl = customRpc || import.meta.env.VITE_APP_API
         if (rpcUrl) {
           const pendingResult = await (window as any).walletApi.getPendingBalance({
-            viewKeyHex: cachedViewKey,
+            spendingKeyHex: spendingKey,
             rpcUrl: rpcUrl,
           })
           const pendingData = typeof pendingResult === 'string' ? JSON.parse(pendingResult) : pendingResult
@@ -596,13 +590,12 @@ export function useNeptuneWallet() {
 
   const clearWallet = () => {
     store.clearWallet()
-    cachedViewKey = null
   }
 
   return {
     generateWallet,
     recoverWalletFromSeed,
-    getViewKeyFromSeed,
+    getSpendingKeyFromSeed,
     getAddressFromSeed,
 
     getUtxos,

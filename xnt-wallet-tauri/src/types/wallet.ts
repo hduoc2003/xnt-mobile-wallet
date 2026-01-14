@@ -3,9 +3,8 @@ export interface GenerateSeedResult {
   seed_phrase: string[]
 }
 
-export interface ViewKeyResult {
+export interface SpendingKeyResult {
   receiver_identifier: string
-  view_key_hex: string
   spending_key_hex: string
 }
 

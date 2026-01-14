@@ -4,7 +4,7 @@
 <dict>
 	<key>destination</key>
 	<string>export</string>
-	<key>method</key>
+    <key>method</key>
 	<string>app-store-connect</string>
 	<key>signingStyle</key>
 	<string>manual</string>

@@ -3038,6 +3038,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "axum",
+ "base64 0.22.1",
  "bech32",
  "bincode",
  "bytes",
