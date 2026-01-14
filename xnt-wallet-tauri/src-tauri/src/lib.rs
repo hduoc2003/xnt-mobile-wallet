@@ -21,6 +21,7 @@ mod wallet;
 mod transaction;
 mod utxo_scanning;
 mod utxo_cache;
+mod rpc_client;
 
 mod rpc_config;
 
@@ -216,9 +217,6 @@ async fn proxy_json_rpc(
     method: String,
     params: serde_json::Value,
 ) -> Result<String, String> {
-    use neptune_privacy::api::export::Transaction;
-    use neptune_privacy::application::json_rpc::core::model::wallet::transaction::RpcTransaction;
-    
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(60))
         .build()
@@ -227,7 +225,7 @@ async fn proxy_json_rpc(
     let rpc_url = rpc_config::get_custom_rpc_endpoint(&app)
         .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string());
 
-        let body = serde_json::json!({
+    let body = serde_json::json!({
         "jsonrpc": "2.0",
         "method": method,
         "params": params,

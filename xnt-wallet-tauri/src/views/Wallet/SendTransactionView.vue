@@ -13,10 +13,12 @@ const { addTransaction } = useTransaction()
 const { formatAmount } = useFormat()
 
 const availableBalance = ref('0')
+const maxSendable = ref('0')
 const loading = ref(false)
 const sendLoading = ref(false)
 const showConfirmModal = ref(false)
 const showProofModal = ref(false)
+const showLimitInfo = ref(false)
 
 const outputAddress = ref('')
 const outputAmount = ref('')
@@ -37,6 +39,37 @@ const loadBalance = async () => {
   }
 }
 
+const loadMaxSendable = async () => {
+  try {
+    const utxosResult = await getUtxos()
+    const utxos =
+      utxosResult?.result?.utxos ||
+      utxosResult?.utxos ||
+      []
+
+    if (!Array.isArray(utxos) || utxos.length === 0) {
+      maxSendable.value = '0'
+      return
+    }
+
+    const sorted = [...utxos].sort((a: any, b: any) => {
+      const amountA = parseFloat(a.amount || '0')
+      const amountB = parseFloat(b.amount || '0')
+      return amountB - amountA
+    })
+
+    const top5 = sorted.slice(0, 5)
+    const sum = top5.reduce((acc: number, u: any) => {
+      const amt = parseFloat(u.amount || '0')
+      return acc + (isNaN(amt) ? 0 : amt)
+    }, 0)
+
+    maxSendable.value = sum.toString()
+  } catch (error) {
+    maxSendable.value = '0'
+  }
+}
+
 const isAddressValid = computed(() => outputAddress.value.trim().length > 0)
 const isAmountValid = computed(() => {
   if (!outputAmount.value) return false
@@ -45,6 +78,9 @@ const isAmountValid = computed(() => {
 
   const balance = parseFloat(availableBalance.value)
   if (!isNaN(balance) && num > balance) return false
+
+  const maxPerTx = parseFloat(maxSendable.value || '0')
+  if (!isNaN(maxPerTx) && maxPerTx > 0 && num > maxPerTx) return false
 
   return true
 })
@@ -62,6 +98,11 @@ const amountErrorMessage = computed(() => {
   const balance = parseFloat(availableBalance.value)
   if (!isNaN(balance) && num > balance) {
     return `Insufficient balance. Available: ${availableBalance.value} XNT`
+  }
+
+  const maxPerTx = parseFloat(maxSendable.value || '0')
+  if (!isNaN(maxPerTx) && maxPerTx > 0 && num > maxPerTx) {
+    return `Maximum per transaction is ${formatAmount(maxPerTx)} XNT (sum of your 5 largest UTXOs)`
   }
 
   return ''
@@ -290,8 +331,8 @@ const handleConfirmSend = async () => {
   }
 }
 
-onMounted(() => {
-  loadBalance()
+onMounted(async () => {
+  await Promise.all([loadBalance(), loadMaxSendable()])
 })
 </script>
 
@@ -343,9 +384,18 @@ onMounted(() => {
                 <Label for="amount">
                   Amount <span class="text-destructive">*</span>
                 </Label>
-                <Badge variant="secondary" class="text-xs">
-                  Available: {{ formatAmount(+availableBalance) }} XNT
-                </Badge>
+                <div class="flex items-center gap-2">
+                  <Badge variant="outline" class="text-xs">
+                    Max: {{ formatAmount(+maxSendable) }} XNT
+                  </Badge>
+                  <button
+                    type="button"
+                    class="flex h-5 w-5 items-center justify-center rounded-full border text-[10px] leading-none"
+                    @click="showLimitInfo = !showLimitInfo"
+                  >
+                    ?
+                  </button>
+                </div>
               </div>
               <Input
                 id="amount"
@@ -355,6 +405,10 @@ onMounted(() => {
                 :disabled="sendLoading"
                 @blur="handleAmountBlur"
               />
+              <p v-if="showLimitInfo" class="text-[11px] text-muted-foreground">
+                You can spend at most {{ formatAmount(+maxSendable) }} XNT in a single transaction.
+                This limit is the sum of your 5 largest UTXOs to prevent crash when generate proof.
+              </p>
               <p v-if="amountErrorMessage" class="text-xs text-destructive">
                 {{ amountErrorMessage }}
               </p>

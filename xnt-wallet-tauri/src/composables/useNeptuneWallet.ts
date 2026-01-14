@@ -566,7 +566,8 @@ export function useNeptuneWallet() {
       const amountB = parseFloat(b.amount || '0')
       return amountB - amountA 
     })
-
+    const maxInputsPerTx = 5
+    
     let totalSelected = 0
     const selectedUtxos: any[] = []
 
@@ -577,7 +578,7 @@ export function useNeptuneWallet() {
       selectedUtxos.push(utxo)
       totalSelected += amount
 
-      if (totalSelected >= totalNeeded) {
+      if (totalSelected >= totalNeeded || selectedUtxos.length >= maxInputsPerTx) {
         break
       }
     }

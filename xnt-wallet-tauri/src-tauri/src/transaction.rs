@@ -2,9 +2,6 @@ use neptune_privacy::api::export::{ReceivingAddress, TransactionDetails};
 use neptune_privacy::api::tx_initiation::builder::transaction_builder::TransactionBuilder;
 use neptune_privacy::api::tx_initiation::builder::tx_output_list_builder::OutputFormat;
 use neptune_privacy::application::config::network::Network;
-use neptune_privacy::application::json_rpc::core::model::message::{
-    GetArchivalMutatorSetResponse,
-};
 use neptune_privacy::prelude::twenty_first::prelude::Digest;
 use neptune_privacy::protocol::consensus::Hash;
 use neptune_privacy::protocol::consensus::transaction::primitive_witness::PrimitiveWitness;
@@ -35,7 +32,6 @@ use neptune_privacy::util_types::mutator_set::ms_membership_proof::MsMembershipP
 use neptune_privacy::util_types::mutator_set::removal_record::absolute_index_set::AbsoluteIndexSet;
 use neptune_privacy::util_types::mutator_set::removal_record::chunk::Chunk;
 use neptune_privacy::util_types::mutator_set::removal_record::chunk_dictionary::ChunkDictionary;
-use neptune_privacy::util_types::mutator_set::shared::CHUNK_SIZE;
 use neptune_privacy::prelude::twenty_first::prelude::Tip5;
 use neptune_privacy::util_types::mutator_set::mutator_set_accumulator::MutatorSetAccumulator;
 use neptune_privacy::prelude::twenty_first::util_types::mmr::mmr_membership_proof::MmrMembershipProof;
@@ -49,61 +45,32 @@ use log::error;
 use neptune_privacy::prelude::triton_vm::prelude::{Program, Claim, NonDeterminism, PublicInput};
 use neptune_privacy::prelude::triton_vm::stark::Stark;
 use neptune_privacy::prelude::triton_vm::vm::VM;
-use neptune_privacy::protocol::consensus::transaction::transaction_kernel::TransactionKernelField;
 use neptune_privacy::protocol::proof_abstractions::mast_hash::MastHash;
 use neptune_privacy::protocol::proof_abstractions::tasm::program::ConsensusProgram;
 use neptune_privacy::protocol::proof_abstractions::SecretWitness;
 use crate::rpc_config;
 
-const MAX_SEARCH_DEPTH: u64 = 5000;
+use crate::rpc_client;
 
-/// Generate membership proof client-side without sending receiver_preimage to server
 pub(crate) async fn generate_membership_proof_client_side(
     incoming_utxo: &IncomingUtxo,
     mutator_set_accumulator: &MutatorSetAccumulator,
     rpc_url: &str,
     client: &Client,
 ) -> Result<MsMembershipProof, String> {
-    // Find AOCL leaf index using archival_getAoclLeafIndices
     let addition_record = incoming_utxo.addition_record();
     let commitment = addition_record.canonical_commitment;
     let commitment_hex = commitment.to_hex();
     
-    let aocl_response = client
-        .post(rpc_url)
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "archival_getAoclLeafIndices",
-            "params": {
-                "commitments": [commitment_hex]
-            },
-            "id": 1
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to get AOCL leaf index: {}", e))?
-        .text()
-        .await
-        .map_err(|e| format!("Failed to get response: {}", e))?;
+    let indices = rpc_client::get_aocl_leaf_indices(client, rpc_url, &[commitment_hex]).await?;
     
-    let aocl_json: serde_json::Value = serde_json::from_str(&aocl_response)
-        .map_err(|e| format!("Failed to parse AOCL response: {}", e))?;
-    
-    let aocl_result = extract_rpc_result("archival_getAoclLeafIndices", &aocl_json)?;
-    let indices = aocl_result
-        .get("indices")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "Missing indices array".to_string())?;
-    
-    if indices.is_empty() {
+    if indices.is_empty() || indices[0].is_none() {
         return Err("UTXO not found in AOCL (may not be confirmed yet)".to_string());
     }
     
     let aocl_leaf_index = indices[0]
-        .as_u64()
         .ok_or_else(|| "UTXO not found in AOCL (may not be confirmed yet)".to_string())?;
     
-    // Compute AbsoluteIndexSet needed for restoreMembershipProof
     let item = Tip5::hash(&incoming_utxo.utxo);
     let absolute_index_set = AbsoluteIndexSet::compute(
         item,
@@ -112,35 +79,15 @@ pub(crate) async fn generate_membership_proof_client_side(
         aocl_leaf_index,
     );
     
-    // Serialize AbsoluteIndexSet to JSON value
-    // RestoreMembershipProofRequest uses Serialize_tuple, so params is array: [absolute_index_sets]
-    // absolute_index_sets is Vec<RpcAbsoluteIndexSet>, so we need array containing Vec of AbsoluteIndexSet
     let absolute_index_set_json = serde_json::to_value(&absolute_index_set)
         .map_err(|e| format!("Failed to serialize AbsoluteIndexSet to JSON: {}", e))?;
     
-    // Call archival_restoreMembershipProof to get both AOCL auth paths and chunks
-    // Format: params = [absolute_index_sets] where absolute_index_sets is Vec<AbsoluteIndexSet>
-    let restore_proof_text = client
-        .post(rpc_url)
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "archival_restoreMembershipProof",
-            "params": [[absolute_index_set_json]], // [Vec<AbsoluteIndexSet>] = [[single_absolute_index_set]]
-            "id": 1
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to restore membership proof: {}", e))?
-        .text()
-        .await
-        .map_err(|e| format!("Failed to get response: {}", e))?;
+    let restore_result = rpc_client::restore_membership_proof(
+        client,
+        rpc_url,
+        serde_json::json!([absolute_index_set_json]),
+    ).await?;
     
-    let restore_proof_json: serde_json::Value = serde_json::from_str(&restore_proof_text)
-        .map_err(|e| format!("Failed to parse: {}", e))?;
-    
-    let restore_result = extract_rpc_result("archival_restoreMembershipProof", &restore_proof_json)?;
-    
-    // Extract membership proof from response
     let snapshot = restore_result.get("snapshot")
         .ok_or_else(|| "Missing snapshot in response".to_string())?;
     
@@ -154,18 +101,13 @@ pub(crate) async fn generate_membership_proof_client_side(
     
     let rpc_proof = &membership_proofs[0];
     
-    // Debug: log the structure of rpc_proof
-    log::debug!("[BuildTx] rpc_proof keys: {:?}", rpc_proof.as_object().map(|o| o.keys().collect::<Vec<_>>()));
     
-    // Extract AOCL auth paths
-    // RpcIndexedAoclAuthPaths is a struct containing BTreeMap, which serializes directly as object
     let aocl_auth_paths_value = rpc_proof.get("aoclAuthPaths")
         .ok_or_else(|| {
             log::error!("[BuildTx] rpc_proof structure: {}", serde_json::to_string_pretty(rpc_proof).unwrap_or_default());
             "Missing aoclAuthPaths".to_string()
         })?;
     
-    // RpcIndexedAoclAuthPaths is a tuple struct, may serialize as array [BTreeMap] or directly as object
     let aocl_auth_paths_map = if let Some(arr) = aocl_auth_paths_value.as_array() {
         if arr.is_empty() {
             return Err("Empty aoclAuthPaths array".to_string());
@@ -177,15 +119,11 @@ pub(crate) async fn generate_membership_proof_client_side(
             .ok_or_else(|| "aoclAuthPaths is neither array nor object".to_string())?
     };
     
-    // Find the auth path for our aocl_leaf_index
-    // BTreeMap keys serialize as strings
     let aocl_leaf_index_str = aocl_leaf_index.to_string();
     let aocl_auth_path_array = aocl_auth_paths_map.get(&aocl_leaf_index_str)
         .and_then(|v| v.as_array())
         .ok_or_else(|| format!("Missing AOCL auth path for leaf index {}", aocl_leaf_index))?;
     
-    // Convert array of hex strings to Vec<Digest>
-    // RpcMmrMembershipProof is Vec<Digest>, serializes as array
     let mut auth_path_digests = Vec::new();
     for digest_hex in aocl_auth_path_array {
         let digest_str = digest_hex.as_str()
@@ -199,12 +137,9 @@ pub(crate) async fn generate_membership_proof_client_side(
     
     let auth_path_aocl = MmrMembershipProof::new(auth_path_digests);
     
-    // Extract target chunks
-    // RpcChunkDictionary is a tuple struct, which may serialize as array [BTreeMap] or directly as object
     let target_chunks_value = rpc_proof.get("targetChunks")
         .ok_or_else(|| "Missing targetChunks".to_string())?;
     
-    // Try as array first (tuple struct serializes as array), then as object
     let target_chunks_map = if let Some(arr) = target_chunks_value.as_array() {
         if arr.is_empty() {
             return Err("Empty targetChunks array".to_string());
@@ -265,7 +200,6 @@ pub(crate) async fn generate_membership_proof_client_side(
         target_chunks.insert(chunk_index, (chunk_auth_path, chunk));
     }
     
-    // Build membership proof
     Ok(MsMembershipProof {
         sender_randomness: incoming_utxo.sender_randomness,
         receiver_preimage: incoming_utxo.receiver_preimage,
@@ -276,13 +210,11 @@ pub(crate) async fn generate_membership_proof_client_side(
 }
 
 pub async fn build_transaction(app: AppHandle, payload: serde_json::Value) -> Result<String, String> {
-    match build_transaction_inner(&app, payload).await {
-        Ok(result) => Ok(result),
-        Err(err) => {
-            error!("[BuildTx] ✖ {}", err);
-            Err(err)
-        }
+    let result = build_transaction_inner(&app, payload).await;
+    if let Err(ref err) = result {
+        error!("[BuildTx] ✖ {}", err);
     }
+    result
 }
 
 async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) -> Result<String, String> {
@@ -304,6 +236,11 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         .iter()
         .filter_map(|v| v.as_str().map(|s| s.to_string()))
         .collect();
+
+    // Enforce a hard limit on the number of UTXOs per transaction
+    if input_addition_records.len() > 5 {
+        return Err("Too many UTXOs selected for a single transaction. Maximum allowed is 5.".to_string());
+    }
     
     let _min_block_height = payload["minBlockHeight"].as_i64().unwrap_or(0);
     
@@ -355,26 +292,7 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-    // Get network from node_network RPC
-    let network_text = client
-        .post(&rpc_url)
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "node_network",
-            "params": [],
-            "id": 1
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to get network: {}", e))?
-        .text()
-        .await
-        .map_err(|e| format!("Failed to get network response: {}", e))?;
-
-    let network_json: serde_json::Value = serde_json::from_str(&network_text)
-        .map_err(|e| format!("Failed to parse network: {}", e))?;
-
-    let network_result = extract_rpc_result("node_network", &network_json)?;
+    let network_result = rpc_client::call_json_rpc(&client, &rpc_url, "node_network", serde_json::json!([])).await?;
     let network_str = network_result.get("network")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing network in response".to_string())?;
@@ -460,41 +378,7 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         ));
     }
     
-    // Get mutator set accumulator first
-    let archival_text = client
-        .post(&rpc_url)
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "archival_getArchivalMutatorSet",
-            "params": [],
-            "id": 1
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to get archival mutator set: {}", e))?
-        .text()
-        .await
-        .map_err(|e| format!("Failed to get archival response: {}", e))?;
-
-    let archival_json: serde_json::Value =
-        serde_json::from_str(&archival_text)
-            .map_err(|e| format!("Failed to parse archival response: {}", e))?;
-
-    let result_obj =
-        extract_rpc_result("archival_getArchivalMutatorSet", &archival_json)?;
-
-    if result_obj.get("archivalMutatorSet").is_none()
-        && result_obj.get("archival_mutator_set").is_none()
-    {
-        return Err("archival_getArchivalMutatorSet missing archivalMutatorSet field".to_string());
-    }
-    
-    let rpc_mutator_set_accumulator = serde_json::from_value::<GetArchivalMutatorSetResponse>(result_obj.clone())
-        .map_err(|e| format!("Failed to deserialize archival mutator set: {}", e))?
-        .archival_mutator_set;
-    
-    // Convert RpcMutatorSetAccumulator to MutatorSetAccumulator
-    let mutator_set_accumulator: MutatorSetAccumulator = rpc_mutator_set_accumulator.into();
+    let mutator_set_accumulator = rpc_client::get_archival_mutator_set(&client, &rpc_url).await?;
     
     // Generate membership proofs client-side
     let mut tx_inputs = Vec::new();
@@ -717,10 +601,10 @@ async fn produce_proof_collection_in_process(
         .map(|tsaw| tsaw.program.hash())
         .collect();
     
-    let merge_bit_mast_path = primitive_witness
-        .kernel
-        .mast_path(TransactionKernelField::MergeBit);
-    
+    let merge_bit_mast_path = primitive_witness.kernel.mast_path(
+        neptune_privacy::protocol::consensus::transaction::transaction_kernel::TransactionKernelField::MergeBit,
+    );
+
     Ok(ProofCollection {
         removal_records_integrity,
         collect_lock_scripts,
@@ -737,18 +621,4 @@ async fn produce_proof_collection_in_process(
     })
 }
 
-fn extract_rpc_result<'a>(
-    method: &str,
-    response: &'a serde_json::Value,
-) -> Result<&'a serde_json::Value, String> {
-    if let Some(error) = response.get("error") {
-        if !error.is_null() {
-            return Err(format!("{method} RPC error: {}", error));
-        }
-    }
-
-    response
-        .get("result")
-        .ok_or_else(|| format!("{method} missing result field"))
-}
 
