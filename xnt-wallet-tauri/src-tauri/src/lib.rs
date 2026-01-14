@@ -17,7 +17,6 @@ use android_logger;
 use libc;
 
 mod keystore;
-mod wallet;
 mod transaction;
 mod utxo_scanning;
 mod utxo_cache;
