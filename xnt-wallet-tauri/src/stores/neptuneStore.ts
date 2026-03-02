@@ -10,7 +10,10 @@ export const useNeptuneStore = defineStore('neptune', () => {
     const wallet = ref<WalletState>({
       receiverId: null,
       spendingKey: null,
+      generationSpendingKey: null,
       address: null,
+      dctidh_address: null,
+      generation_address: null,
       network: defaultNetwork,
       balance: null,
       pendingBalance: null,
@@ -20,6 +23,7 @@ export const useNeptuneStore = defineStore('neptune', () => {
 
     const keystoreFileName = ref<string | null>(null)
     const rpcUrl = ref<string | null>(null)
+    const addressType = ref<'dctidh' | 'generation'>('dctidh')
 
     // ===== SETTERS =====
 
@@ -31,8 +35,24 @@ export const useNeptuneStore = defineStore('neptune', () => {
         wallet.value.spendingKey = spendingKey
     }
 
+    const setGenerationSpendingKey = (key: string | null) => {
+        wallet.value.generationSpendingKey = key
+    }
+
     const setAddress = (address: string | null) => {
         wallet.value.address = address
+    }
+
+    const setDctidh_address = (address: string | null) => {
+        wallet.value.dctidh_address = address
+    }
+
+    const setGeneration_address = (address: string | null) => {
+        wallet.value.generation_address = address
+    }
+
+    const setAddressType = (type: 'dctidh' | 'generation') => {
+        addressType.value = type
     }
 
     const setNetwork = (network: 'mainnet' | 'testnet') => {
@@ -71,20 +91,28 @@ export const useNeptuneStore = defineStore('neptune', () => {
       wallet.value = {
         receiverId: null,
         spendingKey: null,
+        generationSpendingKey: null,
         address: null,
+        dctidh_address: null,
+        generation_address: null,
         network: defaultNetwork,
         balance: null,
         pendingBalance: null,
         utxos: [],
         minBlockHeight: null,
       }
+      addressType.value = 'dctidh'
     }
 
     // ===== GETTERS =====
     const getWallet = computed(() => wallet.value)
     const getReceiverId = computed(() => wallet.value.receiverId)
     const getSpendingKey = computed(() => wallet.value.spendingKey)
+    const getGenerationSpendingKey = computed(() => wallet.value.generationSpendingKey ?? null)
     const getAddress = computed(() => wallet.value.address)
+    const getDctidh_address = computed(() => wallet.value.dctidh_address ?? null)
+    const getGeneration_address = computed(() => wallet.value.generation_address ?? null)
+    const getAddressType = computed(() => addressType.value)
     const getNetwork = computed(() => wallet.value.network)
     const getBalance = computed(() => wallet.value.balance)
     const getPendingBalance = computed(() => wallet.value.pendingBalance)
@@ -97,7 +125,11 @@ export const useNeptuneStore = defineStore('neptune', () => {
         getWallet,
         getReceiverId,
         getSpendingKey,
+        getGenerationSpendingKey,
         getAddress,
+        getDctidh_address,
+        getGeneration_address,
+        getAddressType,
         getNetwork,
         getBalance,
         getPendingBalance,
@@ -108,7 +140,11 @@ export const useNeptuneStore = defineStore('neptune', () => {
         getRpcUrl,
         setReceiverId,
         setSpendingKey,
+        setGenerationSpendingKey,
         setAddress,
+        setDctidh_address,
+        setGeneration_address,
+        setAddressType,
         setNetwork,
         setBalance,
         setPendingBalance,

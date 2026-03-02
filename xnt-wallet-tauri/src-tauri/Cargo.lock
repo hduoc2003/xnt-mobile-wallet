@@ -1049,6 +1049,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctidh512"
+version = "0.1.0"
+source = "git+https://github.com/neptuneprivacy/dCTIDH-512sp.git#f3188f3b834cfbfd05a3e619bfb8875305f98999"
+
+[[package]]
 name = "ctor"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2983,9 +2988,9 @@ dependencies = [
 
 [[package]]
 name = "ndarray"
-version = "0.16.1"
+version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "882ed72dce9365842bf196bdeedf5055305f11fc8c03dee7bb0194a6cad34841"
+checksum = "520080814a7a6b4a6e9070823bb24b4531daac8c4627e08ba5de8c5ef2f2752d"
 dependencies = [
  "matrixmultiply",
  "num-complex",
@@ -3029,7 +3034,7 @@ dependencies = [
 
 [[package]]
 name = "neptune-privacy"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -3045,6 +3050,7 @@ dependencies = [
  "bytesize",
  "chrono",
  "clap",
+ "ctidh512",
  "directories",
  "field_count",
  "futures",
@@ -3069,6 +3075,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "serde_tuple",
+ "sha2",
  "sha3",
  "strum",
  "strum_macros",
@@ -5479,8 +5486,7 @@ dependencies = [
 [[package]]
 name = "tasm-lib"
 version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebbfc45d56548bb55036fa64cad69630d43173507257470865062305f3c7346c"
+source = "git+https://github.com/neptuneprivacy/tasm-lib-patch.git?tag=v1.0.1#dd954abf4c894fbbd9edf224bdd58a48a75666e5"
 dependencies = [
  "anyhow",
  "arbitrary",
@@ -5501,8 +5507,7 @@ dependencies = [
 [[package]]
 name = "tasm-object-derive"
 version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3277f41070fd40101837e1abb0e24d3e2ed145d613a3373b47712e656b3a2b37"
+source = "git+https://github.com/neptuneprivacy/tasm-lib-patch.git?tag=v1.0.1#dd954abf4c894fbbd9edf224bdd58a48a75666e5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6308,9 +6313,8 @@ dependencies = [
 
 [[package]]
 name = "triton-air"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ac8f4ade43166339a0e5ac3c3d56a3675256d25b9e391d884f889a32a488c3b"
+version = "2.0.0"
+source = "git+https://github.com/TritonVM/triton-vm.git?tag=v2.0.0#4f8ab51d92c7f4808d03b4677ed19239e87f3548"
 dependencies = [
  "arbitrary",
  "itertools 0.14.0",
@@ -6322,9 +6326,8 @@ dependencies = [
 
 [[package]]
 name = "triton-constraint-builder"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2fe1e21c26e4f3c41164573b14fc83d1c3ddbc6de1a90e810aad0fcbf42d81c"
+version = "2.0.0"
+source = "git+https://github.com/TritonVM/triton-vm.git?tag=v2.0.0#4f8ab51d92c7f4808d03b4677ed19239e87f3548"
 dependencies = [
  "itertools 0.14.0",
  "prettyplease",
@@ -6340,9 +6343,8 @@ dependencies = [
 
 [[package]]
 name = "triton-constraint-circuit"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3107c3169544bc50599c74cb360b1f0caa38e43d4b50743bf4e7f35f66e13965"
+version = "2.0.0"
+source = "git+https://github.com/TritonVM/triton-vm.git?tag=v2.0.0#4f8ab51d92c7f4808d03b4677ed19239e87f3548"
 dependencies = [
  "arbitrary",
  "itertools 0.14.0",
@@ -6355,9 +6357,8 @@ dependencies = [
 
 [[package]]
 name = "triton-isa"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eab6aa297481933c4dd15c02077e4f8a53ef103d5dd0be206c0e25f70332d28b"
+version = "2.0.0"
+source = "git+https://github.com/TritonVM/triton-vm.git?tag=v2.0.0#4f8ab51d92c7f4808d03b4677ed19239e87f3548"
 dependencies = [
  "arbitrary",
  "get-size2",
@@ -6374,9 +6375,8 @@ dependencies = [
 
 [[package]]
 name = "triton-vm"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5b49f18bdf1c0a0eae1687c57321156c7b495dfe71090391a4673b3521d0c50"
+version = "2.0.0"
+source = "git+https://github.com/TritonVM/triton-vm.git?tag=v2.0.0#4f8ab51d92c7f4808d03b4677ed19239e87f3548"
 dependencies = [
  "arbitrary",
  "colored",
@@ -6411,9 +6411,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "twenty-first"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5d465fb05b5b6d8338770501973ef2b27d984ffb79fe7b0b08644926030ac0e"
+checksum = "2f2127e955aea73cc584e429c544f4a5997128fd5e4021c852cb63f309bf51ea"
 dependencies = [
  "arbitrary",
  "bfieldcodec_derive",
@@ -7599,7 +7599,7 @@ dependencies = [
 
 [[package]]
 name = "xnt-rpc-macros"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "convert_case 0.8.0",
  "quote",

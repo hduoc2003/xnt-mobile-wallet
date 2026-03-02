@@ -22,8 +22,9 @@ export function useNeptuneWallet() {
 
       store.setReceiverId(result.receiver_identifier)
 
-      const spendingKeyResult = await getSpendingKeyFromSeed(result.seed_phrase)
+      const spendingKeyResult = await loadBothAddresses(result.seed_phrase)
       store.setSpendingKey(spendingKeyResult.spending_key_hex)
+      store.setReceiverId(spendingKeyResult.receiver_identifier)
 
       const addressResult = (spendingKeyResult as any).address || spendingKeyResult.receiver_identifier
       store.setAddress(addressResult)
@@ -35,13 +36,30 @@ export function useNeptuneWallet() {
     }
   }
 
-  const getSpendingKeyFromSeed = async (seedPhrase: string[]): Promise<SpendingKeyResult> => {
+  const getSpendingKeyFromSeed = async (seedPhrase: string[], keyType?: string): Promise<SpendingKeyResult> => {
     const network = store.getNetwork === 'mainnet' ? 'main' : 'testnet'
-    const result = await (window as any).walletApi.generateKeysFromSeed([...seedPhrase], network)
+    const result = await (window as any).walletApi.generateKeysFromSeed([...seedPhrase], network, keyType || 'dctidh')
     if (!result.success) {
       throw new Error(result.error || 'Failed to get spending key from seed')
     }
     return result
+  }
+
+  // Derives both dCTIDH (primary) and Generation (display) addresses from the seed.
+  // Stores dCTIDH key as the active spending key and both addresses for UI display.
+  const loadBothAddresses = async (seedPhrase: string[]): Promise<SpendingKeyResult> => {
+    const dctidh = await getSpendingKeyFromSeed(seedPhrase, 'dctidh')
+    store.setDctidh_address((dctidh as any).address || null)
+
+    try {
+      const gen = await getSpendingKeyFromSeed(seedPhrase, 'generation')
+      store.setGeneration_address((gen as any).address || null)
+      store.setGenerationSpendingKey((gen as any).spending_key_hex || null)
+    } catch {
+      // Generation address is display-only; ignore errors
+    }
+
+    return dctidh
   }
 
   const recoverWalletFromSeed = async (seedPhrase: string[]): Promise<WalletState> => {
@@ -49,7 +67,7 @@ export function useNeptuneWallet() {
       store.clearWallet()
       await (window as any).walletApi.clearUtxoCache?.()
 
-      const result = await getSpendingKeyFromSeed(seedPhrase)
+      const result = await loadBothAddresses(seedPhrase)
       store.setReceiverId(result.receiver_identifier)
       store.setSpendingKey(result.spending_key_hex)
 
@@ -95,7 +113,7 @@ export function useNeptuneWallet() {
       )
 
       const seedPhrase = result.phrase.trim().split(/\s+/)
-      const spendingKeyResult = await getSpendingKeyFromSeed(seedPhrase)
+      const spendingKeyResult = await loadBothAddresses(seedPhrase)
 
       store.setReceiverId(spendingKeyResult.receiver_identifier)
       store.setSpendingKey(spendingKeyResult.spending_key_hex)
@@ -114,6 +132,7 @@ export function useNeptuneWallet() {
             additionRecord: u.addition_record_hex || u.additionRecord || '',
             isTimelocked: !!(u.is_timelocked ?? u.isTimelocked),
             releaseDateMs: u.release_date_ms ?? u.releaseDateMs ?? null,
+            keyType: u.key_type || u.keyType || '',
           })
           const cachedUtxos = (cachedResult.utxos || []).map(normalizeUtxo)
           store.setUtxos(cachedUtxos)
@@ -188,11 +207,11 @@ export function useNeptuneWallet() {
       await (window as any).walletApi.updateMinBlockHeight(result.fileName, finalMinBlockHeight)
       
       const seedPhrase = seed.trim().split(/\s+/)
-      const spendingKeyResult = await getSpendingKeyFromSeed(seedPhrase)
-      
+      const spendingKeyResult = await loadBothAddresses(seedPhrase)
+
       store.setReceiverId(spendingKeyResult.receiver_identifier)
       store.setSpendingKey(spendingKeyResult.spending_key_hex)
-      
+
       const addressResult = (spendingKeyResult as any).address || spendingKeyResult.receiver_identifier
       store.setAddress(addressResult)
       
@@ -318,6 +337,7 @@ export function useNeptuneWallet() {
             additionRecord: u.addition_record_hex || u.additionRecord || '',
             isTimelocked: !!(u.is_timelocked ?? u.isTimelocked),
             releaseDateMs: u.release_date_ms ?? u.releaseDateMs ?? null,
+            keyType: u.key_type || u.keyType || '',
           })
           const cachedUtxos = (cachedResult.utxos || []).map(normalizeUtxo)
           store.setUtxos(cachedUtxos)
@@ -385,8 +405,12 @@ export function useNeptuneWallet() {
         throw new Error('RPC endpoint is not configured')
       }
 
+      const generationKey = store.getGenerationSpendingKey
+      const spendingKeysHex = [spendingKey, generationKey].filter((k): k is string => !!k)
+
       const scanRequest = {
         spendingKeyHex: spendingKey,
+        spendingKeysHex,
         startBlock: toFiniteNumber(startBlock),
         endBlock: currentHeight,
         rpcUrl: rpcUrl,
@@ -406,6 +430,7 @@ export function useNeptuneWallet() {
         additionRecord: u.addition_record_hex,
         isTimelocked: !!u.is_timelocked,
         releaseDateMs: u.release_date_ms ?? null,
+        keyType: u.key_type || u.keyType || '',
       })
 
       const freshUtxos = (scanResult.utxos || []).map(normalizeUtxo)
@@ -474,20 +499,24 @@ export function useNeptuneWallet() {
       store.setBalance(balanceStr)
 
       let pendingBalance = '0'
-      const spendingKey = store.getSpendingKey
-      if (spendingKey) {
-        const customRpc = await (window as any).walletApi.getCustomRpcEndpoint?.()
-        const rpcUrl = customRpc || import.meta.env.VITE_APP_API
-        if (rpcUrl) {
-          const pendingResult = await (window as any).walletApi.getPendingBalance({
-            spendingKeyHex: spendingKey,
-            rpcUrl: rpcUrl,
-          })
-          const pendingData = typeof pendingResult === 'string' ? JSON.parse(pendingResult) : pendingResult
-          if (pendingData.success) {
-            pendingBalance = pendingData.pending_balance || '0'
-          }
+      const customRpc = await (window as any).walletApi.getCustomRpcEndpoint?.()
+      const rpcUrl = customRpc || import.meta.env.VITE_APP_API
+      if (rpcUrl) {
+        let pendingTotal = 0
+        const keysToCheck = [store.getSpendingKey, store.getGenerationSpendingKey].filter(Boolean)
+        for (const keyHex of keysToCheck) {
+          try {
+            const pendingResult = await (window as any).walletApi.getPendingBalance({
+              spendingKeyHex: keyHex,
+              rpcUrl: rpcUrl,
+            })
+            const pendingData = typeof pendingResult === 'string' ? JSON.parse(pendingResult) : pendingResult
+            if (pendingData.success) {
+              pendingTotal += parseFloat(pendingData.pending_balance || '0') || 0
+            }
+          } catch { /* ignore per-key errors */ }
         }
+        pendingBalance = pendingTotal.toFixed(8)
       }
 
       store.setPendingBalance(pendingBalance)
@@ -535,7 +564,7 @@ export function useNeptuneWallet() {
     }
 
     const payload: any = {
-      spendingKeyHex: store.getSpendingKey,
+      spendingKeyHex: args.spendingKeyHex || store.getSpendingKey,
       inputAdditionRecords: args.inputAdditionRecords,
       minBlockHeight: toFiniteNumber(minBlockHeight),
       outputAddresses: args.outputAddresses,
@@ -576,44 +605,57 @@ export function useNeptuneWallet() {
     utxos: any[],
     neededAmount: number,
     fee: number
-  ): { selectedUtxos: any[]; totalAmount: number } => {
+  ): { selectedUtxos: any[]; totalAmount: number; spendingKeyHex: string } => {
     const totalNeeded = neededAmount + fee
     const now = Date.now()
+    const maxInputsPerTx = 5
 
-    // Only consider UTXOs that are not timelocked (or timelock has expired)
-    const spendableUtxos = utxos.filter((u) => {
+    const dctidh_key = store.getSpendingKey || ''
+    const generation_key = store.getGenerationSpendingKey || ''
+
+    // Only spendable (non-timelocked or expired timelock) UTXOs
+    const spendable = utxos.filter((u) => {
       const isTimelocked = !!(u.is_timelocked ?? u.isTimelocked)
       if (!isTimelocked) return true
       const releaseDateMs = u.release_date_ms ?? u.releaseDateMs ?? null
       return releaseDateMs !== null && releaseDateMs <= now
     })
 
-    const sortedUtxos = [...spendableUtxos].sort((a, b) => {
-      const amountA = parseFloat(a.amount || '0')
-      const amountB = parseFloat(b.amount || '0')
-      return amountB - amountA
-    })
-    const maxInputsPerTx = 5
-
-    let totalSelected = 0
-    const selectedUtxos: any[] = []
-
-    for (const utxo of sortedUtxos) {
-      const amount = parseFloat(utxo.amount || '0')
-      if (isNaN(amount) || amount <= 0) continue
-
-      selectedUtxos.push(utxo)
-      totalSelected += amount
-
-      if (totalSelected >= totalNeeded || selectedUtxos.length >= maxInputsPerTx) {
-        break
+    // Greedily select up to maxInputsPerTx largest UTXOs from a candidate list
+    const trySelect = (candidates: any[]): { selectedUtxos: any[]; totalAmount: number } => {
+      const sorted = [...candidates].sort((a, b) => parseFloat(b.amount || '0') - parseFloat(a.amount || '0'))
+      let total = 0
+      const selected: any[] = []
+      for (const utxo of sorted) {
+        const amt = parseFloat(utxo.amount || '0')
+        if (isNaN(amt) || amt <= 0) continue
+        selected.push(utxo)
+        total += amt
+        if (total >= totalNeeded || selected.length >= maxInputsPerTx) break
       }
+      return { selectedUtxos: selected, totalAmount: total }
     }
 
-    return {
-      selectedUtxos,
-      totalAmount: totalSelected,
+    // UTXOs without a keyType are legacy dCTIDH entries
+    const dctidh_utxos = spendable.filter(u => !u.keyType || u.keyType === 'dCTIDH')
+    const gen_utxos    = spendable.filter(u => u.keyType === 'Generation')
+
+    const dctidh_result = trySelect(dctidh_utxos)
+    const gen_result    = trySelect(gen_utxos)
+
+    // Prefer dCTIDH if it covers the total; else try Generation
+    if (dctidh_result.totalAmount >= totalNeeded && dctidh_key) {
+      return { ...dctidh_result, spendingKeyHex: dctidh_key }
     }
+    if (gen_result.totalAmount >= totalNeeded && generation_key) {
+      return { ...gen_result, spendingKeyHex: generation_key }
+    }
+
+    // Neither covers the full amount — return whichever has more (will fail with clear error)
+    if (dctidh_result.totalAmount >= gen_result.totalAmount) {
+      return { ...dctidh_result, spendingKeyHex: dctidh_key }
+    }
+    return { ...gen_result, spendingKeyHex: generation_key || dctidh_key }
   }
 
   const clearWallet = () => {
@@ -624,6 +666,7 @@ export function useNeptuneWallet() {
     generateWallet,
     recoverWalletFromSeed,
     getSpendingKeyFromSeed,
+    loadBothAddresses,
     getAddressFromSeed,
 
     getUtxos,

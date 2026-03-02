@@ -88,15 +88,16 @@ if (!(window as any).walletApi) {
             }
         },
         
-        generateKeysFromSeed: async (seedPhrase: string[], network?: string) => {
+        generateKeysFromSeed: async (seedPhrase: string[], network?: string, keyType?: string) => {
             try {
                 let networkStr = network || 'main'
                 if (networkStr === 'mainnet') {
                     networkStr = 'main'
                 }
-                const result = await safeInvoke<string>('generate_keys_from_seed', { 
+                const result = await safeInvoke<string>('generate_keys_from_seed', {
                     seedPhrase,
-                    network: networkStr
+                    network: networkStr,
+                    keyType: keyType || 'dctidh',
                 })
                 return JSON.parse(result)
             } catch (error: any) {

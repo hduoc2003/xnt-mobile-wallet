@@ -6,6 +6,7 @@ import { Send, ArrowLeft } from 'lucide-vue-next'
 import { useNeptuneWallet, useFormat, useTransaction } from '@/composables'
 import ConfirmTransactionDrawer from './components/ConfirmTransactionDrawer.vue'
 import ProofGenerationModal from './components/ProofGenerationModal.vue'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 const router = useRouter()
 const { getBalance, getUtxos, forceRescanUtxos, buildTransaction, broadcastSignedTransaction, selectUtxos } = useNeptuneWallet()
@@ -14,6 +15,7 @@ const { formatAmount } = useFormat()
 
 const availableBalance = ref('0')
 const maxSendable = ref('0')
+const pendingBalance = ref('0')
 const loading = ref(false)
 const sendLoading = ref(false)
 const showConfirmModal = ref(false)
@@ -32,6 +34,7 @@ const loadBalance = async () => {
     loading.value = true
     const result = await getBalance()
     availableBalance.value = result?.balance ?? '0'
+    pendingBalance.value = result?.pendingBalance ?? '0'
   } catch (error) {
     toast.error('Failed to load balance')
   } finally {
@@ -119,6 +122,13 @@ const amountErrorMessage = computed(() => {
   }
 
   return ''
+})
+
+/** True when user has no spendable balance but has pending (e.g. tx stuck in mempool) */
+const balanceStuckInPending = computed(() => {
+  const available = parseFloat(availableBalance.value)
+  const pending = parseFloat(pendingBalance.value)
+  return !isNaN(available) && !isNaN(pending) && available === 0 && pending > 0
 })
 
 const isTimelockValid = computed(() => {
@@ -209,16 +219,24 @@ const handleConfirmSend = async () => {
     showConfirmModal.value = false
     showProofModal.value = true
     
-    // Always force-rescan before sending to ensure cache is fresh and
-    // change UTXOs from previous transactions are included.
-    const utxosResult = await forceRescanUtxos()
+    // Get UTXOs (rescan so cache is fresh)
+    const utxosResult = await getUtxos()
     const utxos =
       utxosResult?.result?.utxos ||
       utxosResult?.utxos ||
       []
 
     if (!utxos.length) {
-      toast.error('No UTXOs available')
+      // Refresh balance to get pending; if pending > 0, user likely has a tx stuck in mempool
+      const balanceResult = await getBalance()
+      const pending = parseFloat(balanceResult?.pendingBalance || '0')
+      if (!isNaN(pending) && pending > 0) {
+        toast.error('Cannot send: balance is in a pending transaction', {
+          description: 'Wait for that transaction to confirm or be dropped from the mempool, then try again.',
+        })
+      } else {
+        toast.error('No UTXOs available')
+      }
       return
     }
 
@@ -231,7 +249,7 @@ const handleConfirmSend = async () => {
       return
     }
 
-    const { selectedUtxos, totalAmount } = selectUtxos(utxos, outputAmountNum, feeAmount)
+    const { selectedUtxos, totalAmount, spendingKeyHex } = selectUtxos(utxos, outputAmountNum, feeAmount)
 
     if (selectedUtxos.length === 0) {
       toast.error('No suitable UTXOs found')
@@ -279,6 +297,7 @@ const handleConfirmSend = async () => {
       outputAmounts: [outputAmount.value],
       fee: priorityFee.value,
       timelockReleaseDate,
+      spendingKeyHex,
     })
 
     if (!txResult.success) {
@@ -363,6 +382,15 @@ onMounted(async () => {
           <p class="text-sm text-muted-foreground">Send XNT to another address</p>
         </div>
       </div>
+
+      <!-- Mempool-stuck notice: balance is in a pending tx so user cannot send until it confirms or drops -->
+      <Alert v-if="balanceStuckInPending" variant="destructive" class="mb-2">
+        <AlertTitle>Balance in pending transaction</AlertTitle>
+        <AlertDescription>
+          Your {{ formatAmount(+pendingBalance) }} XNT is currently in a transaction waiting in the mempool.
+          You cannot send again until that transaction confirms or is dropped. This applies on this device and if you switch device.
+        </AlertDescription>
+      </Alert>
 
       <!-- Send Form -->
       <Card>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { Wallet, Copy, Check } from 'lucide-vue-next'
+import { Wallet, Copy, Check, X } from 'lucide-vue-next'
 import { useNeptuneStore, useTickerStore } from '@/stores'
 import { toast } from 'vue-sonner'
 import { useFormat } from '@/composables'
@@ -21,6 +21,7 @@ const { formatAmount, formatHash } = useFormat()
 const neptuneStore = useNeptuneStore()
 const tickerStore = useTickerStore()
 const isCopied = ref(false)
+const showCopyModal = ref(false)
 
 const { fetchXntPrice } = useTickers()
 
@@ -30,7 +31,25 @@ const usdValue = computed(() => {
   return balance * price
 })
 
-const receiveAddress = computed(() => neptuneStore.getWallet?.address || '')
+const selectedType = computed({
+  get: () => neptuneStore.getAddressType,
+  set: (val: 'dctidh' | 'generation') => neptuneStore.setAddressType(val),
+})
+
+const dctidh_address = computed(() => neptuneStore.getDctidh_address || neptuneStore.getWallet?.address || '')
+const generation_address = computed(() => neptuneStore.getGeneration_address || '')
+
+const receiveAddress = computed(() => {
+  if (selectedType.value === 'generation') return generation_address.value
+  return dctidh_address.value
+})
+
+const displayAddress = computed(() => {
+  if (selectedType.value === 'generation') {
+    return formatHash(generation_address.value)
+  }
+  return dctidh_address.value
+})
 
 const handleCopyAddress = async () => {
   try {
@@ -40,7 +59,21 @@ const handleCopyAddress = async () => {
     setTimeout(() => {
       isCopied.value = false
     }, 2000)
-  } catch (error) {
+  } catch {
+    toast.error('Failed to copy address')
+  }
+}
+
+const handleCopyFromModal = async () => {
+  try {
+    await navigator.clipboard.writeText(receiveAddress.value)
+    isCopied.value = true
+    toast.success('Address copied to clipboard')
+    setTimeout(() => {
+      isCopied.value = false
+      showCopyModal.value = false
+    }, 1500)
+  } catch {
     toast.error('Failed to copy address')
   }
 }
@@ -118,16 +151,49 @@ onUnmounted(() => {
 
       <!-- Receiving Address -->
       <div class="space-y-3">
-        <Label class="text-sm font-medium">Receiving Address</Label>
-        <div class="flex items-center gap-2 rounded-lg border border-border bg-muted/50 p-3 transition-colors hover:bg-muted">
+        <div class="flex items-center justify-between">
+          <Label class="text-sm font-medium">Receiving Address</Label>
+          <!-- Address type selector -->
+          <div class="flex rounded-md border border-border overflow-hidden text-xs">
+            <button
+              :class="[
+                'px-2 py-1 transition-colors',
+                selectedType === 'dctidh'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-transparent text-muted-foreground hover:bg-muted',
+              ]"
+              @click="selectedType = 'dctidh'"
+            >
+              dCTIDH
+            </button>
+            <button
+              :class="[
+                'px-2 py-1 transition-colors',
+                selectedType === 'generation'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-transparent text-muted-foreground hover:bg-muted',
+              ]"
+              :disabled="!generation_address"
+              @click="selectedType = 'generation'"
+            >
+              Generation
+            </button>
+          </div>
+        </div>
+
+        <!-- Clickable address box -->
+        <div
+          class="flex items-center gap-2 rounded-lg border border-border bg-muted/50 p-3 transition-colors hover:bg-muted cursor-pointer"
+          @click="showCopyModal = true"
+        >
           <code class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-foreground md:text-sm">
-            {{formatHash(receiveAddress) }}
+            {{ displayAddress }}
           </code>
           <Button
             variant="ghost"
             size="icon"
             class="size-8 shrink-0"
-            @click="handleCopyAddress"
+            @click.stop="handleCopyAddress"
           >
             <Check v-if="isCopied" class="size-4 text-green-500" />
             <Copy v-else class="size-4" />
@@ -136,5 +202,53 @@ onUnmounted(() => {
       </div>
     </CardContent>
   </Card>
+
+  <!-- Copy Address Modal -->
+  <Teleport to="body">
+    <Transition name="fade">
+      <div
+        v-if="showCopyModal"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+        @click.self="showCopyModal = false"
+      >
+        <div class="w-full max-w-md rounded-xl border border-border bg-background shadow-2xl">
+          <div class="flex items-center justify-between border-b border-border px-4 py-3">
+            <span class="text-sm font-semibold">
+              {{ selectedType === 'dctidh' ? 'dCTIDH' : 'Generation' }} Receiving Address
+            </span>
+            <Button variant="ghost" size="icon" class="size-7" @click="showCopyModal = false">
+              <X class="size-4" />
+            </Button>
+          </div>
+          <div class="p-4 space-y-4">
+            <div class="rounded-lg border border-border bg-muted/50 p-3">
+              <p class="break-all text-xs text-foreground font-mono leading-relaxed">
+                {{ receiveAddress }}
+              </p>
+            </div>
+            <Button
+              class="w-full"
+              :variant="isCopied ? 'outline' : 'default'"
+              @click="handleCopyFromModal"
+            >
+              <Check v-if="isCopied" class="mr-2 size-4 text-green-500" />
+              <Copy v-else class="mr-2 size-4" />
+              {{ isCopied ? 'Copied!' : 'Copy Address' }}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
+<style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+</style>
