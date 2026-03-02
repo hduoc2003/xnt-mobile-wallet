@@ -57,15 +57,11 @@ fn generate_seed() -> Result<String, String> {
 fn generate_keys_from_seed(
     seed_phrase: Vec<String>,
     network: Option<String>,
+    key_type: Option<String>,
 ) -> Result<String, String> {
     let wallet_entropy = WalletEntropy::from_phrase(&seed_phrase)
         .map_err(|e| format!("Invalid seed phrase: {}", e))?;
 
-    let spending_key = wallet_entropy.nth_generation_spending_key(0);
-    let spending_key_enum = SpendingKey::Generation(spending_key.clone());
-    let receiver_id = spending_key.receiver_identifier();
-    let receiving_address = spending_key_enum.to_address();
-    
     let network_str = network.as_deref().unwrap_or("main");
     let network_str_normalized = match network_str {
         "mainnet" => "main",
@@ -74,21 +70,51 @@ fn generate_keys_from_seed(
     };
     let network_enum = Network::from_str(network_str_normalized)
         .map_err(|e| format!("Invalid network '{}': {}", network_str, e))?;
-    
-    let address_string = receiving_address
-        .to_display_bech32m(network_enum)
-        .map_err(|e| format!("Failed to encode address: {}", e))?;
 
-    let spending_key_bytes = bincode::serialize(&spending_key_enum)
-        .map_err(|e| format!("Failed to serialize spending key: {}", e))?;
+    let key_type_str = key_type.as_deref().unwrap_or("dctidh");
+    log::info!("[Keys] Deriving spending key | key_type={} | network={}", key_type_str, network_str_normalized);
 
-    Ok(serde_json::json!({
-        "success": true,
-        "spending_key_hex": format!("0x{}", hex::encode(&spending_key_bytes)),
-        "receiver_identifier": format!("0x{:016x}", receiver_id.value()),
-        "address": address_string,
-    })
-    .to_string())
+    match key_type_str {
+        "generation" => {
+            let spending_key = wallet_entropy.nth_generation_spending_key(0);
+            let spending_key_enum = SpendingKey::Generation(spending_key.clone());
+            let receiver_id = spending_key.receiver_identifier();
+            let spending_key_bytes = bincode::serialize(&spending_key_enum)
+                .map_err(|e| format!("Failed to serialize spending key: {}", e))?;
+            let address_string = spending_key_enum
+                .to_address()
+                .to_display_bech32m(network_enum)
+                .map_err(|e| format!("Failed to encode address: {}", e))?;
+            Ok(serde_json::json!({
+                "success": true,
+                "spending_key_hex": format!("0x{}", hex::encode(&spending_key_bytes)),
+                "receiver_identifier": format!("0x{:016x}", receiver_id.value()),
+                "address": address_string,
+                "key_type": "generation",
+            })
+            .to_string())
+        }
+        _ => {
+            // Default: dctidh
+            let dctidh_key = wallet_entropy.nth_dctidh_spending_key(0);
+            let spending_key_enum = SpendingKey::dCTIDH(dctidh_key.clone());
+            let receiver_id = dctidh_key.receiver_identifier();
+            let spending_key_bytes = bincode::serialize(&spending_key_enum)
+                .map_err(|e| format!("Failed to serialize spending key: {}", e))?;
+            let address_string = spending_key_enum
+                .to_address()
+                .to_display_bech32m(network_enum)
+                .map_err(|e| format!("Failed to encode address: {}", e))?;
+            Ok(serde_json::json!({
+                "success": true,
+                "spending_key_hex": format!("0x{}", hex::encode(&spending_key_bytes)),
+                "receiver_identifier": format!("0x{:016x}", receiver_id.value()),
+                "address": address_string,
+                "key_type": "dctidh",
+            })
+            .to_string())
+        }
+    }
 }
 
 #[tauri::command]

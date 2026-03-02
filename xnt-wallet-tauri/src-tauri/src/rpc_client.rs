@@ -189,16 +189,43 @@ pub async fn get_mempool_transaction_kernel(
         "mempool_getTransactionKernel",
         serde_json::json!([tx_id]),
     ).await?;
-    
+
     if result.get("kernel").is_none() || result["kernel"].is_null() {
         return Ok(None);
     }
-    
+
     let kernel_value = result.get("kernel").unwrap();
-    let rpc_kernel: neptune_privacy::application::json_rpc::core::model::block::transaction_kernel::RpcTransactionKernel = 
+    let rpc_kernel: neptune_privacy::application::json_rpc::core::model::block::transaction_kernel::RpcTransactionKernel =
         serde_json::from_value(kernel_value.clone())
             .map_err(|e| format!("Failed to deserialize transaction kernel: {}", e))?;
-    
+
     let kernel: TransactionKernel = rpc_kernel.into();
     Ok(Some(kernel))
+}
+
+/// Returns the set of AbsoluteIndexSet hashes (hex) for every removal record across
+/// all pending transactions in the mempool.  These correspond to UTXOs that are
+/// currently being spent but not yet confirmed on-chain.
+pub async fn get_mempool_removal_hashes(
+    client: &Client,
+    rpc_url: &str,
+) -> Result<std::collections::HashSet<String>, String> {
+    use neptune_privacy::prelude::twenty_first::prelude::Tip5;
+
+    let tx_ids = get_mempool_transactions(client, rpc_url).await?;
+    let mut spent_hashes = std::collections::HashSet::new();
+
+    for tx_id in &tx_ids {
+        let kernel = match get_mempool_transaction_kernel(client, rpc_url, tx_id).await {
+            Ok(Some(k)) => k,
+            Ok(None) => continue,
+            Err(_) => continue,
+        };
+        for removal_record in &kernel.inputs {
+            let hash = Tip5::hash(&removal_record.absolute_indices);
+            spent_hashes.insert(hash.to_hex());
+        }
+    }
+
+    Ok(spent_hashes)
 }

@@ -150,7 +150,8 @@ if (!(window as any).walletApi) {
                 const result = await safeInvoke<string>('build_transaction', { payload })
                 return JSON.parse(result)
             } catch (error: any) {
-                return { success: false, error: error || 'Failed to build transaction' }
+                const msg = typeof error === 'string' ? error : (error?.message || error?.toString?.() || 'Failed to build transaction')
+                return { success: false, error: msg }
             }
         },
         
@@ -255,7 +256,8 @@ if (!(window as any).walletApi) {
                 const result = await safeInvoke<string>('scan_utxos_client_side', { request })
                 return JSON.parse(result)
             } catch (error: any) {
-                return { success: false, error: error?.message || error || 'Failed to scan UTXOs' }
+                const msg = typeof error === 'string' ? error : (error?.message || error?.toString?.() || 'Failed to scan UTXOs')
+                return { success: false, error: msg }
             }
         },
 

@@ -8,7 +8,7 @@ import ConfirmTransactionDrawer from './components/ConfirmTransactionDrawer.vue'
 import ProofGenerationModal from './components/ProofGenerationModal.vue'
 
 const router = useRouter()
-const { getBalance, getUtxos, buildTransaction, broadcastSignedTransaction, selectUtxos } = useNeptuneWallet()
+const { getBalance, getUtxos, forceRescanUtxos, buildTransaction, broadcastSignedTransaction, selectUtxos } = useNeptuneWallet()
 const { addTransaction } = useTransaction()
 const { formatAmount } = useFormat()
 
@@ -52,7 +52,20 @@ const loadMaxSendable = async () => {
       return
     }
 
-    const sorted = [...utxos].sort((a: any, b: any) => {
+    const now = Date.now()
+    const spendableUtxos = utxos.filter((u: any) => {
+      const isTimelocked = !!(u.is_timelocked ?? u.isTimelocked)
+      if (!isTimelocked) return true
+      const releaseDateMs = u.release_date_ms ?? u.releaseDateMs ?? null
+      return releaseDateMs !== null && releaseDateMs <= now
+    })
+
+    if (spendableUtxos.length === 0) {
+      maxSendable.value = '0'
+      return
+    }
+
+    const sorted = [...spendableUtxos].sort((a: any, b: any) => {
       const amountA = parseFloat(a.amount || '0')
       const amountB = parseFloat(b.amount || '0')
       return amountB - amountA
@@ -196,8 +209,9 @@ const handleConfirmSend = async () => {
     showConfirmModal.value = false
     showProofModal.value = true
     
-    // Get UTXOs
-    const utxosResult = await getUtxos()
+    // Always force-rescan before sending to ensure cache is fresh and
+    // change UTXOs from previous transactions are included.
+    const utxosResult = await forceRescanUtxos()
     const utxos =
       utxosResult?.result?.utxos ||
       utxosResult?.utxos ||
@@ -268,7 +282,7 @@ const handleConfirmSend = async () => {
     })
 
     if (!txResult.success) {
-      toast.error('Failed to build transaction')
+      toast.error('Failed to build transaction', { description: txResult.error || '' })
       return
     }
 

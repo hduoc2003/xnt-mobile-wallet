@@ -13,6 +13,7 @@ export interface UtxosResult {
 export interface BalanceResult {
   balance: string
   pendingBalance: string
+  totalBalance?: string
 }
 
 export interface BlockHeightResult {

@@ -423,13 +423,14 @@ export function useNeptuneWallet() {
 
       if (lastScannedFromResponse !== null && lastScannedFromResponse !== undefined) {
         const lastScanned = toFiniteNumber(lastScannedFromResponse)
-        const heightToPersist = minHeightFromUtxos && minHeightFromUtxos > 0 ? minHeightFromUtxos : lastScanned
-
-        store.setMinBlockHeight(heightToPersist)
+        // Persist the last scanned block height so future scans start from there,
+        // not from the oldest UTXO block (which would cause repeated re-scanning
+        // and could miss newly confirmed change UTXOs).
+        store.setMinBlockHeight(lastScanned)
 
         const keystoreFileName = store.getKeystoreFileName
         if (keystoreFileName) {
-          await (window as any).walletApi.updateMinBlockHeight(keystoreFileName, heightToPersist)
+          await (window as any).walletApi.updateMinBlockHeight(keystoreFileName, lastScanned)
         }
       }
 
@@ -448,11 +449,27 @@ export function useNeptuneWallet() {
   const getBalance = async (): Promise<BalanceResult> => {
     try {
       const utxos = store.getUtxos || []
-      const balance = utxos.reduce((sum: number, utxo: any) => {
-        const amount = parseFloat(utxo.amount || '0')
-        return sum + (isNaN(amount) ? 0 : amount)
-      }, 0)
+      const now = Date.now()
 
+      let spendableTotal = 0
+      let totalBalance = 0
+      for (const utxo of utxos) {
+        const amount = parseFloat(utxo.amount || '0')
+        if (isNaN(amount)) continue
+        totalBalance += amount
+        const isTimelocked = !!(utxo.is_timelocked ?? utxo.isTimelocked)
+        if (!isTimelocked) {
+          spendableTotal += amount
+        } else {
+          const releaseDateMs = utxo.release_date_ms ?? utxo.releaseDateMs ?? null
+          if (releaseDateMs !== null && releaseDateMs <= now) {
+            spendableTotal += amount
+          }
+        }
+      }
+
+      // Expose spendable balance (excludes active timelocks) as the primary balance
+      const balance = spendableTotal
       const balanceStr = balance.toFixed(8)
       store.setBalance(balanceStr)
 
@@ -477,6 +494,7 @@ export function useNeptuneWallet() {
       return {
         balance: balanceStr,
         pendingBalance: pendingBalance,
+        totalBalance: totalBalance.toFixed(8),
       }
     } catch (err: any) {
       await (window as any).logger?.error('Error getting balance:', err.message)
@@ -560,14 +578,23 @@ export function useNeptuneWallet() {
     fee: number
   ): { selectedUtxos: any[]; totalAmount: number } => {
     const totalNeeded = neededAmount + fee
+    const now = Date.now()
 
-    const sortedUtxos = [...utxos].sort((a, b) => {
+    // Only consider UTXOs that are not timelocked (or timelock has expired)
+    const spendableUtxos = utxos.filter((u) => {
+      const isTimelocked = !!(u.is_timelocked ?? u.isTimelocked)
+      if (!isTimelocked) return true
+      const releaseDateMs = u.release_date_ms ?? u.releaseDateMs ?? null
+      return releaseDateMs !== null && releaseDateMs <= now
+    })
+
+    const sortedUtxos = [...spendableUtxos].sort((a, b) => {
       const amountA = parseFloat(a.amount || '0')
       const amountB = parseFloat(b.amount || '0')
-      return amountB - amountA 
+      return amountB - amountA
     })
     const maxInputsPerTx = 5
-    
+
     let totalSelected = 0
     const selectedUtxos: any[] = []
 

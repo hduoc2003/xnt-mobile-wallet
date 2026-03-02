@@ -306,15 +306,24 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
     let spending_key: SpendingKey = bincode::deserialize(&spending_key_bytes)
         .map_err(|e| format!("Failed to deserialize spending key: {}", e))?;
     
-    let generation_spending_key = match spending_key {
-        SpendingKey::Generation(key) => key,
-        SpendingKey::Symmetric(_) => {
-            return Err("Symmetric spending keys not supported".to_string());
-        }
+    if matches!(spending_key, SpendingKey::Symmetric(_)) {
+        return Err("Symmetric spending keys not supported".to_string());
+    }
+
+    let key_type_label = match &spending_key {
+        SpendingKey::Generation(_) => "Generation",
+        SpendingKey::dCTIDH(_)    => "dCTIDH",
+        SpendingKey::Symmetric(_) => "Symmetric",
     };
-    
-    let spending_key_enum = SpendingKey::Generation(generation_spending_key.clone());
-    let lock_script_and_witness = spending_key_enum.lock_script_and_witness();
+    log::info!(
+        "[BuildTx] Building transaction | key_type={} | inputs={} | outputs={} | fee={}",
+        key_type_label,
+        input_addition_records.len(),
+        output_addresses.len(),
+        fee,
+    );
+
+    let lock_script_and_witness = spending_key.lock_script_and_witness();
     // Get UTXOs from cache instead of calling server
     use crate::utxo_cache;
     let matched_utxos = utxo_cache::get_utxos_by_addition_records(&input_addition_records).await;
@@ -331,7 +340,7 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
     use crate::utxo_scanning;
     let validated_utxos = utxo_scanning::validate_utxos_with_rpc(&client, &rpc_url, &matched_utxos).await
         .map_err(|e| format!("Failed to validate UTXOs: {}. Some UTXOs may have been spent.", e))?;
-    
+
     if validated_utxos.len() != matched_utxos.len() {
         return Err(format!(
             "Some UTXOs have been spent. Validated {}/{} UTXOs. Please refresh and try again.",
@@ -339,6 +348,29 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
             matched_utxos.len()
         ));
     }
+
+    // Additionally filter out UTXOs that are currently referenced as inputs in
+    // pending mempool transactions.  archival_getSpentStatus only covers confirmed
+    // blocks, so without this check a UTXO that is already in an unconfirmed tx
+    // could be selected again, causing a double-spend attempt.
+    let validated_utxos = match utxo_scanning::filter_utxos_spent_in_mempool(&client, &rpc_url, &validated_utxos).await {
+        Ok(filtered) => {
+            if filtered.len() != validated_utxos.len() {
+                return Err(format!(
+                    "{} of your selected UTXOs are already referenced in a pending mempool transaction. \
+                     Wait for that transaction to confirm or be dropped, then rescan and try again.",
+                    validated_utxos.len() - filtered.len()
+                ));
+            }
+            filtered
+        }
+        Err(e) => {
+            // If we cannot reach the mempool endpoint, log a warning but do not
+            // block the transaction – the node will reject any actual double-spend.
+            log::warn!("[BuildTx] Mempool UTXO filter failed (proceeding anyway): {}", e);
+            validated_utxos
+        }
+    };
     
     let mut total_input_amount = NativeCurrencyAmount::zero();
     for utxo in &matched_utxos {
@@ -372,7 +404,7 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
     
     if !change_amount.is_zero() {
         validated_outputs.push(OutputFormat::AddressAndAmountAndMedium(
-            generation_spending_key.to_address().into(),
+            spending_key.clone().to_address(),
             change_amount,
             UtxoNotificationMedium::OnChain,
         ));
@@ -397,7 +429,7 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         )));
     }
     
-    let my_address: ReceivingAddress = generation_spending_key.to_address().into();
+    let my_address: ReceivingAddress = spending_key.clone().to_address();
     let tx_outputs: Vec<TxOutput> = validated_outputs
         .into_iter()
         .map(|output| {
@@ -435,7 +467,7 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
     );
     
     let primitive_witness: PrimitiveWitness = tx_details.primitive_witness();
-    let proof_collection = produce_proof_collection_in_process(&primitive_witness, Some(23))
+    let proof_collection = produce_proof_collection_in_process(&primitive_witness, None)
         .await
         .map_err(|e| format!("Failed to generate proof collection: {}", e))?;
     
