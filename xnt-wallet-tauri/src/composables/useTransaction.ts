@@ -1,7 +1,8 @@
-import type { TransactionDetail } from '@/types'
+import type { TransactionDetail, TxStatus } from '@/types'
 import { useTransactionStore } from '@/stores'
 
 const TX_STORAGE_KEY = 'xnt_tx_history'
+const NEPTUNE_SCAN_API = 'https://api.neptunescan.io/api/utxo'
 
 export const useTransaction = () => {
     const transactionStore = useTransactionStore()
@@ -42,10 +43,45 @@ export const useTransaction = () => {
         }
     }
 
+    const fetchTxStatus = async (txId: string): Promise<TxStatus> => {
+        const digest = txId.startsWith('0x') ? txId.slice(2) : txId
+        try {
+            const response = await (window as any).walletApi.proxyHttpGet(
+                `${NEPTUNE_SCAN_API}/${digest}`
+            )
+            if (!response?.success) return 'failed'
+            const utxo = response.utxo
+            if (!utxo) return 'failed'
+            return utxo.in_mempool ? 'pending' : 'confirmed'
+        } catch {
+            return 'unknown'
+        }
+    }
+
+    const refreshTransactionStatuses = async () => {
+        const txs = transactionStore.getTransactions
+        if (!txs.length) return
+
+        await Promise.allSettled(
+            txs.map(async (tx) => {
+                const status = await fetchTxStatus(tx.id)
+                transactionStore.updateTransactionStatus(tx.id, status)
+            })
+        )
+
+        // Persist updated statuses to localStorage
+        try {
+            window.localStorage.setItem(TX_STORAGE_KEY, JSON.stringify(transactionStore.getTransactions))
+        } catch {
+            // Ignore storage errors
+        }
+    }
+
     return {
         loadTransactionsFromStorage,
         addTransaction,
         clearTransactions,
+        fetchTxStatus,
+        refreshTransactionStatuses,
     }
 }
-

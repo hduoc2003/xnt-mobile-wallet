@@ -2,14 +2,16 @@
 import { computed, ref, watch, onMounted } from 'vue'
 import { History, ArrowUpRight } from 'lucide-vue-next'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { useFormat } from '@/composables'
+import { useFormat, useTransaction } from '@/composables'
 import { useTransactionStore } from '@/stores'
 import { PER_PAGE } from '@/utils'
 import type { TransactionDetail } from '@/types'
 
 const { formatAddress, formatAmount } = useFormat()
+const { refreshTransactionStatuses } = useTransaction()
 const transactionStore = useTransactionStore()
 const loading = ref(false)
+const refreshing = ref(false)
 
 const transactions = computed(() => transactionStore.getTransactions)
 const displayedTransactions = ref<TransactionDetail[]>([])
@@ -49,6 +51,32 @@ const openExplorer = async (utxoDigest: string) => {
     console.error('Failed to open explorer:', error)
   }
 }
+
+const statusBadgeClass = (status?: string) => {
+  switch (status) {
+    case 'confirmed': return 'bg-green-500/15 text-green-600 border-green-500/30'
+    case 'pending':   return 'bg-amber-500/15 text-amber-600 border-amber-500/30'
+    case 'failed':    return 'bg-red-500/15 text-red-600 border-red-500/30'
+    default:          return 'bg-muted text-muted-foreground border-border'
+  }
+}
+
+const statusLabel = (status?: string) => {
+  switch (status) {
+    case 'confirmed': return 'Confirmed'
+    case 'pending':   return 'Pending'
+    case 'failed':    return 'Failed'
+    default:          return 'Unknown'
+  }
+}
+
+onMounted(async () => {
+  if (transactionStore.getTransactions.length) {
+    refreshing.value = true
+    await refreshTransactionStatuses()
+    refreshing.value = false
+  }
+})
 </script>
 
 <template>
@@ -93,6 +121,12 @@ const openExplorer = async (utxoDigest: string) => {
                       <Badge variant="outline" class="text-[10px] uppercase tracking-wide">
                         Send
                       </Badge>
+                      <span
+                        class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide"
+                        :class="statusBadgeClass(tx.status)"
+                      >
+                        {{ statusLabel(tx.status) }}
+                      </span>
                     </div>
                     <p
                       class="max-w-[220px] truncate text-xs font-mono text-muted-foreground md:max-w-xs"

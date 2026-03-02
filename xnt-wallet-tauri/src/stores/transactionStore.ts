@@ -1,4 +1,4 @@
-import type { TransactionDetail } from '@/types'
+import type { TransactionDetail, TxStatus } from '@/types'
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
@@ -15,6 +15,13 @@ export const useTransactionStore = defineStore('transaction', () => {
         transactions.value = [item, ...transactions.value]
     }
 
+    const updateTransactionStatus = (id: string, status: TxStatus) => {
+        const idx = transactions.value.findIndex(t => t.id === id)
+        if (idx !== -1) {
+            transactions.value[idx] = { ...transactions.value[idx], status }
+        }
+    }
+
     const clearTransactions = () => {
         transactions.value = []
     }
@@ -26,6 +33,7 @@ export const useTransactionStore = defineStore('transaction', () => {
         getTransactions,
         setTransactions,
         addTransaction,
+        updateTransactionStatus,
         clearTransactions,
     }
 })
