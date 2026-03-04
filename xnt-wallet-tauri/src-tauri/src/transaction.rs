@@ -302,13 +302,20 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
     // Parse spending key
     let spending_key_bytes = hex::decode(spending_key_hex.trim_start_matches("0x"))
         .map_err(|e| format!("Invalid spending key hex: {}", e))?;
-    
+
     let spending_key: SpendingKey = bincode::deserialize(&spending_key_bytes)
         .map_err(|e| format!("Failed to deserialize spending key: {}", e))?;
-    
+
     if matches!(spending_key, SpendingKey::Symmetric(_)) {
         return Err("Symmetric spending keys not supported".to_string());
     }
+
+    // Optional per-input spending keys (for mixed-key transactions, e.g. merging
+    // Generation + dCTIDH UTXOs).  Each element corresponds positionally to the
+    // matching entry in inputAdditionRecords.
+    let per_input_key_hexes: Option<Vec<String>> = payload["spendingKeyHexes"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect());
 
     let key_type_label = match &spending_key {
         SpendingKey::Generation(_) => "Generation",
@@ -316,14 +323,13 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         SpendingKey::Symmetric(_) => "Symmetric",
     };
     log::info!(
-        "[BuildTx] Building transaction | key_type={} | inputs={} | outputs={} | fee={}",
+        "[BuildTx] Building transaction | key_type={} | per_input_keys={} | inputs={} | outputs={} | fee={}",
         key_type_label,
+        per_input_key_hexes.as_ref().map(|v| v.len()).unwrap_or(0),
         input_addition_records.len(),
         output_addresses.len(),
         fee,
     );
-
-    let lock_script_and_witness = spending_key.lock_script_and_witness();
     // Get UTXOs from cache instead of calling server
     use crate::utxo_cache;
     let matched_utxos = utxo_cache::get_utxos_by_addition_records(&input_addition_records).await;
@@ -412,19 +418,48 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
     
     let mutator_set_accumulator = rpc_client::get_archival_mutator_set(&client, &rpc_url).await?;
     
-    // Generate membership proofs client-side
+    // Build per-input spending keys: use spendingKeyHexes if provided (mixed-key
+    // transaction), otherwise repeat the primary spending_key for every input.
+    let per_input_keys: Vec<SpendingKey> = match per_input_key_hexes {
+        Some(key_hexes) => {
+            if key_hexes.len() != validated_utxos.len() {
+                return Err(format!(
+                    "spendingKeyHexes count ({}) must match inputAdditionRecords count ({})",
+                    key_hexes.len(),
+                    validated_utxos.len()
+                ));
+            }
+            key_hexes
+                .iter()
+                .map(|hex_str| {
+                    let bytes = hex::decode(hex_str.trim_start_matches("0x"))
+                        .map_err(|e| format!("Invalid spending key hex: {}", e))?;
+                    let key: SpendingKey = bincode::deserialize(&bytes)
+                        .map_err(|e| format!("Failed to deserialize spending key: {}", e))?;
+                    if matches!(key, SpendingKey::Symmetric(_)) {
+                        return Err("Symmetric spending keys not supported".to_string());
+                    }
+                    Ok(key)
+                })
+                .collect::<Result<Vec<_>, String>>()?
+        }
+        None => vec![spending_key.clone(); validated_utxos.len()],
+    };
+
+    // Generate membership proofs client-side; unlock each input with its own key.
     let mut tx_inputs = Vec::new();
-    for incoming_utxo in validated_utxos {
+    for (incoming_utxo, input_key) in validated_utxos.iter().zip(per_input_keys.iter()) {
+        let lsaw = input_key.lock_script_and_witness();
         let msmp = generate_membership_proof_client_side(
             &incoming_utxo.utxo,
             &mutator_set_accumulator,
             &rpc_url,
             &client,
         ).await?;
-        
+
         tx_inputs.push(TxInput::from(UnlockedUtxo::unlock(
             incoming_utxo.utxo.utxo.clone(),
-            lock_script_and_witness.clone(),
+            lsaw,
             msmp,
         )));
     }

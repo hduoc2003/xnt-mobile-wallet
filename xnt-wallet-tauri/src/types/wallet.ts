@@ -15,6 +15,8 @@ export interface PayloadBuildTransaction {
   fee: string
   timelockReleaseDate?: number | string
   spendingKeyHex?: string
+  /** Per-input spending keys for mixed-key transactions (e.g. merging Generation + dCTIDH UTXOs). */
+  spendingKeyHexes?: string[]
 }
 
 export interface WalletState {

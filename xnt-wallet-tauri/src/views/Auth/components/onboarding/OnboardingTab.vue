@@ -18,7 +18,7 @@ const handleRecover = () => {
 </script>
 
 <template>
-  <div class="relative flex min-h-screen flex-col bg-linear-to-br from-background via-background to-primary/5 p-4">
+  <div class="relative flex min-h-full flex-col bg-linear-to-br from-background via-background to-primary/5 p-4">
 
     <!-- Content Container -->
     <div class="flex flex-1 flex-col items-center justify-center">

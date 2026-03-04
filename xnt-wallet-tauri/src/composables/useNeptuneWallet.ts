@@ -575,6 +575,11 @@ export function useNeptuneWallet() {
     if (args.timelockReleaseDate !== undefined) {
       payload.timelockReleaseDate = args.timelockReleaseDate
     }
+
+    // Forward per-input spending keys when provided (mixed-key transactions).
+    if (args.spendingKeyHexes !== undefined && args.spendingKeyHexes.length > 0) {
+      payload.spendingKeyHexes = args.spendingKeyHexes
+    }
     try {
       const response = await (window as any).walletApi.buildTransaction(payload)
       if (!response?.success) {

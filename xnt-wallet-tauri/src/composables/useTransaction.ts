@@ -62,8 +62,13 @@ export const useTransaction = () => {
         const txs = transactionStore.getTransactions
         if (!txs.length) return
 
+        const oneMinuteAgo = Date.now() - 60 * 1000
+
         await Promise.allSettled(
             txs.map(async (tx) => {
+                // Leave recently sent transactions as "Unknown" — give the explorer
+                // time to index the transaction before querying its status.
+                if (tx.time && new Date(tx.time).getTime() > oneMinuteAgo) return
                 const status = await fetchTxStatus(tx.id)
                 transactionStore.updateTransactionStatus(tx.id, status)
             })

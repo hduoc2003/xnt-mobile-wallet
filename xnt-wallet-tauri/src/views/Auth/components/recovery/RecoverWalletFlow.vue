@@ -98,9 +98,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="relative flex h-full flex-col bg-linear-to-br from-background via-background to-primary/5 p-4">
+  <div class="relative flex min-h-full flex-col bg-linear-to-br from-background via-background to-primary/5 p-4">
     <!-- Content Container -->
-    <div class="flex flex-1 flex-col items-center justify-center">
+    <div class="flex flex-1 flex-col items-center justify-center py-4">
       <div class="w-full max-w-md space-y-8">
         <!-- Header -->
         <div class="flex flex-col items-center space-y-4 text-center">

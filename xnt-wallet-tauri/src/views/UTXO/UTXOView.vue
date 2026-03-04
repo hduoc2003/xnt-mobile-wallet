@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { Database, RefreshCw } from 'lucide-vue-next'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { Database, RefreshCw, GitMerge } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
+import { useRouter } from 'vue-router'
 import { useNeptuneStore } from '@/stores'
 import { useNeptuneWallet, useFormat } from '@/composables'
-import type { Utxo } from '@/types'
 import { listen } from '@tauri-apps/api/event'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import InfiniteScrollList from '@/components/commons/infinite-scroll-list/InfiniteScrollList.vue'
 
+const router = useRouter()
 const neptuneStore = useNeptuneStore()
 const { getUtxos, forceRescanUtxos } = useNeptuneWallet()
 const { formatHash, formatAmount } = useFormat()
@@ -27,28 +27,10 @@ const scanProgress = ref({
   percentage: 0,
   status: '',
 })
-const displayedUtxos = ref<Utxo[]>([])
-const itemsPerPage = 20
 
 let progressUnlisten: (() => void) | null = null
 
 const utxosList = computed(() => [...(neptuneStore.getUtxos || [])])
-
-const hasMore = computed(() => {
-  return displayedUtxos.value?.length < utxosList.value?.length
-})
-
-const loadMoreUtxos = () => {
-  if (!hasMore.value) return
-
-  const currentLength = displayedUtxos.value.length
-  const nextItems = utxosList.value.slice(currentLength, currentLength + itemsPerPage)
-  displayedUtxos.value = [...displayedUtxos.value, ...nextItems]
-}
-
-watch(utxosList, (newList: Utxo[]) => {
-  displayedUtxos.value = newList.slice(0, itemsPerPage)
-}, { immediate: true })
 
 const inUseUtxosCount = computed(() => utxosList.value?.length || 0)
 const inUseUtxosAmount = computed(() => {
@@ -176,8 +158,17 @@ onUnmounted(() => {
 
       <!-- UTXOs List -->
       <Card class="border border-border">
-        <CardHeader>
+        <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle class="text-lg font-semibold">UTXO List</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            @click="router.push('/wallet/merge')"
+            :disabled="loading || !utxosList.length"
+            title="Consolidate UTXOs into one"
+          >
+            <GitMerge class="size-4 mr-1" /> Merge
+          </Button>
         </CardHeader>
         <CardContent v-if="isScanning" class="space-y-4">
           <div class="space-y-3">
@@ -218,54 +209,42 @@ onUnmounted(() => {
           </div>
 
           <!-- UTXO Cards -->
-          <InfiniteScrollList
-            v-if="!loading && utxosList.length > 0"
-            :items="displayedUtxos"
-            :loading="loading"
-            :has-more="hasMore"
-            empty-message="No UTXOs found"
-            class="max-h-[550px] overflow-y-auto"
-            @load-more="loadMoreUtxos"
-          >
-            <template #default="{ items }">
-              <div class="space-y-3">
-                <Card
-                  v-for="(utxo, index) in items"
-                  :key="index"
-                  class="border border-border transition-colors hover:bg-muted/50"
-                >
-                  <CardContent class="space-y-3 p-4">
-                    <div class="space-y-1">
-                      <Label class="text-xs text-muted-foreground">UTXO Hash</Label>
-                      <code class="block text-xs text-foreground">{{ formatHash(utxo.utxoHash) }}</code>
-                    </div>
-                    <Separator />
-                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                      <div class="space-y-1">
-                        <Label class="text-xs text-muted-foreground">Amount</Label>
-                        <p class="break-all font-mono text-sm font-semibold text-primary">
-                          {{formatAmount(+utxo.amount, 4) }} <span class="text-xs">XNT</span>
-                        </p>
-                      </div>
-                      <div class="space-y-1">
-                        <Label class="text-xs text-muted-foreground">Block Height</Label>
-                        <p class="text-sm font-medium text-foreground">{{ utxo.blockHeight }}</p>
-                      </div>
-                      <div class="space-y-1">
-                        <Label class="text-xs text-muted-foreground">Time Lock</Label>
-                        <p v-if="utxo.releaseDateMs" class="text-sm font-medium text-foreground">
-                          Unlocks: {{ new Date(utxo.releaseDateMs).toLocaleString() }}
-                        </p>
-                        <p v-else class="text-sm text-muted-foreground">
-                          Not timelocked
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </template>
-          </InfiniteScrollList>
+          <div v-if="!loading && utxosList.length > 0" class="space-y-3">
+            <Card
+              v-for="(utxo, index) in utxosList"
+              :key="index"
+              class="border border-border transition-colors hover:bg-muted/50"
+            >
+              <CardContent class="space-y-3 p-4">
+                <div class="space-y-1">
+                  <Label class="text-xs text-muted-foreground">UTXO Hash</Label>
+                  <code class="block text-xs text-foreground">{{ formatHash(utxo.utxoHash) }}</code>
+                </div>
+                <Separator />
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div class="space-y-1">
+                    <Label class="text-xs text-muted-foreground">Amount</Label>
+                    <p class="break-all font-mono text-sm font-semibold text-primary">
+                      {{ formatAmount(+utxo.amount, 4) }} <span class="text-xs">XNT</span>
+                    </p>
+                  </div>
+                  <div class="space-y-1">
+                    <Label class="text-xs text-muted-foreground">Block Height</Label>
+                    <p class="text-sm font-medium text-foreground">{{ utxo.blockHeight }}</p>
+                  </div>
+                  <div class="space-y-1">
+                    <Label class="text-xs text-muted-foreground">Time Lock</Label>
+                    <p v-if="utxo.releaseDateMs" class="text-sm font-medium text-foreground">
+                      Unlocks: {{ new Date(utxo.releaseDateMs).toLocaleString() }}
+                    </p>
+                    <p v-else class="text-sm text-muted-foreground">
+                      Not timelocked
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </CardContent>
       </Card>
     </div>

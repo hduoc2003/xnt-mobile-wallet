@@ -52,7 +52,7 @@ const isActiveRoute = (routePath: string) => {
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col bg-background">
+  <div class="flex h-screen flex-col overflow-hidden bg-background">
     <!-- Header -->
     <header class="safe-area-top fixed top-0 left-0 right-0 z-50 border-b border-border bg-card">
       <div class="flex h-14 items-center justify-between px-4">

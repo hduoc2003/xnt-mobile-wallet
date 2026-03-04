@@ -1051,7 +1051,7 @@ dependencies = [
 [[package]]
 name = "ctidh512"
 version = "0.1.0"
-source = "git+https://github.com/neptuneprivacy/dCTIDH-512sp.git#f3188f3b834cfbfd05a3e619bfb8875305f98999"
+source = "git+https://github.com/neptuneprivacy/dCTIDH-512sp.git#77485d0e8262c2edb87e90b51369b12fffbb6d94"
 
 [[package]]
 name = "ctor"

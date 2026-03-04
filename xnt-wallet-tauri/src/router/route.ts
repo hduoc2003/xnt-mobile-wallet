@@ -31,6 +31,7 @@ export const routes: RouteRecordRaw[] = [
       { path: '/wallet/send', name: 'send-transaction', component: Pages.SendTransactionPage },
       { path: '/wallet/backup-seed', name: 'backup-seed', component: Pages.BackupSeedPage },
       { path: '/utxo', name: 'utxo', component: Pages.UTXOPage },
+      { path: '/wallet/merge', name: 'merge-utxos', component: Pages.MergeUtxosPage },
       { path: '/network', name: 'network', component: Pages.NetworkPage },
       {
         path: '/transaction-history',
