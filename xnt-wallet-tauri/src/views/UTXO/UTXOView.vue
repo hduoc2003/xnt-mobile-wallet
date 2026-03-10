@@ -15,7 +15,7 @@ import { Separator } from '@/components/ui/separator'
 const router = useRouter()
 const neptuneStore = useNeptuneStore()
 const { getUtxos, forceRescanUtxos } = useNeptuneWallet()
-const { formatHash, formatAmount } = useFormat()
+const { formatAmount } = useFormat()
 
 const loading = ref(false)
 const isScanning = ref(false)
@@ -217,8 +217,10 @@ onUnmounted(() => {
             >
               <CardContent class="space-y-3 p-4">
                 <div class="space-y-1">
-                  <Label class="text-xs text-muted-foreground">UTXO Hash</Label>
-                  <code class="block text-xs text-foreground">{{ formatHash(utxo.utxoHash) }}</code>
+                  <Label class="text-xs text-muted-foreground">UTXO Digest</Label>
+                  <code class="block break-all font-mono text-xs text-foreground">
+                    {{ utxo.utxoDigest }}
+                  </code>
                 </div>
                 <Separator />
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">

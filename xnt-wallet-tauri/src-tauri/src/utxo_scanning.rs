@@ -77,6 +77,7 @@ pub struct UtxoInfo {
     pub block_height: u64,
     pub amount: String,
     pub addition_record_hex: String,
+    pub utxo_digest: String,
     pub utxo_hash: String,
     pub is_timelocked: bool,
     pub release_date_ms: Option<u64>,
@@ -419,6 +420,7 @@ pub async fn scan_utxos_client_side(
             let amount = utxo_ref.get_native_currency_amount();
             let addition_record = utxo.utxo.addition_record();
             let utxo_hash = Tip5::hash(utxo_ref);
+            let utxo_digest = addition_record.canonical_commitment.to_hex();
             let release_date_opt = utxo_ref.release_date();
             let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
                 (true, Some(ts.to_millis() as u64))
@@ -445,6 +447,7 @@ pub async fn scan_utxos_client_side(
                     "0x{}",
                     hex::encode(bincode::serialize(&addition_record).unwrap())
                 ),
+                utxo_digest,
                 utxo_hash: format!("0x{}", utxo_hash.to_hex()),
                 is_timelocked,
                 release_date_ms,
@@ -602,6 +605,7 @@ pub async fn scan_utxos_client_side(
                     let amount = utxo_ref.get_native_currency_amount();
                     let addition_record = utxo.utxo.addition_record();
                     let utxo_hash = Tip5::hash(utxo_ref);
+                    let utxo_digest = addition_record.canonical_commitment.to_hex();
 
                     let release_date_opt = utxo_ref.release_date();
                     let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
@@ -635,6 +639,7 @@ pub async fn scan_utxos_client_side(
                             hex::encode(bincode::serialize(&addition_record)
                                 .map_err(|e| format!("Failed to serialize addition record: {}", e))?)
                         ),
+                        utxo_digest,
                         utxo_hash: hash_str,
                         is_timelocked,
                         release_date_ms,
@@ -781,6 +786,7 @@ pub async fn get_cached_utxos(app: &AppHandle) -> Result<String, String> {
             let amount = utxo_ref.get_native_currency_amount();
             let addition_record = utxo.utxo.addition_record();
             let utxo_hash = Tip5::hash(utxo_ref);
+            let utxo_digest = addition_record.canonical_commitment.to_hex();
             let release_date_opt = utxo_ref.release_date();
             let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
                 (true, Some(ts.to_millis() as u64))
@@ -794,6 +800,7 @@ pub async fn get_cached_utxos(app: &AppHandle) -> Result<String, String> {
                     "0x{}",
                     hex::encode(bincode::serialize(&addition_record).unwrap_or_default())
                 ),
+                utxo_digest,
                 utxo_hash: format!("0x{}", utxo_hash.to_hex()),
                 is_timelocked,
                 release_date_ms,
@@ -824,6 +831,7 @@ pub async fn get_cached_utxos_local() -> Result<String, String> {
             let amount = utxo_ref.get_native_currency_amount();
             let addition_record = utxo.utxo.addition_record();
             let utxo_hash = Tip5::hash(utxo_ref);
+            let utxo_digest = addition_record.canonical_commitment.to_hex();
             let release_date_opt = utxo_ref.release_date();
             let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
                 (true, Some(ts.to_millis() as u64))
@@ -837,6 +845,7 @@ pub async fn get_cached_utxos_local() -> Result<String, String> {
                     "0x{}",
                     hex::encode(bincode::serialize(&addition_record).unwrap_or_default())
                 ),
+                utxo_digest,
                 utxo_hash: format!("0x{}", utxo_hash.to_hex()),
                 is_timelocked,
                 release_date_ms,

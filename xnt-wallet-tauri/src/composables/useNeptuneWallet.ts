@@ -126,7 +126,7 @@ export function useNeptuneWallet() {
         const cachedResult = typeof cached === 'string' ? JSON.parse(cached) : cached
         if (cachedResult?.success && Array.isArray(cachedResult.utxos)) {
           const normalizeUtxo = (u: any) => ({
-            utxoHash: u.utxo_hash || u.utxoHash,
+            utxoDigest: u.utxo_digest || u.utxoDigest || '',
             amount: u.amount?.toString?.() ?? '0',
             blockHeight: toFiniteNumber(u.block_height || u.blockHeight || 0),
             additionRecord: u.addition_record_hex || u.additionRecord || '',
@@ -142,7 +142,10 @@ export function useNeptuneWallet() {
           }
         }
       } catch (e) {
-        await (window as any).logger?.warn('Load cached UTXOs at unlock failed (will scan later):', e?.message || e)
+        await (window as any).logger?.warn(
+          'Load cached UTXOs at unlock failed (will scan later):',
+          (e as any)?.message || e
+        )
       }
 
       try {
@@ -331,7 +334,7 @@ export function useNeptuneWallet() {
         const cachedResult = typeof cached === 'string' ? JSON.parse(cached) : cached
         if (cachedResult?.success && Array.isArray(cachedResult.utxos)) {
           const normalizeUtxo = (u: any) => ({
-            utxoHash: u.utxo_hash || u.utxoHash,
+            utxoDigest: u.utxo_digest || u.utxoDigest || '',
             amount: u.amount?.toString?.() ?? '0',
             blockHeight: toFiniteNumber(u.block_height || u.blockHeight || 0),
             additionRecord: u.addition_record_hex || u.additionRecord || '',
@@ -347,7 +350,10 @@ export function useNeptuneWallet() {
           }
         }
       } catch (e) {
-        await (window as any).logger?.warn('Load cached UTXOs failed (continue to scan):', e?.message || e)
+        await (window as any).logger?.warn(
+          'Load cached UTXOs failed (continue to scan):',
+          (e as any)?.message || e
+        )
       }
       
       if (!spendingKey && store.getAddress) {
@@ -424,7 +430,7 @@ export function useNeptuneWallet() {
       }
 
       const normalizeUtxo = (u: any) => ({
-        utxoHash: u.utxo_hash,
+        utxoDigest: u.utxo_digest || u.utxoDigest || '',
         amount: u.amount?.toString?.() ?? '0',
         blockHeight: toFiniteNumber(u.block_height),
         additionRecord: u.addition_record_hex,
@@ -482,11 +488,11 @@ export function useNeptuneWallet() {
         const amount = parseFloat(utxo.amount || '0')
         if (isNaN(amount)) continue
         totalBalance += amount
-        const isTimelocked = !!(utxo.is_timelocked ?? utxo.isTimelocked)
+        const isTimelocked = !!((utxo as any).isTimelocked ?? (utxo as any).is_timelocked)
         if (!isTimelocked) {
           spendableTotal += amount
         } else {
-          const releaseDateMs = utxo.release_date_ms ?? utxo.releaseDateMs ?? null
+          const releaseDateMs = (utxo as any).releaseDateMs ?? (utxo as any).release_date_ms ?? null
           if (releaseDateMs !== null && releaseDateMs <= now) {
             spendableTotal += amount
           }

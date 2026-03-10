@@ -35,9 +35,9 @@ export interface WalletState {
 
 export interface Utxo {
   additionRecord: string
+  utxoDigest?: string
   amount: string
   blockHeight: number
-  utxoHash: string
   isTimelocked?: boolean
   releaseDateMs?: number | null
   keyType?: string

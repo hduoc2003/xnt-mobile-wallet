@@ -14,7 +14,7 @@ const router = useRouter()
 const store = useNeptuneStore()
 const { getUtxos, buildTransaction, broadcastSignedTransaction } = useNeptuneWallet()
 const { addTransaction } = useTransaction()
-const { formatAmount, formatHash } = useFormat()
+const { formatAmount } = useFormat()
 
 const MAX_SELECT = 5
 const loading = ref(false)
@@ -34,9 +34,8 @@ const isUtxoTimelocked = (utxo: Utxo) => {
 }
 
 
-// Use additionRecord as the unique key — utxoHash can collide when the same
-// UTXO appears more than once in the list (e.g. rescanned at different heights).
-const utxoKey = (utxo: Utxo) => utxo.additionRecord || utxo.utxoHash
+// Use additionRecord as the unique key.
+const utxoKey = (utxo: Utxo) => utxo.additionRecord
 
 const isSelected = (utxo: Utxo) =>
   selectedUtxos.value.some((u) => utxoKey(u) === utxoKey(utxo))
@@ -329,9 +328,11 @@ onMounted(async () => {
                 @change.stop="toggleUtxo(utxo)"
                 @click.stop
               />
-              <div class="min-w-0 flex-1 space-y-1">
+                <div class="min-w-0 flex-1 space-y-1">
                 <div class="flex items-center gap-2 flex-wrap">
-                  <code class="text-xs text-foreground">{{ formatHash(utxo.utxoHash) }}</code>
+                  <code class="break-all font-mono text-xs text-foreground">
+                    {{ (utxo as any).utxoDigest }}
+                  </code>
                   <Badge variant="secondary" class="text-xs">{{ utxo.keyType || 'dCTIDH' }}</Badge>
                   <Badge v-if="isUtxoTimelocked(utxo)" variant="destructive" class="text-xs">
                     Locked
