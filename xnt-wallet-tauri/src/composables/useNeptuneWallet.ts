@@ -472,7 +472,6 @@ export function useNeptuneWallet() {
       }
     } catch (err: any) {
       await (window as any).logger?.error('Error getting UTXOs:', err.message)
-      store.setUtxos([])
       throw err
     }
   }

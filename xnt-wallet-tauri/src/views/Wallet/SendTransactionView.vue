@@ -4,11 +4,13 @@ import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { Send, ArrowLeft } from 'lucide-vue-next'
 import { useNeptuneWallet, useFormat, useTransaction } from '@/composables'
+import { useNeptuneStore } from '@/stores'
 import ConfirmTransactionDrawer from './components/ConfirmTransactionDrawer.vue'
 import ProofGenerationModal from './components/ProofGenerationModal.vue'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 const router = useRouter()
+const store = useNeptuneStore()
 const { getBalance, getUtxos, forceRescanUtxos, buildTransaction, broadcastSignedTransaction, selectUtxos } = useNeptuneWallet()
 const { addTransaction } = useTransaction()
 const { formatAmount } = useFormat()
@@ -24,7 +26,7 @@ const showLimitInfo = ref(false)
 
 const outputAddress = ref('')
 const outputAmount = ref('')
-const priorityFee = ref('')
+const priorityFee = ref('0.1')
 const enableTimelock = ref(false)
 const timelockDate = ref('')
 const timelockTime = ref('12:00') // Default to noon
@@ -42,6 +44,31 @@ const loadBalance = async () => {
   }
 }
 
+const computeMaxSendable = (utxos: any[]): string => {
+  if (!Array.isArray(utxos) || utxos.length === 0) return '0'
+
+  const now = Date.now()
+  const spendableUtxos = utxos.filter((u: any) => {
+    const isTimelocked = !!(u.is_timelocked ?? u.isTimelocked)
+    if (!isTimelocked) return true
+    const releaseDateMs = u.release_date_ms ?? u.releaseDateMs ?? null
+    return releaseDateMs !== null && Number(releaseDateMs) <= now
+  })
+
+  if (spendableUtxos.length === 0) return '0'
+
+  const sorted = [...spendableUtxos].sort((a: any, b: any) =>
+    parseFloat(b.amount || '0') - parseFloat(a.amount || '0')
+  )
+
+  const top5 = sorted.slice(0, 5)
+  const sum = top5.reduce((acc: number, u: any) => {
+    const amt = parseFloat(u.amount || '0')
+    return acc + (isNaN(amt) ? 0 : amt)
+  }, 0)
+  return sum.toString()
+}
+
 const loadMaxSendable = async () => {
   try {
     const utxosResult = await getUtxos()
@@ -49,40 +76,10 @@ const loadMaxSendable = async () => {
       utxosResult?.result?.utxos ||
       utxosResult?.utxos ||
       []
-
-    if (!Array.isArray(utxos) || utxos.length === 0) {
-      maxSendable.value = '0'
-      return
-    }
-
-    const now = Date.now()
-    const spendableUtxos = utxos.filter((u: any) => {
-      const isTimelocked = !!(u.is_timelocked ?? u.isTimelocked)
-      if (!isTimelocked) return true
-      const releaseDateMs = u.release_date_ms ?? u.releaseDateMs ?? null
-      return releaseDateMs !== null && releaseDateMs <= now
-    })
-
-    if (spendableUtxos.length === 0) {
-      maxSendable.value = '0'
-      return
-    }
-
-    const sorted = [...spendableUtxos].sort((a: any, b: any) => {
-      const amountA = parseFloat(a.amount || '0')
-      const amountB = parseFloat(b.amount || '0')
-      return amountB - amountA
-    })
-
-    const top5 = sorted.slice(0, 5)
-    const sum = top5.reduce((acc: number, u: any) => {
-      const amt = parseFloat(u.amount || '0')
-      return acc + (isNaN(amt) ? 0 : amt)
-    }, 0)
-
-    maxSendable.value = sum.toString()
+    maxSendable.value = computeMaxSendable(utxos)
   } catch (error) {
-    maxSendable.value = '0'
+    const cachedUtxos = store.getUtxos || []
+    maxSendable.value = computeMaxSendable(cachedUtxos)
   }
 }
 
@@ -104,6 +101,11 @@ const isFeeValid = computed(() => {
   if (!priorityFee.value) return false
   const num = parseFloat(priorityFee.value)
   return !isNaN(num) && num >= 0
+})
+
+const isHighFee = computed(() => {
+  const num = parseFloat(priorityFee.value)
+  return !isNaN(num) && num > 2
 })
 
 const amountErrorMessage = computed(() => {
@@ -365,7 +367,13 @@ const handleConfirmSend = async () => {
 }
 
 onMounted(async () => {
-  await Promise.all([loadBalance(), loadMaxSendable()])
+  // Scan UTXOs first so the store has fresh data, then compute balance from
+  // that fresh store. Running them in parallel caused a race where loadBalance()
+  // could read the store while getUtxos() was mid-way through overwriting it
+  // with the disk cache (before the RPC scan completed), resulting in expired
+  // timelocked UTXOs being excluded from the spendable balance.
+  await loadMaxSendable()
+  await loadBalance()
 })
 </script>
 
@@ -470,6 +478,9 @@ onMounted(async () => {
               />
               <p v-if="priorityFee && !isFeeValid" class="text-xs text-destructive">
                 Invalid fee
+              </p>
+              <p v-if="isHighFee" class="text-xs text-yellow-500 dark:text-yellow-400">
+                ⚠️ Fee is unusually high ({{ priorityFee }} XNT). Please double-check you haven't confused the fee with the amount.
               </p>
             </div>
           </div>

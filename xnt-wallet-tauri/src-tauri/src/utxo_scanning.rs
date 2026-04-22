@@ -192,7 +192,8 @@ pub async fn validate_utxos_with_rpc(
     
     let mut absolute_index_set_hashes: Vec<Digest> = Vec::new();
     let mut utxo_to_hash_map: Vec<usize> = Vec::new();
-    
+    let mut no_aocl_indices: Vec<usize> = Vec::new();
+
     for (i, (utxo_idx, utxo_hash, sender_randomness, receiver_preimage)) in utxo_data.iter().enumerate() {
         if let Some(Some(aocl_index)) = indices.get(i).cloned() {
             let abs_indices = AbsoluteIndexSet::compute(
@@ -204,16 +205,24 @@ pub async fn validate_utxos_with_rpc(
             let abs_hash = Tip5::hash(&abs_indices);
             absolute_index_set_hashes.push(abs_hash);
             utxo_to_hash_map.push(*utxo_idx);
+        } else {
+            log::debug!("[Validate] UTXO #{} has no AOCL index — keeping as unspent", utxo_idx);
+            no_aocl_indices.push(*utxo_idx);
         }
     }
-    
+
     if absolute_index_set_hashes.is_empty() {
-        return Ok(Vec::new());
+        let kept: Vec<utxo_cache::CachedUtxo> = no_aocl_indices
+            .iter()
+            .map(|&i| cached_utxos[i].clone())
+            .collect();
+        log::warn!("[Validate] No AOCL indices found for any cached UTXO — keeping all {} as unvalidated", kept.len());
+        return Ok(kept);
     }
-    
+
     let spent_statuses = rpc_client::get_spent_status(client, rpc_url, &absolute_index_set_hashes).await?;
-    
-    let validated: Vec<utxo_cache::CachedUtxo> = utxo_to_hash_map
+
+    let mut validated: Vec<utxo_cache::CachedUtxo> = utxo_to_hash_map
         .iter()
         .enumerate()
         .filter_map(|(hash_idx, &utxo_idx)| {
@@ -224,7 +233,11 @@ pub async fn validate_utxos_with_rpc(
             }
         })
         .collect();
-    
+
+    for idx in no_aocl_indices {
+        validated.push(cached_utxos[idx].clone());
+    }
+
     Ok(validated)
 }
 
@@ -408,7 +421,11 @@ pub async fn scan_utxos_client_side(
                 validated_cached_utxos = validated;
             }
             Err(e) => {
-                log::warn!("[Scan] Cache validation failed (ignoring): {}", e);
+                // Fall back to all cached UTXOs so timelocked (and other)
+                // UTXOs are not silently dropped when the RPC is unreachable.
+                // A spent UTXO included here will simply fail when broadcast.
+                log::warn!("[Scan] Cache validation failed — using unvalidated cache as fallback: {}", e);
+                validated_cached_utxos = cached_utxos;
             }
         }
     }
