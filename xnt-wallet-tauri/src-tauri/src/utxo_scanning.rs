@@ -82,6 +82,7 @@ pub struct UtxoInfo {
     pub is_timelocked: bool,
     pub release_date_ms: Option<u64>,
     pub key_type: String,
+    pub is_pending: bool,
 }
 
 /// Filters out UTXOs whose AbsoluteIndexSet hash matches a removal record in any
@@ -469,10 +470,11 @@ pub async fn scan_utxos_client_side(
                 is_timelocked,
                 release_date_ms,
                 key_type,
+                is_pending: false,
             }
         })
         .collect();
-    
+
     let mut incoming_utxos_for_persist = validated_cached_utxos.clone();
     
     let persisted_last_scanned = if force_rescan { 0 } else { utxo_cache::get_last_scanned_block().await };
@@ -661,6 +663,7 @@ pub async fn scan_utxos_client_side(
                         is_timelocked,
                         release_date_ms,
                         key_type: key_ctx.label.clone(),
+                        is_pending: false,
                     });
 
                     cached_utxos.push(utxo.clone());
@@ -761,7 +764,21 @@ pub async fn scan_utxos_client_side(
     let _ = app.emit("utxo-scan-progress", &completion_progress);
     
     utxo_cache::replace_cache_and_persist(incoming_utxos_for_persist.clone(), last_scanned).await;
-    
+
+    // Mark UTXOs that are already referenced by a pending mempool transaction so
+    // the frontend can exclude them from coin selection before proof generation.
+    if let Ok(non_pending) = filter_utxos_spent_in_mempool(&client, &rpc_url, &incoming_utxos_for_persist).await {
+        let non_pending_digests: std::collections::HashSet<String> = non_pending
+            .iter()
+            .map(|u| u.utxo.addition_record().canonical_commitment.to_hex())
+            .collect();
+        for info in &mut utxo_infos {
+            if !non_pending_digests.contains(&info.utxo_digest) {
+                info.is_pending = true;
+            }
+        }
+    }
+
     let response = ScanUtxosResponse {
         success: true,
         utxos: utxo_infos,
@@ -822,6 +839,7 @@ pub async fn get_cached_utxos(app: &AppHandle) -> Result<String, String> {
                 is_timelocked,
                 release_date_ms,
                 key_type: String::new(),
+                is_pending: false,
             }
         })
         .collect();
@@ -867,6 +885,7 @@ pub async fn get_cached_utxos_local() -> Result<String, String> {
                 is_timelocked,
                 release_date_ms,
                 key_type: String::new(),
+                is_pending: false,
             }
         })
         .collect();

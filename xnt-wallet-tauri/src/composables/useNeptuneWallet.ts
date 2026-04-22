@@ -133,6 +133,7 @@ export function useNeptuneWallet() {
             isTimelocked: !!(u.is_timelocked ?? u.isTimelocked),
             releaseDateMs: u.release_date_ms ?? u.releaseDateMs ?? null,
             keyType: u.key_type || u.keyType || '',
+            isPending: !!(u.is_pending ?? u.isPending),
           })
           const cachedUtxos = (cachedResult.utxos || []).map(normalizeUtxo)
           store.setUtxos(cachedUtxos)
@@ -341,6 +342,7 @@ export function useNeptuneWallet() {
             isTimelocked: !!(u.is_timelocked ?? u.isTimelocked),
             releaseDateMs: u.release_date_ms ?? u.releaseDateMs ?? null,
             keyType: u.key_type || u.keyType || '',
+            isPending: !!(u.is_pending ?? u.isPending),
           })
           const cachedUtxos = (cachedResult.utxos || []).map(normalizeUtxo)
           store.setUtxos(cachedUtxos)
@@ -437,6 +439,7 @@ export function useNeptuneWallet() {
         isTimelocked: !!u.is_timelocked,
         releaseDateMs: u.release_date_ms ?? null,
         keyType: u.key_type || u.keyType || '',
+        isPending: !!u.is_pending,
       })
 
       const freshUtxos = (scanResult.utxos || []).map(normalizeUtxo)
@@ -487,6 +490,8 @@ export function useNeptuneWallet() {
         const amount = parseFloat(utxo.amount || '0')
         if (isNaN(amount)) continue
         totalBalance += amount
+        const isPending = !!((utxo as any).isPending ?? (utxo as any).is_pending)
+        if (isPending) continue
         const isTimelocked = !!((utxo as any).isTimelocked ?? (utxo as any).is_timelocked)
         if (!isTimelocked) {
           spendableTotal += amount
@@ -625,6 +630,7 @@ export function useNeptuneWallet() {
 
     // Only spendable (non-timelocked or expired timelock) UTXOs
     const spendable = utxos.filter((u) => {
+      if (!!(u.is_pending ?? u.isPending)) return false
       const isTimelocked = !!(u.is_timelocked ?? u.isTimelocked)
       if (!isTimelocked) return true
       const releaseDateMs = u.release_date_ms ?? u.releaseDateMs ?? null

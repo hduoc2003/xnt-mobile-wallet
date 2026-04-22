@@ -49,6 +49,7 @@ const computeMaxSendable = (utxos: any[]): string => {
 
   const now = Date.now()
   const spendableUtxos = utxos.filter((u: any) => {
+    if (!!(u.is_pending ?? u.isPending)) return false
     const isTimelocked = !!(u.is_timelocked ?? u.isTimelocked)
     if (!isTimelocked) return true
     const releaseDateMs = u.release_date_ms ?? u.releaseDateMs ?? null
