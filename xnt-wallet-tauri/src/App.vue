@@ -15,14 +15,23 @@ let unlistenBlur: UnlistenFn | null = null
 
 let shouldRedirect = false
 let visibilityChangeHandler: (() => void) | null = null
+let nativePickerActive = false
+let focusInHandler: ((e: FocusEvent) => void) | null = null
 
 const handleAppBlur = () => {
-  if(router.currentRoute.value.name === 'auth') return
+  if (router.currentRoute.value.name === 'auth') return
+  // If a native date/time picker was just opened, skip logout regardless of duration
+  if (nativePickerActive) return
   clearWallet()
   shouldRedirect = true
 }
 
 const handleAppFocus = () => {
+  if (nativePickerActive) {
+    // Native picker closed — WebView regained focus, resume normally
+    nativePickerActive = false
+    return
+  }
   if (!shouldRedirect) return
   shouldRedirect = false
 
@@ -41,14 +50,21 @@ onMounted(async () => {
     console.warn('Failed to listen to Tauri blur/focus events:', error)
   }
 
-  // Page Visibility API 
   if (typeof document !== 'undefined') {
+    // Detect native date/time picker activation so we don't logout during picking
+    focusInHandler = (e: FocusEvent) => {
+      const target = e.target as HTMLElement
+      if (target instanceof HTMLInputElement && (target.type === 'date' || target.type === 'time')) {
+        nativePickerActive = true
+      }
+    }
+    document.addEventListener('focusin', focusInHandler)
+
+    // Page Visibility API
     visibilityChangeHandler = () => {
       if (document.hidden) {
-        // App went to background
         handleAppBlur()
       } else {
-        // App came to foreground
         handleAppFocus()
       }
     }
@@ -61,10 +77,16 @@ onUnmounted(() => {
   unlistenBlur?.()
   unlistenFocus = null
   unlistenBlur = null
-  
-  if (visibilityChangeHandler && typeof document !== 'undefined') {
-    document.removeEventListener('visibilitychange', visibilityChangeHandler)
-    visibilityChangeHandler = null
+
+  if (typeof document !== 'undefined') {
+    if (focusInHandler) {
+      document.removeEventListener('focusin', focusInHandler)
+      focusInHandler = null
+    }
+    if (visibilityChangeHandler) {
+      document.removeEventListener('visibilitychange', visibilityChangeHandler)
+      visibilityChangeHandler = null
+    }
   }
 })
 </script>

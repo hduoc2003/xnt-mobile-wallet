@@ -71,7 +71,7 @@ fn generate_keys_from_seed(
     let network_enum = Network::from_str(network_str_normalized)
         .map_err(|e| format!("Invalid network '{}': {}", network_str, e))?;
 
-    let key_type_str = key_type.as_deref().unwrap_or("dctidh");
+    let key_type_str = key_type.as_deref().unwrap_or("generation");
     log::info!("[Keys] Deriving spending key | key_type={} | network={}", key_type_str, network_str_normalized);
 
     match key_type_str {

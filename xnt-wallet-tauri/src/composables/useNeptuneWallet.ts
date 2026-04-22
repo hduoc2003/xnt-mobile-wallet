@@ -38,28 +38,28 @@ export function useNeptuneWallet() {
 
   const getSpendingKeyFromSeed = async (seedPhrase: string[], keyType?: string): Promise<SpendingKeyResult> => {
     const network = store.getNetwork === 'mainnet' ? 'main' : 'testnet'
-    const result = await (window as any).walletApi.generateKeysFromSeed([...seedPhrase], network, keyType || 'dctidh')
+    const result = await (window as any).walletApi.generateKeysFromSeed([...seedPhrase], network, keyType || 'generation')
     if (!result.success) {
       throw new Error(result.error || 'Failed to get spending key from seed')
     }
     return result
   }
 
-  // Derives both dCTIDH (primary) and Generation (display) addresses from the seed.
-  // Stores dCTIDH key as the active spending key and both addresses for UI display.
+  // Derives both Generation (primary) and dCTIDH (display) addresses from the seed.
+  // Stores Generation key as the active spending key and both addresses for UI display.
   const loadBothAddresses = async (seedPhrase: string[]): Promise<SpendingKeyResult> => {
-    const dctidh = await getSpendingKeyFromSeed(seedPhrase, 'dctidh')
-    store.setDctidh_address((dctidh as any).address || null)
+    const gen = await getSpendingKeyFromSeed(seedPhrase, 'generation')
+    store.setGeneration_address((gen as any).address || null)
 
     try {
-      const gen = await getSpendingKeyFromSeed(seedPhrase, 'generation')
-      store.setGeneration_address((gen as any).address || null)
-      store.setGenerationSpendingKey((gen as any).spending_key_hex || null)
+      const dctidh = await getSpendingKeyFromSeed(seedPhrase, 'dctidh')
+      store.setDctidh_address((dctidh as any).address || null)
+      store.setGenerationSpendingKey((dctidh as any).spending_key_hex || null)
     } catch {
-      // Generation address is display-only; ignore errors
+      // dCTIDH address is display-only; ignore errors
     }
 
-    return dctidh
+    return gen
   }
 
   const recoverWalletFromSeed = async (seedPhrase: string[]): Promise<WalletState> => {
@@ -621,8 +621,8 @@ export function useNeptuneWallet() {
     const now = Date.now()
     const maxInputsPerTx = 5
 
-    const dctidh_key = store.getSpendingKey || ''
-    const generation_key = store.getGenerationSpendingKey || ''
+    const gen_key    = store.getSpendingKey || ''
+    const dctidh_key = store.getGenerationSpendingKey || ''
 
     // Only spendable (non-timelocked or expired timelock) UTXOs
     const spendable = utxos.filter((u) => {
@@ -651,22 +651,22 @@ export function useNeptuneWallet() {
     const dctidh_utxos = spendable.filter(u => !u.keyType || u.keyType === 'dCTIDH')
     const gen_utxos    = spendable.filter(u => u.keyType === 'Generation')
 
-    const dctidh_result = trySelect(dctidh_utxos)
     const gen_result    = trySelect(gen_utxos)
+    const dctidh_result = trySelect(dctidh_utxos)
 
-    // Prefer dCTIDH if it covers the total; else try Generation
+    // Prefer Generation if it covers the total; else try dCTIDH
+    if (gen_result.totalAmount >= totalNeeded && gen_key) {
+      return { ...gen_result, spendingKeyHex: gen_key }
+    }
     if (dctidh_result.totalAmount >= totalNeeded && dctidh_key) {
       return { ...dctidh_result, spendingKeyHex: dctidh_key }
     }
-    if (gen_result.totalAmount >= totalNeeded && generation_key) {
-      return { ...gen_result, spendingKeyHex: generation_key }
-    }
 
     // Neither covers the full amount — return whichever has more (will fail with clear error)
-    if (dctidh_result.totalAmount >= gen_result.totalAmount) {
-      return { ...dctidh_result, spendingKeyHex: dctidh_key }
+    if (gen_result.totalAmount >= dctidh_result.totalAmount) {
+      return { ...gen_result, spendingKeyHex: gen_key }
     }
-    return { ...gen_result, spendingKeyHex: generation_key || dctidh_key }
+    return { ...dctidh_result, spendingKeyHex: dctidh_key || gen_key }
   }
 
   const clearWallet = () => {
