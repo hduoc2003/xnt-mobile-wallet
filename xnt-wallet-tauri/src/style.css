@@ -204,9 +204,15 @@
   }
 }
 
-/* vue-sonner z-index override - ensure toasts appear above header (z-10) and footer (z-10) */
+/* vue-sonner z-index override - ensure toasts appear above header and footer */
 [data-sonner-toaster] {
   z-index: 9999 !important;
+}
+
+/* Offset top-positioned toasts below the fixed header (incl. iOS safe-area inset)
+   so they never cover the header or the bottom navigation bar. */
+[data-sonner-toaster][data-y-position='top'] {
+  top: calc(env(safe-area-inset-top, 0px) + 5rem) !important;
 }
 
 @layer base {

@@ -13,19 +13,19 @@ onMounted(async () => {
   try {
     // Dynamically import to avoid errors on non-Android platforms
     const { onBackButtonPress } = await import('@tauri-apps/api/app')
-    
+
     // Set up back button handler
     const unlisten = await onBackButtonPress(() => {
       const currentPath = router.currentRoute.value.path
       const currentName = router.currentRoute.value.name
-      
+
       if (currentPath !== '/' && currentName !== 'wallet') {
         router.push({ name: 'wallet' })
       }
 
       return true
     })
-    
+
     backButtonUnlisten = unlisten as unknown as () => void
   } catch (error) {
     console.debug('Back button handler not available:', error)
@@ -69,7 +69,10 @@ const isActiveRoute = (routePath: string) => {
     </header>
 
     <!-- Main Content Area (Scrollable) -->
-    <main class="flex-1 overflow-y-auto pb-16" :style="{ paddingTop: `calc(4.5rem + env(safe-area-inset-top, 0px))` }">
+    <main
+      class="flex-1 overflow-y-auto pb-16"
+      :style="{ paddingTop: `calc(4.5rem + env(safe-area-inset-top, 0px))` }"
+    >
       <router-view />
     </main>
 
@@ -94,7 +97,10 @@ const isActiveRoute = (routePath: string) => {
           :aria-current="isActiveRoute(item.route) ? 'page' : undefined"
           @click="router.push(item.route)"
         >
-          <component :is="item.icon" :class="['h-5 w-5', isActiveRoute(item.route) && 'stroke-[2.5]']" />
+          <component
+            :is="item.icon"
+            :class="['h-5 w-5', isActiveRoute(item.route) && 'stroke-[2.5]']"
+          />
           <span class="text-xs font-medium">{{ item.label }}</span>
         </button>
       </div>
@@ -128,4 +134,3 @@ button:active {
   transform: scale(0.95);
 }
 </style>
-

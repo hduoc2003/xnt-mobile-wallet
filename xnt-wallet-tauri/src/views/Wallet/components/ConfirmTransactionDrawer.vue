@@ -2,21 +2,24 @@
 import { computed } from 'vue'
 import { useFormat } from '@/composables'
 
-const props = withDefaults(defineProps<{
-  open: boolean
-  recipientAddress: string
-  amount: string
-  fee: string
-  timelockEnabled?: boolean
-  timelockDate?: string
-  timelockTime?: string
-  loading?: boolean
-}>(), {
-  timelockEnabled: false,
-  timelockDate: '',
-  timelockTime: '',
-  loading: false,
-})
+const props = withDefaults(
+  defineProps<{
+    open: boolean
+    recipientAddress: string
+    amount: string
+    fee: string
+    timelockEnabled?: boolean
+    timelockDate?: string
+    timelockTime?: string
+    loading?: boolean
+  }>(),
+  {
+    timelockEnabled: false,
+    timelockDate: '',
+    timelockTime: '',
+    loading: false,
+  },
+)
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -45,18 +48,20 @@ const handleCancel = () => {
     <DrawerContent class="h-screen flex flex-col">
       <div class="flex-1 overflow-y-auto px-6 pt-6 pb-4">
         <!-- Header -->
-          <div>
-            <DrawerTitle class="text-2xl font-bold text-foreground">Confirm Transaction</DrawerTitle>
-            <DrawerDescription class="text-sm text-muted-foreground">
-              Please review the transaction details before sending
-            </DrawerDescription>
-          </div>
+        <div>
+          <DrawerTitle class="text-2xl font-bold text-foreground">Confirm Transaction</DrawerTitle>
+          <DrawerDescription class="text-sm text-muted-foreground">
+            Please review the transaction details before sending
+          </DrawerDescription>
+        </div>
 
         <div class="space-y-6">
           <!-- Recipient -->
           <div class="space-y-3">
             <Label class="text-sm font-medium text-muted-foreground">Recipient Address</Label>
-            <div class="break-all rounded-lg border border-border bg-muted/50 p-4 font-mono text-sm">
+            <div
+              class="break-all rounded-lg border border-border bg-muted/50 p-4 font-mono text-sm"
+            >
               {{ formatHash(props.recipientAddress) }}
             </div>
           </div>
@@ -84,7 +89,11 @@ const handleCancel = () => {
               <div class="flex items-center gap-2">
                 <Badge variant="outline" class="text-xs">Locked Until</Badge>
                 <span class="font-semibold text-sm">
-                  {{ new Date(`${props.timelockDate}T${props.timelockTime || '00:00'}`).toLocaleString() }}
+                  {{
+                    new Date(
+                      `${props.timelockDate}T${props.timelockTime || '00:00'}`,
+                    ).toLocaleString()
+                  }}
                 </span>
               </div>
               <p class="mt-2 text-xs text-muted-foreground">
@@ -103,10 +112,10 @@ const handleCancel = () => {
 
       <DrawerFooter class="px-6 py-4 border-t bg-background">
         <Button
-          @click="handleConfirm"
           :disabled="props.loading"
           size="lg"
           class="h-12 w-full text-base font-semibold"
+          @click="handleConfirm"
         >
           <span
             v-if="props.loading"
@@ -118,4 +127,3 @@ const handleCancel = () => {
     </DrawerContent>
   </Drawer>
 </template>
-

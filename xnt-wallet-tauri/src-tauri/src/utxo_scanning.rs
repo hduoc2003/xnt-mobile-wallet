@@ -1,16 +1,7 @@
-use neptune_privacy::prelude::twenty_first::math::b_field_element::BFieldElement;
 use neptune_privacy::prelude::triton_vm::prelude::Tip5;
-use neptune_privacy::protocol::consensus::transaction::announcement::Announcement;
-use neptune_privacy::protocol::consensus::transaction::transaction_kernel::{
-    TransactionKernel, TransactionKernelProxy,
-};
-use neptune_privacy::application::json_rpc::core::model::block::transaction_kernel::RpcTransactionKernel;
 use neptune_privacy::state::wallet::address::SpendingKey;
 use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
-use neptune_privacy::protocol::proof_abstractions::timestamp::Timestamp;
 use neptune_privacy::prelude::twenty_first::tip5::digest::Digest;
-use neptune_privacy::util_types::mutator_set::mutator_set_accumulator::MutatorSetAccumulator;
-use neptune_privacy::application::json_rpc::core::model::message::GetArchivalMutatorSetResponse;
 use num_traits::Zero;
 use reqwest::Client;
 use std::collections::HashSet;
@@ -19,7 +10,6 @@ use crate::rpc_config;
 use serde::{Deserialize, Serialize};
 
 use crate::utxo_cache;
-use crate::transaction;
 use crate::rpc_client;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -83,6 +73,36 @@ pub struct UtxoInfo {
     pub release_date_ms: Option<u64>,
     pub key_type: String,
     pub is_pending: bool,
+}
+
+/// Builds a [`UtxoInfo`] view from a cached UTXO.
+///
+/// `key_type` is supplied by the caller: during a scan it is inferred from the
+/// active key context, but the cache does not retain it, so cache-read paths
+/// pass an empty string.
+fn cached_utxo_to_info(cached: &utxo_cache::CachedUtxo, key_type: String) -> UtxoInfo {
+    let utxo_ref = &cached.utxo.utxo;
+    let amount = utxo_ref.get_native_currency_amount();
+    let addition_record = cached.utxo.addition_record();
+    let utxo_hash = Tip5::hash(utxo_ref);
+    let (is_timelocked, release_date_ms) = match utxo_ref.release_date() {
+        Some(ts) => (true, Some(ts.to_millis() as u64)),
+        None => (false, None),
+    };
+    UtxoInfo {
+        block_height: cached.block_height,
+        amount: format!("{}", amount),
+        addition_record_hex: format!(
+            "0x{}",
+            hex::encode(bincode::serialize(&addition_record).unwrap_or_default())
+        ),
+        utxo_digest: addition_record.canonical_commitment.to_hex(),
+        utxo_hash: format!("0x{}", utxo_hash.to_hex()),
+        is_timelocked,
+        release_date_ms,
+        key_type,
+        is_pending: false,
+    }
 }
 
 /// Filters out UTXOs whose AbsoluteIndexSet hash matches a removal record in any
@@ -223,45 +243,26 @@ pub async fn validate_utxos_with_rpc(
 
     let spent_statuses = rpc_client::get_spent_status(client, rpc_url, &absolute_index_set_hashes).await?;
 
-    let mut validated: Vec<utxo_cache::CachedUtxo> = utxo_to_hash_map
+    // Collect the indices of UTXOs we keep (unspent, or lacking an AOCL index),
+    // then rebuild the result in the *original* input order. Preserving order is
+    // required because callers map per-input spending keys to inputs positionally
+    // (mixed-key transactions); appending some entries out of order would pair the
+    // wrong key with the wrong UTXO.
+    let mut kept_indices: HashSet<usize> = no_aocl_indices.into_iter().collect();
+    for (hash_idx, &utxo_idx) in utxo_to_hash_map.iter().enumerate() {
+        if spent_statuses.get(hash_idx).and_then(|s| *s).is_none() {
+            kept_indices.insert(utxo_idx);
+        }
+    }
+
+    let validated: Vec<utxo_cache::CachedUtxo> = cached_utxos
         .iter()
         .enumerate()
-        .filter_map(|(hash_idx, &utxo_idx)| {
-            if spent_statuses.get(hash_idx).and_then(|s| *s).is_none() {
-                Some(cached_utxos[utxo_idx].clone())
-            } else {
-                None
-            }
-        })
+        .filter(|(idx, _)| kept_indices.contains(idx))
+        .map(|(_, utxo)| utxo.clone())
         .collect();
-
-    for idx in no_aocl_indices {
-        validated.push(cached_utxos[idx].clone());
-    }
 
     Ok(validated)
-}
-
-fn parse_rpc_bfield_elements(hex_str: &str) -> Result<Vec<BFieldElement>, String> {
-    let hex_clean = hex_str.strip_prefix("0x")
-        .ok_or_else(|| "Missing 0x prefix".to_string())?;
-    
-    if hex_clean.len() % 16 != 0 {
-        return Err(format!("Invalid hex length: must be multiple of 16, got {}", hex_clean.len()));
-    }
-    
-    let bytes = hex::decode(hex_clean)
-        .map_err(|e| format!("Invalid hex: {}", e))?;
-    
-    let elements: Vec<BFieldElement> = bytes
-        .chunks_exact(8)
-        .map(|chunk| {
-            let array: [u8; 8] = chunk.try_into().unwrap();
-            BFieldElement::new(u64::from_be_bytes(array))
-        })
-        .collect();
-    
-    Ok(elements)
 }
 
 /// Fetches raw indexed UTXOs from the archival node for one receiver ID hash over a block range.
@@ -434,44 +435,22 @@ pub async fn scan_utxos_client_side(
     let mut utxo_infos: Vec<UtxoInfo> = validated_cached_utxos
         .iter()
         .map(|utxo| {
-            let utxo_ref = &utxo.utxo.utxo;
-            let amount = utxo_ref.get_native_currency_amount();
-            let addition_record = utxo.utxo.addition_record();
-            let utxo_hash = Tip5::hash(utxo_ref);
-            let utxo_digest = addition_record.canonical_commitment.to_hex();
-            let release_date_opt = utxo_ref.release_date();
-            let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
-                (true, Some(ts.to_millis() as u64))
-            } else {
-                (false, None)
-            };
             // Infer key type from receiver_preimage — match against known key contexts.
-            let key_type = key_contexts.iter()
+            let key_type = key_contexts
+                .iter()
                 .find(|kc| kc.receiver_preimage == utxo.utxo.receiver_preimage)
                 .map(|kc| kc.label.clone())
                 .unwrap_or_else(|| "dCTIDH".to_string());
+            let info = cached_utxo_to_info(utxo, key_type);
             log::debug!(
                 "[Scan] Cached UTXO | key_type={} | amount={} | block={} | timelocked={} | hash={}",
-                key_type,
-                amount,
-                utxo.block_height,
-                is_timelocked,
-                &format!("0x{}", utxo_hash.to_hex())[..18],
+                info.key_type,
+                info.amount,
+                info.block_height,
+                info.is_timelocked,
+                &info.utxo_hash[..18],
             );
-            UtxoInfo {
-                block_height: utxo.block_height,
-                amount: format!("{}", amount),
-                addition_record_hex: format!(
-                    "0x{}",
-                    hex::encode(bincode::serialize(&addition_record).unwrap())
-                ),
-                utxo_digest,
-                utxo_hash: format!("0x{}", utxo_hash.to_hex()),
-                is_timelocked,
-                release_date_ms,
-                key_type,
-                is_pending: false,
-            }
+            info
         })
         .collect();
 
@@ -711,24 +690,6 @@ pub async fn scan_utxos_client_side(
         }
     });
 
-    let mut final_seen: HashSet<String> = HashSet::new();
-    utxo_infos.retain(|u| {
-        let key = if !u.addition_record_hex.is_empty() {
-            u.addition_record_hex.clone()
-        } else {
-            u.utxo_hash.clone()
-        };
-        if key.is_empty() {
-            return false;
-        }
-        if final_seen.contains(&key) {
-            false
-        } else {
-            final_seen.insert(key);
-            true
-        }
-    });
-
     log::info!(
         "[Scan] ✓ Scan complete | keys=[{}] | blocks={}-{} | total_utxos={} | last_scanned_block={}",
         key_labels_str,
@@ -815,33 +776,7 @@ pub async fn get_cached_utxos(app: &AppHandle) -> Result<String, String> {
 
     let utxos: Vec<UtxoInfo> = valid_utxos
         .iter()
-        .map(|utxo| {
-            let utxo_ref = &utxo.utxo.utxo;
-            let amount = utxo_ref.get_native_currency_amount();
-            let addition_record = utxo.utxo.addition_record();
-            let utxo_hash = Tip5::hash(utxo_ref);
-            let utxo_digest = addition_record.canonical_commitment.to_hex();
-            let release_date_opt = utxo_ref.release_date();
-            let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
-                (true, Some(ts.to_millis() as u64))
-            } else {
-                (false, None)
-            };
-            UtxoInfo {
-                block_height: utxo.block_height,
-                amount: format!("{}", amount),
-                addition_record_hex: format!(
-                    "0x{}",
-                    hex::encode(bincode::serialize(&addition_record).unwrap_or_default())
-                ),
-                utxo_digest,
-                utxo_hash: format!("0x{}", utxo_hash.to_hex()),
-                is_timelocked,
-                release_date_ms,
-                key_type: String::new(),
-                is_pending: false,
-            }
-        })
+        .map(|utxo| cached_utxo_to_info(utxo, String::new()))
         .collect();
 
     let response = GetCachedUtxosResponse {
@@ -861,33 +796,7 @@ pub async fn get_cached_utxos_local() -> Result<String, String> {
 
     let utxos: Vec<UtxoInfo> = cached_utxos
         .iter()
-        .map(|utxo| {
-            let utxo_ref = &utxo.utxo.utxo;
-            let amount = utxo_ref.get_native_currency_amount();
-            let addition_record = utxo.utxo.addition_record();
-            let utxo_hash = Tip5::hash(utxo_ref);
-            let utxo_digest = addition_record.canonical_commitment.to_hex();
-            let release_date_opt = utxo_ref.release_date();
-            let (is_timelocked, release_date_ms) = if let Some(ts) = release_date_opt {
-                (true, Some(ts.to_millis() as u64))
-            } else {
-                (false, None)
-            };
-            UtxoInfo {
-                block_height: utxo.block_height,
-                amount: format!("{}", amount),
-                addition_record_hex: format!(
-                    "0x{}",
-                    hex::encode(bincode::serialize(&addition_record).unwrap_or_default())
-                ),
-                utxo_digest,
-                utxo_hash: format!("0x{}", utxo_hash.to_hex()),
-                is_timelocked,
-                release_date_ms,
-                key_type: String::new(),
-                is_pending: false,
-            }
-        })
+        .map(|utxo| cached_utxo_to_info(utxo, String::new()))
         .collect();
 
     let response = GetCachedUtxosResponse {

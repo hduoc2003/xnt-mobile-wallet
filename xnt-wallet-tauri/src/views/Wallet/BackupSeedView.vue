@@ -43,8 +43,12 @@ const handleVerifyPassword = async () => {
         </Button>
         <div>
           <h1 class="text-2xl font-bold text-foreground">Backup Seed Phrase</h1>
-          <p v-if="!seedRevealed" class="text-sm text-muted-foreground">Verify password to view your seed phrase</p>
-          <p v-if="seedRevealed" class="text-sm text-muted-foreground">Write down these 18 words in order</p>
+          <p v-if="!seedRevealed" class="text-sm text-muted-foreground">
+            Verify password to view your seed phrase
+          </p>
+          <p v-if="seedRevealed" class="text-sm text-muted-foreground">
+            Write down these 18 words in order
+          </p>
         </div>
       </div>
 
@@ -88,9 +92,7 @@ const handleVerifyPassword = async () => {
 
           <!-- Action Buttons -->
           <div class="flex gap-2">
-            <Button variant="outline" class="flex-1" @click="router.push('/')">
-              Cancel
-            </Button>
+            <Button variant="outline" class="flex-1" @click="router.push('/')"> Cancel </Button>
             <Button
               class="flex-1"
               :disabled="!verifyPassword || verifyLoading"
@@ -108,21 +110,13 @@ const handleVerifyPassword = async () => {
 
       <!-- Seed Phrase Card -->
       <div v-else>
-
-        <SeedPhraseGrid
-          ref="seedPhraseGridRef"
-          :seed-phrase="seedPhrase"
-          :require-reveal="false"
-        />
+        <SeedPhraseGrid ref="seedPhraseGridRef" :seed-phrase="seedPhrase" :require-reveal="false" />
 
         <!-- Action Buttons -->
         <div class="flex gap-2 mt-4">
-          <Button variant="outline" class="flex-1" @click="router.push('/')">
-            Close
-          </Button>
+          <Button variant="outline" class="flex-1" @click="router.push('/')"> Close </Button>
         </div>
       </div>
     </div>
   </div>
 </template>
-

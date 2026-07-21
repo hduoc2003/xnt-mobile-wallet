@@ -33,9 +33,10 @@ const scrollAreaRef = ref<InstanceType<typeof ScrollArea>>()
 const isLoadingMore = ref(false)
 
 const handleScrollInternal = () => {
-  console.log("handleScrollInternal")
-  if (!scrollAreaRef.value?.viewport || isLoadingMore.value || props.loading || !props.hasMore) return
-  
+  console.log('handleScrollInternal')
+  if (!scrollAreaRef.value?.viewport || isLoadingMore.value || props.loading || !props.hasMore)
+    return
+
   const viewport = scrollAreaRef.value.viewport as HTMLElement
   const scrollTop = viewport.scrollTop
   const scrollHeight = viewport.scrollHeight
@@ -56,17 +57,17 @@ const handleScroll = useDebounceFn(handleScrollInternal, props.debounceMs)
 
 onMounted(async () => {
   await nextTick()
-  
+
   let attempts = 0
   const maxAttempts = 10
-  
+
   while (attempts < maxAttempts) {
     if (scrollAreaRef.value?.viewport) {
       const viewport = scrollAreaRef.value.viewport as HTMLElement
       viewport.addEventListener('scroll', handleScroll, { passive: true })
       break
     }
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 100))
     attempts++
   }
 })
@@ -78,14 +79,17 @@ onUnmounted(() => {
   }
 })
 
-watch(() => props.items, async () => {
-  await nextTick()
-  if (scrollAreaRef.value?.viewport) {
-    setTimeout(() => {
-      handleScroll()
-    }, 100)
-  }
-})
+watch(
+  () => props.items,
+  async () => {
+    await nextTick()
+    if (scrollAreaRef.value?.viewport) {
+      setTimeout(() => {
+        handleScroll()
+      }, 100)
+    }
+  },
+)
 </script>
 
 <template>
@@ -99,16 +103,13 @@ watch(() => props.items, async () => {
       <div v-if="items.length === 0" class="flex items-center justify-center py-12 text-center">
         <p class="text-sm text-muted-foreground">{{ emptyMessage }}</p>
       </div>
-      
+
       <!-- Items slot -->
       <template v-else>
         <slot :items="items" />
-        
+
         <!-- Loading indicator at bottom -->
-        <div
-          v-if="(loading || isLoadingMore)"
-          class="flex items-center justify-center py-4"
-        >
+        <div v-if="loading || isLoadingMore" class="flex items-center justify-center py-4">
           <div
             class="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent"
           />

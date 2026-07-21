@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Script to show logs from Neptune Wallet running on an ADB-connected Android device
-# Usage: ./show-logs.sh [filter]
+# Usage: scripts/show-logs.sh [filter]
 
 set -e
 
@@ -47,7 +47,7 @@ fi
 # Check if app is installed
 if ! adb shell pm list packages | grep -q "$PACKAGE_NAME"; then
     echo -e "${YELLOW}Warning: App not installed on device${NC}"
-    echo "Install it first using: ./install-apk.sh"
+    echo "Install it first using: scripts/install-apk.sh"
     echo ""
     read -p "Continue anyway? (y/n) " -n 1 -r
     echo

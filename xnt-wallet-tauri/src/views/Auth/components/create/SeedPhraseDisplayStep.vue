@@ -59,7 +59,8 @@ onUnmounted(() => {
       <AlertTriangle :size="20" />
       <AlertTitle class="text-base font-semibold">Never share your recovery phrase!</AlertTitle>
       <AlertDescription class="text-sm mt-1">
-        Anyone with these words can access your wallet and steal your funds. Store them safely offline.
+        Anyone with these words can access your wallet and steal your funds. Store them safely
+        offline.
       </AlertDescription>
     </Alert>
 

@@ -17,11 +17,15 @@ const rpcEndpointInput = ref('')
 const isEditingEndpoint = ref(false)
 const savingEndpoint = ref(false)
 
-watch(rpcUrl, (newUrl) => {
-  if (!isEditingEndpoint.value) {
-    rpcEndpointInput.value = newUrl || ''
-  }
-}, { immediate: true })
+watch(
+  rpcUrl,
+  (newUrl) => {
+    if (!isEditingEndpoint.value) {
+      rpcEndpointInput.value = newUrl || ''
+    }
+  },
+  { immediate: true },
+)
 
 const startEditEndpoint = () => {
   rpcEndpointInput.value = rpcUrl.value || ''
@@ -34,25 +38,29 @@ const cancelEditEndpoint = () => {
 }
 
 const handleSaveRpcEndpoint = async () => {
-    try {
-        savingEndpoint.value = true
-        const trimmedEndpoint = rpcEndpointInput.value.trim()
-    
-        if (!trimmedEndpoint?.startsWith('http://') && !trimmedEndpoint?.startsWith('https://') && trimmedEndpoint !== '') {
-            return toast.error('Endpoint must start with http:// or https://')
-        }
-    
-        await saveRpcEndpoint(rpcEndpointInput.value)
- 
-        isEditingEndpoint.value = false
-        emit('endpointUpdated')
-            
-        savingEndpoint.value = false
-    } catch (error: unknown) {
-        toast.error('Failed to save RPC endpoint')
-    } finally {
-        savingEndpoint.value = false
+  try {
+    savingEndpoint.value = true
+    const trimmedEndpoint = rpcEndpointInput.value.trim()
+
+    if (
+      !trimmedEndpoint?.startsWith('http://') &&
+      !trimmedEndpoint?.startsWith('https://') &&
+      trimmedEndpoint !== ''
+    ) {
+      return toast.error('Endpoint must start with http:// or https://')
     }
+
+    await saveRpcEndpoint(rpcEndpointInput.value)
+
+    isEditingEndpoint.value = false
+    emit('endpointUpdated')
+
+    savingEndpoint.value = false
+  } catch (error: unknown) {
+    toast.error('Failed to save RPC endpoint')
+  } finally {
+    savingEndpoint.value = false
+  }
 }
 </script>
 
@@ -68,7 +76,9 @@ const handleSaveRpcEndpoint = async () => {
       <div class="space-y-2">
         <Label class="text-xs text-muted-foreground">Custom RPC Endpoint</Label>
         <div v-if="!isEditingEndpoint" class="flex items-center gap-2">
-          <code class="flex-1 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-foreground">
+          <code
+            class="flex-1 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-foreground"
+          >
             {{ rpcUrl }}
           </code>
           <Button variant="outline" size="icon" @click="startEditEndpoint">
@@ -85,9 +95,9 @@ const handleSaveRpcEndpoint = async () => {
           <div class="flex items-center gap-2">
             <Button
               size="sm"
-              @click="handleSaveRpcEndpoint"
               :disabled="savingEndpoint"
               class="flex-1"
+              @click="handleSaveRpcEndpoint"
             >
               <Check class="mr-2 size-4" />
               {{ savingEndpoint ? 'Saving...' : 'Save' }}
@@ -95,8 +105,8 @@ const handleSaveRpcEndpoint = async () => {
             <Button
               size="sm"
               variant="outline"
-              @click="cancelEditEndpoint"
               :disabled="savingEndpoint"
+              @click="cancelEditEndpoint"
             >
               <X class="size-4" />
             </Button>
@@ -109,4 +119,3 @@ const handleSaveRpcEndpoint = async () => {
     </CardContent>
   </Card>
 </template>
-

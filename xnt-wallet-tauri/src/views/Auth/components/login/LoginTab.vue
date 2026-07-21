@@ -2,11 +2,14 @@
 import { ref, computed } from 'vue'
 import { PasswordForm, Logo } from '@/components'
 
-const props = withDefaults(defineProps<{
-  loading?: boolean
-}>(), {
-  loading: false
-})
+const props = withDefaults(
+  defineProps<{
+    loading?: boolean
+  }>(),
+  {
+    loading: false,
+  },
+)
 
 const emit = defineEmits<{
   goToCreate: []
@@ -40,12 +43,8 @@ const handleNewWallet = () => {
           <Logo />
 
           <div class="space-y-2">
-            <h1 class="text-3xl font-bold tracking-tight text-foreground">
-              Welcome Back
-            </h1>
-            <p class="text-base text-muted-foreground">
-              Enter your password to unlock
-            </p>
+            <h1 class="text-3xl font-bold tracking-tight text-foreground">Welcome Back</h1>
+            <p class="text-base text-muted-foreground">Enter your password to unlock</p>
           </div>
         </div>
 
@@ -69,7 +68,11 @@ const handleNewWallet = () => {
         <div class="text-center">
           <p class="text-sm text-muted-foreground">
             Don't have a wallet?
-            <Button variant="link" class="p-0 text-sm font-semibold text-primary" @click="handleNewWallet">
+            <Button
+              variant="link"
+              class="p-0 text-sm font-semibold text-primary"
+              @click="handleNewWallet"
+            >
               Create one now
             </Button>
           </p>

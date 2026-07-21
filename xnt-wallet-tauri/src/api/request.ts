@@ -1,8 +1,6 @@
 import axios, { type AxiosInstance, type AxiosResponse, type AxiosError } from 'axios'
 import { STATUS_CODE_SUCCESS } from '@/utils'
 
-
-
 export const API_URL = import.meta.env.VITE_APP_API || 'https://api.xntscan.io'
 
 // Create axios instance
@@ -28,7 +26,7 @@ instance.interceptors.response.use(
       return Promise.reject(error?.response?.data)
     }
     return Promise.reject(error)
-  }
+  },
 )
 
 export default instance

@@ -93,7 +93,7 @@ onMounted(async () => {
       }
       scanProgress.value = progress
       isScanning.value = progress.percentage < 100
-      
+
       if (progress.percentage >= 100) {
         setTimeout(() => {
           isScanning.value = false
@@ -103,7 +103,7 @@ onMounted(async () => {
   } catch (error) {
     console.error('Failed to listen for scan progress:', error)
   }
-  
+
   await getUtxosData()
 })
 
@@ -130,7 +130,13 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <Button variant="outline" size="icon" @click="handleRefresh" :disabled="loading" title="Force rescan from block 0">
+        <Button
+          variant="outline"
+          size="icon"
+          :disabled="loading"
+          title="Force rescan from block 0"
+          @click="handleRefresh"
+        >
           <RefreshCw :class="['size-4', loading && 'animate-spin']" />
         </Button>
       </div>
@@ -163,9 +169,9 @@ onUnmounted(() => {
           <Button
             variant="outline"
             size="sm"
-            @click="router.push('/wallet/merge')"
             :disabled="loading || !utxosList.length"
             title="Consolidate UTXOs into one"
+            @click="router.push('/wallet/merge')"
           >
             <GitMerge class="size-4 mr-1" /> Merge
           </Button>
@@ -183,11 +189,11 @@ onUnmounted(() => {
             <Progress :model-value="scanProgress.percentage" class="h-2" />
             <div class="grid grid-cols-2 gap-4 text-xs text-muted-foreground">
               <div>
-                <span class="font-medium">Blocks:</span> {{ scanProgress.currentBlock.toLocaleString() }} / {{ scanProgress.endBlock.toLocaleString() }}
+                <span class="font-medium">Blocks:</span>
+                {{ scanProgress.currentBlock.toLocaleString() }} /
+                {{ scanProgress.endBlock.toLocaleString() }}
               </div>
-              <div>
-                <span class="font-medium">UTXOs Found:</span> {{ scanProgress.utxosFound }}
-              </div>
+              <div><span class="font-medium">UTXOs Found:</span> {{ scanProgress.utxosFound }}</div>
             </div>
           </div>
         </CardContent>
@@ -239,9 +245,7 @@ onUnmounted(() => {
                     <p v-if="utxo.releaseDateMs" class="text-sm font-medium text-foreground">
                       Unlocks: {{ new Date(utxo.releaseDateMs).toLocaleString() }}
                     </p>
-                    <p v-else class="text-sm text-muted-foreground">
-                      Not timelocked
-                    </p>
+                    <p v-else class="text-sm text-muted-foreground">Not timelocked</p>
                   </div>
                 </div>
               </CardContent>

@@ -18,8 +18,9 @@ const handleRecover = () => {
 </script>
 
 <template>
-  <div class="relative flex min-h-full flex-col bg-linear-to-br from-background via-background to-primary/5 p-4">
-
+  <div
+    class="relative flex min-h-full flex-col bg-linear-to-br from-background via-background to-primary/5 p-4"
+  >
     <!-- Content Container -->
     <div class="flex flex-1 flex-col items-center justify-center">
       <div class="w-full max-w-md space-y-8">
@@ -28,21 +29,18 @@ const handleRecover = () => {
           <Logo />
 
           <div class="space-y-2">
-            <h1 class="text-4xl font-bold tracking-tight text-foreground">
-              XNT Wallet
-            </h1>
+            <h1 class="text-4xl font-bold tracking-tight text-foreground">XNT Wallet</h1>
           </div>
         </div>
 
         <!-- Action Cards -->
         <div class="space-y-4">
           <!-- Create New Wallet Card -->
-          <Card class="border-2 border-primary/20 bg-linear-to-br from-primary/5 to-accent/5 transition-all hover:border-primary/40 hover:shadow-lg">
+          <Card
+            class="border-2 border-primary/20 bg-linear-to-br from-primary/5 to-accent/5 transition-all hover:border-primary/40 hover:shadow-lg"
+          >
             <CardContent class="p-6">
-              <button
-                class="w-full space-y-3 text-left"
-                @click="handleGoToCreate"
-              >
+              <button class="w-full space-y-3 text-left" @click="handleGoToCreate">
                 <div class="flex items-center gap-4">
                   <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
                     <Sparkles :size="24" class="text-primary" />
@@ -57,12 +55,11 @@ const handleRecover = () => {
           </Card>
 
           <!-- Recover Wallet Card -->
-          <Card class="border-2 border-border/50 transition-all hover:border-border hover:shadow-lg">
+          <Card
+            class="border-2 border-border/50 transition-all hover:border-border hover:shadow-lg"
+          >
             <CardContent class="p-6">
-              <button
-                class="w-full space-y-3 text-left"
-                @click="handleRecover"
-              >
+              <button class="w-full space-y-3 text-left" @click="handleRecover">
                 <div class="flex items-center gap-4">
                   <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
                     <KeyRound :size="24" class="text-muted-foreground" />

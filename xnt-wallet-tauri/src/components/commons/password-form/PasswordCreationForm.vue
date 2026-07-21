@@ -131,10 +131,7 @@ defineExpose({
       <div class="space-y-2">
         <Label for="password" class="text-base">Password</Label>
         <div class="relative">
-          <Lock
-            :size="20"
-            class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
+          <Lock :size="20" class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             id="password"
             v-model="password"
@@ -208,10 +205,7 @@ defineExpose({
         <div v-if="confirmPassword" class="flex items-center gap-2">
           <Check v-if="isPasswordMatch" :size="16" class="text-green-500" />
           <X v-else :size="16" class="text-destructive" />
-          <span
-            class="text-sm"
-            :class="isPasswordMatch ? 'text-green-500' : 'text-destructive'"
-          >
+          <span class="text-sm" :class="isPasswordMatch ? 'text-green-500' : 'text-destructive'">
             {{ isPasswordMatch ? 'Passwords match' : 'Passwords do not match' }}
           </span>
         </div>
@@ -221,8 +215,7 @@ defineExpose({
       <Alert v-if="showSecurityInfo">
         <Shield :size="16" />
         <AlertDescription class="text-xs">
-          Use at least 8 characters with uppercase, lowercase, and numbers for a strong
-          password.
+          Use at least 8 characters with uppercase, lowercase, and numbers for a strong password.
         </AlertDescription>
       </Alert>
 
@@ -238,4 +231,3 @@ defineExpose({
     </div>
   </form>
 </template>
-

@@ -41,4 +41,5 @@ export interface Utxo {
   isTimelocked?: boolean
   releaseDateMs?: number | null
   keyType?: string
+  isPending?: boolean
 }

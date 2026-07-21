@@ -31,7 +31,9 @@ const formatTime = (date: Date | null) => {
     </CardHeader>
     <CardContent class="space-y-4">
       <!-- Network Name -->
-      <div class="flex items-center justify-between rounded-lg border border-border bg-muted/50 p-4 transition-colors hover:bg-muted">
+      <div
+        class="flex items-center justify-between rounded-lg border border-border bg-muted/50 p-4 transition-colors hover:bg-muted"
+      >
         <div class="space-y-1">
           <Label class="text-xs text-muted-foreground">Network</Label>
           <p class="text-sm font-semibold text-foreground">
@@ -49,7 +51,9 @@ const formatTime = (date: Date | null) => {
       <!-- Block Height -->
       <div class="space-y-3">
         <Label class="text-xs text-muted-foreground">Current Block Height</Label>
-        <div class="rounded-lg border border-border bg-linear-to-br from-primary/5 to-primary/10 p-6 text-center">
+        <div
+          class="rounded-lg border border-border bg-linear-to-br from-primary/5 to-primary/10 p-6 text-center"
+        >
           <div class="flex items-baseline justify-center gap-2">
             <span class="text-4xl font-bold text-primary">{{ formatNumber(blockHeight) }}</span>
           </div>
@@ -68,4 +72,3 @@ const formatTime = (date: Date | null) => {
     </CardContent>
   </Card>
 </template>
-

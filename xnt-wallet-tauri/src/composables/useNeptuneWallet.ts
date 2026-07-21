@@ -7,8 +7,12 @@ import type {
   SpendingKeyResult,
   WalletState,
 } from '@/types'
-import { DEFAULT_MIN_BLOCK_HEIGHT, toFiniteNumber } from '@/utils'
-
+import {
+  DEFAULT_MIN_BLOCK_HEIGHT,
+  normalizeUtxo,
+  selectSpendableUtxos,
+  toFiniteNumber,
+} from '@/utils'
 
 export function useNeptuneWallet() {
   const store = useNeptuneStore()
@@ -26,7 +30,8 @@ export function useNeptuneWallet() {
       store.setSpendingKey(spendingKeyResult.spending_key_hex)
       store.setReceiverId(spendingKeyResult.receiver_identifier)
 
-      const addressResult = (spendingKeyResult as any).address || spendingKeyResult.receiver_identifier
+      const addressResult =
+        (spendingKeyResult as any).address || spendingKeyResult.receiver_identifier
       store.setAddress(addressResult)
 
       return result
@@ -36,9 +41,16 @@ export function useNeptuneWallet() {
     }
   }
 
-  const getSpendingKeyFromSeed = async (seedPhrase: string[], keyType?: string): Promise<SpendingKeyResult> => {
+  const getSpendingKeyFromSeed = async (
+    seedPhrase: string[],
+    keyType?: string,
+  ): Promise<SpendingKeyResult> => {
     const network = store.getNetwork === 'mainnet' ? 'main' : 'testnet'
-    const result = await (window as any).walletApi.generateKeysFromSeed([...seedPhrase], network, keyType || 'generation')
+    const result = await (window as any).walletApi.generateKeysFromSeed(
+      [...seedPhrase],
+      network,
+      keyType || 'generation',
+    )
     if (!result.success) {
       throw new Error(result.error || 'Failed to get spending key from seed')
     }
@@ -107,10 +119,7 @@ export function useNeptuneWallet() {
       store.clearWallet()
       store.setKeystoreFileName(keystoreFileName)
 
-      const result = await (window as any).walletApi.decryptKeystore(
-        keystoreFileName,
-        password
-      )
+      const result = await (window as any).walletApi.decryptKeystore(keystoreFileName, password)
 
       const seedPhrase = result.phrase.trim().split(/\s+/)
       const spendingKeyResult = await loadBothAddresses(seedPhrase)
@@ -118,23 +127,14 @@ export function useNeptuneWallet() {
       store.setReceiverId(spendingKeyResult.receiver_identifier)
       store.setSpendingKey(spendingKeyResult.spending_key_hex)
 
-      const addressResult = (spendingKeyResult as any).address || spendingKeyResult.receiver_identifier
+      const addressResult =
+        (spendingKeyResult as any).address || spendingKeyResult.receiver_identifier
       store.setAddress(addressResult)
 
       try {
         const cached = await (window as any).walletApi.getCachedUtxosLocal?.()
         const cachedResult = typeof cached === 'string' ? JSON.parse(cached) : cached
         if (cachedResult?.success && Array.isArray(cachedResult.utxos)) {
-          const normalizeUtxo = (u: any) => ({
-            utxoDigest: u.utxo_digest || u.utxoDigest || '',
-            amount: u.amount?.toString?.() ?? '0',
-            blockHeight: toFiniteNumber(u.block_height || u.blockHeight || 0),
-            additionRecord: u.addition_record_hex || u.additionRecord || '',
-            isTimelocked: !!(u.is_timelocked ?? u.isTimelocked),
-            releaseDateMs: u.release_date_ms ?? u.releaseDateMs ?? null,
-            keyType: u.key_type || u.keyType || '',
-            isPending: !!(u.is_pending ?? u.isPending),
-          })
           const cachedUtxos = (cachedResult.utxos || []).map(normalizeUtxo)
           store.setUtxos(cachedUtxos)
           if (Number.isFinite(cachedResult.last_scanned_block)) {
@@ -145,16 +145,19 @@ export function useNeptuneWallet() {
       } catch (e) {
         await (window as any).logger?.warn(
           'Load cached UTXOs at unlock failed (will scan later):',
-          (e as any)?.message || e
+          (e as any)?.message || e,
         )
       }
 
       try {
-        const minBlockHeightResponse = await (window as any).walletApi.getMinBlockHeight(keystoreFileName)
-        const minBlockHeightData = typeof minBlockHeightResponse === 'string' 
-          ? JSON.parse(minBlockHeightResponse) 
-          : minBlockHeightResponse
-        
+        const minBlockHeightResponse = await (window as any).walletApi.getMinBlockHeight(
+          keystoreFileName,
+        )
+        const minBlockHeightData =
+          typeof minBlockHeightResponse === 'string'
+            ? JSON.parse(minBlockHeightResponse)
+            : minBlockHeightResponse
+
         if (minBlockHeightData?.success && minBlockHeightData?.minBlockHeight !== undefined) {
           const savedHeight = toFiniteNumber(minBlockHeightData.minBlockHeight)
           store.setMinBlockHeight(savedHeight)
@@ -162,7 +165,10 @@ export function useNeptuneWallet() {
           store.setMinBlockHeight(0)
         }
       } catch (err: any) {
-        await (window as any).logger?.warn('Error loading min block height from keystore, defaulting to 0:', err.message)
+        await (window as any).logger?.warn(
+          'Error loading min block height from keystore, defaulting to 0:',
+          err.message,
+        )
         store.setMinBlockHeight(0)
       }
 
@@ -180,18 +186,24 @@ export function useNeptuneWallet() {
     }
   }
 
-  const createKeystore = async (seed: string, password: string, isImportedWallet: boolean = false): Promise<string | null> => {
+  const createKeystore = async (
+    seed: string,
+    password: string,
+    isImportedWallet: boolean = false,
+  ): Promise<string | null> => {
     try {
       store.clearWallet()
       store.setKeystoreFileName(null)
       await (window as any).walletApi.clearUtxoCache?.()
 
       let minBlockHeight = isImportedWallet ? 0 : DEFAULT_MIN_BLOCK_HEIGHT
-      
+
       if (!isImportedWallet) {
         try {
           const bh = await API.getBlockHeight()
-          minBlockHeight = toFiniteNumber(bh?.result?.height || bh?.height || DEFAULT_MIN_BLOCK_HEIGHT)
+          minBlockHeight = toFiniteNumber(
+            bh?.result?.height || bh?.height || DEFAULT_MIN_BLOCK_HEIGHT,
+          )
         } catch (e: any) {
           await (window as any).logger?.warn('Failed to fetch block height:', e?.message || e)
         }
@@ -199,26 +211,30 @@ export function useNeptuneWallet() {
 
       const resultRaw = await (window as any).walletApi.createKeystore(seed, password)
       const result = typeof resultRaw === 'string' ? JSON.parse(resultRaw) : resultRaw
-      
+
       if (!result?.success || !result.fileName) {
-        await (window as any).logger?.error('Keystore creation failed:', result?.error || 'Unknown error')
+        await (window as any).logger?.error(
+          'Keystore creation failed:',
+          result?.error || 'Unknown error',
+        )
         return null
       }
-      
+
       store.setKeystoreFileName(result.fileName)
       const finalMinBlockHeight = toFiniteNumber(minBlockHeight)
       store.setMinBlockHeight(finalMinBlockHeight)
       await (window as any).walletApi.updateMinBlockHeight(result.fileName, finalMinBlockHeight)
-      
+
       const seedPhrase = seed.trim().split(/\s+/)
       const spendingKeyResult = await loadBothAddresses(seedPhrase)
 
       store.setReceiverId(spendingKeyResult.receiver_identifier)
       store.setSpendingKey(spendingKeyResult.spending_key_hex)
 
-      const addressResult = (spendingKeyResult as any).address || spendingKeyResult.receiver_identifier
+      const addressResult =
+        (spendingKeyResult as any).address || spendingKeyResult.receiver_identifier
       store.setAddress(addressResult)
-      
+
       return result.fileName
     } catch (err: any) {
       await (window as any).logger?.error('Error creating keystore:', err.message)
@@ -262,18 +278,13 @@ export function useNeptuneWallet() {
 
     try {
       const minBlockHeight = utxos.reduce((min, utxo) => {
-        const h = +(
-          utxo?.blockHeight ??
-          utxo?.block_height ??
-          utxo?.height ??
-          utxo?.block?.height
-        )
+        const h = +(utxo?.blockHeight ?? utxo?.block_height ?? utxo?.height ?? utxo?.block?.height)
         return Number.isFinite(h) && (min === null || h < min) ? h : min
       }, null)
 
       const response = await (window as any).walletApi.updateMinBlockHeight(
         keystoreFileName,
-        minBlockHeight
+        minBlockHeight,
       )
       if (!response.success) throw new Error('Failed to update min block height')
       store.setMinBlockHeight(minBlockHeight)
@@ -294,10 +305,13 @@ export function useNeptuneWallet() {
       }
 
       const minBlockHeight = toFiniteNumber(response.minBlockHeight || 0)
-      
+
       return minBlockHeight
     } catch (err: any) {
-      await (window as any).logger?.warn('Error loading min block height (will start from 0): ', err.message)
+      await (window as any).logger?.warn(
+        'Error loading min block height (will start from 0): ',
+        err.message,
+      )
       return 0
     }
   }
@@ -310,7 +324,7 @@ export function useNeptuneWallet() {
     } else {
       store.setMinBlockHeight(0)
     }
-    
+
     return await getUtxos()
   }
 
@@ -334,16 +348,6 @@ export function useNeptuneWallet() {
         const cached = await (window as any).walletApi.getCachedUtxosLocal?.()
         const cachedResult = typeof cached === 'string' ? JSON.parse(cached) : cached
         if (cachedResult?.success && Array.isArray(cachedResult.utxos)) {
-          const normalizeUtxo = (u: any) => ({
-            utxoDigest: u.utxo_digest || u.utxoDigest || '',
-            amount: u.amount?.toString?.() ?? '0',
-            blockHeight: toFiniteNumber(u.block_height || u.blockHeight || 0),
-            additionRecord: u.addition_record_hex || u.additionRecord || '',
-            isTimelocked: !!(u.is_timelocked ?? u.isTimelocked),
-            releaseDateMs: u.release_date_ms ?? u.releaseDateMs ?? null,
-            keyType: u.key_type || u.keyType || '',
-            isPending: !!(u.is_pending ?? u.isPending),
-          })
           const cachedUtxos = (cachedResult.utxos || []).map(normalizeUtxo)
           store.setUtxos(cachedUtxos)
           if (Number.isFinite(cachedResult.last_scanned_block)) {
@@ -354,10 +358,10 @@ export function useNeptuneWallet() {
       } catch (e) {
         await (window as any).logger?.warn(
           'Load cached UTXOs failed (continue to scan):',
-          (e as any)?.message || e
+          (e as any)?.message || e,
         )
       }
-      
+
       if (!spendingKey && store.getAddress) {
         throw new Error('Wallet state not fully initialized. Please unlock your wallet.')
       }
@@ -385,7 +389,7 @@ export function useNeptuneWallet() {
 
       let lastScannedBlock: number | null = store.getMinBlockHeight
       let startBlock: number
-      
+
       if (lastScannedBlock === 0) {
         startBlock = DEFAULT_MIN_BLOCK_HEIGHT
       } else if (lastScannedBlock == null) {
@@ -430,17 +434,6 @@ export function useNeptuneWallet() {
       if (!scanResult.success) {
         throw new Error(scanResult.error || 'Scan failed')
       }
-
-      const normalizeUtxo = (u: any) => ({
-        utxoDigest: u.utxo_digest || u.utxoDigest || '',
-        amount: u.amount?.toString?.() ?? '0',
-        blockHeight: toFiniteNumber(u.block_height),
-        additionRecord: u.addition_record_hex,
-        isTimelocked: !!u.is_timelocked,
-        releaseDateMs: u.release_date_ms ?? null,
-        keyType: u.key_type || u.keyType || '',
-        isPending: !!u.is_pending,
-      })
 
       const freshUtxos = (scanResult.utxos || []).map(normalizeUtxo)
       store.setUtxos(freshUtxos)
@@ -520,11 +513,14 @@ export function useNeptuneWallet() {
               spendingKeyHex: keyHex,
               rpcUrl: rpcUrl,
             })
-            const pendingData = typeof pendingResult === 'string' ? JSON.parse(pendingResult) : pendingResult
+            const pendingData =
+              typeof pendingResult === 'string' ? JSON.parse(pendingResult) : pendingResult
             if (pendingData.success) {
               pendingTotal += parseFloat(pendingData.pending_balance || '0') || 0
             }
-          } catch { /* ignore per-key errors */ }
+          } catch {
+            /* ignore per-key errors */
+          }
         }
         pendingBalance = pendingTotal.toFixed(8)
       }
@@ -594,13 +590,15 @@ export function useNeptuneWallet() {
       const response = await (window as any).walletApi.buildTransaction(payload)
       if (!response?.success) {
         await (window as any).logger?.error(
-          `[SendTx] walletApi.buildTransaction returned error: ${response?.error || 'unknown'}`
+          `[SendTx] walletApi.buildTransaction returned error: ${response?.error || 'unknown'}`,
         )
       }
       return response
     } catch (err: any) {
       const errorMessage = err?.message || err?.error || 'Unknown build transaction error'
-      await (window as any).logger?.error(`[SendTx] buildTransaction invoke failed: ${errorMessage}`)
+      await (window as any).logger?.error(
+        `[SendTx] buildTransaction invoke failed: ${errorMessage}`,
+      )
       return { success: false, error: errorMessage }
     }
   }
@@ -616,63 +614,11 @@ export function useNeptuneWallet() {
     }
   }
 
-  const selectUtxos = (
-    utxos: any[],
-    neededAmount: number,
-    fee: number
-  ): { selectedUtxos: any[]; totalAmount: number; spendingKeyHex: string } => {
-    const totalNeeded = neededAmount + fee
-    const now = Date.now()
-    const maxInputsPerTx = 5
-
-    const gen_key    = store.getSpendingKey || ''
-    const dctidh_key = store.getGenerationSpendingKey || ''
-
-    // Only spendable (non-timelocked or expired timelock) UTXOs
-    const spendable = utxos.filter((u) => {
-      if (!!(u.is_pending ?? u.isPending)) return false
-      const isTimelocked = !!(u.is_timelocked ?? u.isTimelocked)
-      if (!isTimelocked) return true
-      const releaseDateMs = u.release_date_ms ?? u.releaseDateMs ?? null
-      return releaseDateMs !== null && releaseDateMs <= now
+  const selectUtxos = (utxos: any[], neededAmount: number, fee: number) =>
+    selectSpendableUtxos(utxos, neededAmount, fee, {
+      genKey: store.getSpendingKey || '',
+      dctidhKey: store.getGenerationSpendingKey || '',
     })
-
-    // Greedily select up to maxInputsPerTx largest UTXOs from a candidate list
-    const trySelect = (candidates: any[]): { selectedUtxos: any[]; totalAmount: number } => {
-      const sorted = [...candidates].sort((a, b) => parseFloat(b.amount || '0') - parseFloat(a.amount || '0'))
-      let total = 0
-      const selected: any[] = []
-      for (const utxo of sorted) {
-        const amt = parseFloat(utxo.amount || '0')
-        if (isNaN(amt) || amt <= 0) continue
-        selected.push(utxo)
-        total += amt
-        if (total >= totalNeeded || selected.length >= maxInputsPerTx) break
-      }
-      return { selectedUtxos: selected, totalAmount: total }
-    }
-
-    // UTXOs without a keyType are legacy dCTIDH entries
-    const dctidh_utxos = spendable.filter(u => !u.keyType || u.keyType === 'dCTIDH')
-    const gen_utxos    = spendable.filter(u => u.keyType === 'Generation')
-
-    const gen_result    = trySelect(gen_utxos)
-    const dctidh_result = trySelect(dctidh_utxos)
-
-    // Prefer Generation if it covers the total; else try dCTIDH
-    if (gen_result.totalAmount >= totalNeeded && gen_key) {
-      return { ...gen_result, spendingKeyHex: gen_key }
-    }
-    if (dctidh_result.totalAmount >= totalNeeded && dctidh_key) {
-      return { ...dctidh_result, spendingKeyHex: dctidh_key }
-    }
-
-    // Neither covers the full amount — return whichever has more (will fail with clear error)
-    if (gen_result.totalAmount >= dctidh_result.totalAmount) {
-      return { ...gen_result, spendingKeyHex: gen_key }
-    }
-    return { ...dctidh_result, spendingKeyHex: dctidh_key || gen_key }
-  }
 
   const clearWallet = () => {
     store.clearWallet()

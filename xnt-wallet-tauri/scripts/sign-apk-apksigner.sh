@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Script to sign the Neptune Wallet APK using apksigner (Android's recommended tool)
-# Usage: ./sign-apk-apksigner.sh [apk-path] [output-path]
+# Usage: scripts/sign-apk-apksigner.sh [apk-path] [output-path]
 
 set -e
 
@@ -13,9 +13,11 @@ NC='\033[0m' # No Color
 
 # Get the script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APK_DIR="$SCRIPT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/release"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)" # the app (xnt-wallet-tauri) root
+APK_DIR="$ROOT/src-tauri/gen/android/app/build/outputs/apk/universal/release"
 UNSIGNED_APK="$APK_DIR/app-universal-release-unsigned.apk"
-KEYSTORE_DIR="$SCRIPT_DIR"
+DEFAULT_APK="$APK_DIR/app-universal-release.apk"
+KEYSTORE_DIR="$ROOT"
 KEYSTORE_FILE="$KEYSTORE_DIR/debug.keystore"
 KEYSTORE_PASSWORD="android"
 KEY_ALIAS="androiddebugkey"
@@ -43,8 +45,14 @@ if [ -z "$APKSIGNER" ]; then
     exit 1
 fi
 
-# Use provided APK path or default
-INPUT_APK="${1:-$UNSIGNED_APK}"
+# Use provided APK path or default (fallback to actual Gradle output name)
+if [ -n "$1" ]; then
+    INPUT_APK="$1"
+elif [ -f "$UNSIGNED_APK" ]; then
+    INPUT_APK="$UNSIGNED_APK"
+else
+    INPUT_APK="$DEFAULT_APK"
+fi
 
 # Output path
 if [ -n "$2" ]; then
@@ -137,7 +145,7 @@ echo ""
 echo -e "${GREEN}✓ Signed APK ready: $OUTPUT_APK${NC}"
 echo ""
 echo "You can now install it using:"
-echo "  ./install-apk.sh $OUTPUT_APK"
+echo "  scripts/install-apk.sh $OUTPUT_APK"
 echo "  or"
 echo "  adb install $OUTPUT_APK"
 

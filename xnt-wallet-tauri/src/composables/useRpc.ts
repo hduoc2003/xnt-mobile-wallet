@@ -26,7 +26,7 @@ export function useRpc() {
           throw new Error(result.error || 'Failed to save endpoint')
         }
       }
-      
+
       store.setRpcUrl(endpoint || null)
     } catch (err: any) {
       await (window as any).logger?.error('Error saving RPC endpoint')
@@ -39,4 +39,3 @@ export function useRpc() {
     saveRpcEndpoint,
   }
 }
-

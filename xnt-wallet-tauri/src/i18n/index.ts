@@ -16,4 +16,3 @@ const i18n = createI18n<[MessageSchema], 'en' | 'jp'>({
 })
 
 export default i18n
-

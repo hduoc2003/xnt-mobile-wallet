@@ -1,17 +1,12 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-export type AuthState =
-  | 'welcome'
-  | 'create'
-  | 'recovery'
-  | 'confirm'
-  | 'complete'
+export type AuthState = 'welcome' | 'create' | 'recovery' | 'confirm' | 'complete'
 
 export const useAuthStore = defineStore('auth', () => {
   const currentState = ref<AuthState>('welcome')
   const previousState = ref<AuthState | null>(null)
-  const showBackButton  = ref(false)
+  const showBackButton = ref(false)
   const handleBackAction = ref<(() => void) | null>(null)
 
   const getCurrentState = computed(() => currentState.value)

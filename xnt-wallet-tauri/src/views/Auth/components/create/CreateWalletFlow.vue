@@ -75,13 +75,13 @@ const handleAccessWallet = async () => {
     clearTransactions()
 
     await nextTick()
-    
+
     if (!neptuneStore.hasWallet && !neptuneStore.getKeystoreFileName) {
       throw new Error('Wallet state not properly initialized')
     }
-    
-    await new Promise(resolve => setTimeout(resolve, 100))
-    
+
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
     emit('accessWallet')
   } catch (err) {
     console.error('Failed to create keystore:', err)

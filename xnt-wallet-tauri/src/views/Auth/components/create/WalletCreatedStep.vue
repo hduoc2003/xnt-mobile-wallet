@@ -45,9 +45,7 @@ onMounted(() => {
           </CardContent>
         </Card>
 
-        <Card
-          class="border-2 border-green-500/20 bg-linear-to-br from-green-500/5 to-transparent"
-        >
+        <Card class="border-2 border-green-500/20 bg-linear-to-br from-green-500/5 to-transparent">
           <CardContent class="flex items-center gap-4 p-4">
             <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-green-500/10">
               <Lock :size="24" class="text-green-600" />

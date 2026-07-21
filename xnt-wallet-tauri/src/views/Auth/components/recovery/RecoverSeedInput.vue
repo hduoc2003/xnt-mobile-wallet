@@ -24,7 +24,7 @@ const handleInput = (index: number, value: string) => {
   seedWords.value[index] = value.trim().toLowerCase()
   emit(
     'update:words',
-    seedWords.value.filter((w) => w.trim())
+    seedWords.value.filter((w) => w.trim()),
   )
 
   // Auto-focus next input on space or enter
@@ -50,7 +50,7 @@ const handleKeyDown = (event: KeyboardEvent, index: number) => {
 const handlePaste = (event: ClipboardEvent) => {
   event.preventDefault()
   emit('update:valid', true)
-  
+
   const pastedData = event.clipboardData?.getData('text') || ''
   const words = pastedData
     .trim()
@@ -64,7 +64,7 @@ const handlePaste = (event: ClipboardEvent) => {
   seedWords.value = filledWords
   emit(
     'update:words',
-    words.filter((w) => w.trim())
+    words.filter((w) => w.trim()),
   )
 }
 
@@ -90,7 +90,9 @@ defineExpose({
     <!-- Seed Input Grid -->
     <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
       <div v-for="(word, i) in seedWords" :key="i" class="relative">
-        <span class="absolute left-3 top-1/2 z-10 -translate-y-1/2 text-xs font-bold text-muted-foreground">
+        <span
+          class="absolute left-3 top-1/2 z-10 -translate-y-1/2 text-xs font-bold text-muted-foreground"
+        >
           {{ i + 1 }}.
         </span>
         <Input
@@ -103,9 +105,9 @@ defineExpose({
           spellcheck="false"
           :placeholder="`Word ${i + 1}`"
           class="h-11 pl-9 text-base font-medium"
-          :class="{ 
+          :class="{
             'border-destructive focus-visible:ring-destructive': !props.valid,
-            'border-green-500/50 bg-green-500/5': word && props.valid
+            'border-green-500/50 bg-green-500/5': word && props.valid,
           }"
           maxlength="24"
           @input="handleInput(i, ($event.target as HTMLInputElement).value)"

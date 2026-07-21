@@ -1,8 +1,7 @@
 import request from './request'
 import { invoke } from '@tauri-apps/api/core'
 
-const isTauriEnv =
-  typeof window !== 'undefined' && '__TAURI_INTERNALS__' in (window as any)
+const isTauriEnv = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in (window as any)
 
 export const callJsonRpc = async (method: string, params: any = []) => {
   const requestData = {

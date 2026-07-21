@@ -22,9 +22,8 @@ defineEmits<{
       </div>
     </div>
 
-    <Button variant="outline" size="icon" @click="$emit('refresh')" :disabled="loading">
+    <Button variant="outline" size="icon" :disabled="loading" @click="$emit('refresh')">
       <RefreshCw :class="['size-4', loading && 'animate-spin']" />
     </Button>
   </div>
 </template>
-

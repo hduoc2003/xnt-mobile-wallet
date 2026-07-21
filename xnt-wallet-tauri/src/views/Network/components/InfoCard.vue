@@ -9,9 +9,7 @@ import { Activity } from 'lucide-vue-next'
         <Activity class="size-4 text-blue-600 dark:text-blue-400" />
       </div>
       <div class="flex-1 space-y-1">
-        <p class="text-sm font-medium text-blue-900 dark:text-blue-100">
-          Auto-Refresh
-        </p>
+        <p class="text-sm font-medium text-blue-900 dark:text-blue-100">Auto-Refresh</p>
         <p class="text-xs text-blue-700 dark:text-blue-300">
           Network data updates automatically every 60 seconds
         </p>
@@ -19,4 +17,3 @@ import { Activity } from 'lucide-vue-next'
     </CardContent>
   </Card>
 </template>
-

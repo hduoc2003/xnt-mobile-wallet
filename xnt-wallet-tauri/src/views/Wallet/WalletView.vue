@@ -19,7 +19,7 @@ const loading = ref(false)
 const loadWalletData = async () => {
   try {
     loading.value = true
-    
+
     if (neptuneStore.getKeystoreFileName && !neptuneStore.hasWallet) {
       await checkKeystore()
       if (!neptuneStore.hasWallet) {
@@ -27,7 +27,7 @@ const loadWalletData = async () => {
         return
       }
     }
-    
+
     await getUtxos()
     const result = await getBalance()
     availableBalance.value = result?.balance ?? '0'
@@ -35,13 +35,13 @@ const loadWalletData = async () => {
   } catch (error: any) {
     const errorMsg = error?.message || 'Failed to load wallet data'
     console.error('Failed to load wallet data:', error)
-    
+
     if (errorMsg.includes('view key') && neptuneStore.getKeystoreFileName) {
       toast.error('Please unlock your wallet')
       router.push({ name: 'auth' })
       return
     }
-    
+
     toast.error(errorMsg)
   } finally {
     loading.value = false

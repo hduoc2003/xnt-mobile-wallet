@@ -1,0 +1,8 @@
+dist
+node_modules
+public
+src-tauri/target
+src-tauri/gen
+components.d.ts
+package-lock.json
+*.md

@@ -5,21 +5,21 @@ export function useAuthRouting() {
 
   const goToCreate = () => {
     if ((window as any).logger) {
-      (window as any).logger.info('[useAuthRouting] Navigating to create')
+      ;(window as any).logger.info('[useAuthRouting] Navigating to create')
     }
     authStore.goToCreate()
   }
 
   const goToRecover = () => {
     if ((window as any).logger) {
-      (window as any).logger.info('[useAuthRouting] Navigating to recovery')
+      ;(window as any).logger.info('[useAuthRouting] Navigating to recovery')
     }
     authStore.goToRecover()
   }
 
   const goBackToWelcome = () => {
     if ((window as any).logger) {
-      (window as any).logger.info('[useAuthRouting] Navigating to welcome')
+      ;(window as any).logger.info('[useAuthRouting] Navigating to welcome')
     }
     authStore.goToWelcome()
   }

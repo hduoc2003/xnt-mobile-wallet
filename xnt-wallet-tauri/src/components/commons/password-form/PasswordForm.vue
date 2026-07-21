@@ -61,21 +61,19 @@ const passwordStrength = computed(() => {
 // Custom password schema with strength validation
 const createPasswordSchema = () => {
   let schema = z.string().min(1, 'Password is required')
-  
+
   if (props.validateFormat) {
-    schema = schema
-      .min(8, 'Password must be at least 8 characters')
-      .refine((val) => {
-        const checks = {
-          uppercase: /[A-Z]/.test(val),
-          lowercase: /[a-z]/.test(val),
-          number: /[0-9]/.test(val),
-        }
-        const strength = Object.values(checks).filter(Boolean).length
-        return strength >= 2 // Medium level minimum
-      }, 'Password is too weak. Use uppercase, lowercase, and numbers.')
+    schema = schema.min(8, 'Password must be at least 8 characters').refine((val) => {
+      const checks = {
+        uppercase: /[A-Z]/.test(val),
+        lowercase: /[a-z]/.test(val),
+        number: /[0-9]/.test(val),
+      }
+      const strength = Object.values(checks).filter(Boolean).length
+      return strength >= 2 // Medium level minimum
+    }, 'Password is too weak. Use uppercase, lowercase, and numbers.')
   }
-  
+
   return schema
 }
 
@@ -116,17 +114,19 @@ function isInvalid(field: any) {
               />
               <Input
                 :id="field.name"
-                :name="field.name"
                 v-model="field.state.value"
+                :name="field.name"
                 :type="showPassword ? 'text' : 'password'"
                 :placeholder="placeholder"
                 class="h-12 pl-11 pr-11 text-base"
                 :class="{ 'border-destructive': error || isInvalid(field) }"
                 :autocomplete="autocomplete"
                 @blur="field.handleBlur"
-                @input="(e: Event) => {
-                  field.handleChange((e.target as HTMLInputElement).value)
-                }"
+                @input="
+                  (e: Event) => {
+                    field.handleChange((e.target as HTMLInputElement).value)
+                  }
+                "
               />
               <div
                 class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
@@ -201,4 +201,3 @@ function isInvalid(field: any) {
     </form.Field>
   </form>
 </template>
-

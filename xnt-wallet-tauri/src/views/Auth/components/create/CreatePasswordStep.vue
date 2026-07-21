@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue';
+import { onMounted, onUnmounted } from 'vue'
 import { Logo, PasswordCreationForm } from '@/components'
 import { useAuthStore } from '@/stores'
 
-const authStore = useAuthStore()  
+const authStore = useAuthStore()
 const emit = defineEmits<{
   next: [password: string]
   goToRecover: []

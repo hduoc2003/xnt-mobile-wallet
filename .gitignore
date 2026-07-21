@@ -20,3 +20,5 @@ target
 # Build artifacts
 **/build/
 **/Externals/
+
+.omc/

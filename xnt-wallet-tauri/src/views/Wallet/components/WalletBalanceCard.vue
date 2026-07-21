@@ -36,7 +36,9 @@ const selectedType = computed({
   set: (val: 'dctidh' | 'generation') => neptuneStore.setAddressType(val),
 })
 
-const dctidh_address = computed(() => neptuneStore.getDctidh_address || neptuneStore.getWallet?.address || '')
+const dctidh_address = computed(
+  () => neptuneStore.getDctidh_address || neptuneStore.getWallet?.address || '',
+)
 const generation_address = computed(() => neptuneStore.getGeneration_address || '')
 
 const receiveAddress = computed(() => {
@@ -186,7 +188,9 @@ onUnmounted(() => {
           class="flex items-center gap-2 rounded-lg border border-border bg-muted/50 p-3 transition-colors hover:bg-muted cursor-pointer"
           @click="showCopyModal = true"
         >
-          <code class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-foreground md:text-sm">
+          <code
+            class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-foreground md:text-sm"
+          >
             {{ displayAddress }}
           </code>
           <Button

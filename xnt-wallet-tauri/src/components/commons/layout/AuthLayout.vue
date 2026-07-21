@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { ArrowLeftCommon } from '@/components'
-import { useAuthStore } from '@/stores' 
+import { useAuthStore } from '@/stores'
 
 const authStore = useAuthStore()
 const handleBack = () => {
@@ -19,7 +19,9 @@ const handleBack = () => {
         <ThemeToggle />
       </div>
     </header>
-    <main class="main-content flex-1 overflow-y-auto from-background via-background to-primary/5 pt-10">
+    <main
+      class="main-content flex-1 overflow-y-auto from-background via-background to-primary/5 pt-10"
+    >
       <slot />
     </main>
   </div>

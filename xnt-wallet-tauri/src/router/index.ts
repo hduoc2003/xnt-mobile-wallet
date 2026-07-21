@@ -11,4 +11,11 @@ router.beforeEach((_to, _from, next) => {
   next()
 })
 
+// Log navigation/lazy-load failures (e.g. a route chunk that fails to mount) so
+// they aren't swallowed as bare unhandled rejections.
+router.onError((error: any) => {
+  const stack = error?.stack ? `\n${error.stack}` : ''
+  ;(window as any).logger?.error(`[router] navigation error: ${error?.message || error}${stack}`)
+})
+
 export default router

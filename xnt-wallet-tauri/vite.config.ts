@@ -46,17 +46,6 @@ export default defineConfig(async () => ({
     },
   },
   base: './',
-  css: {
-    preprocessorOptions: {
-      scss: {
-        silenceDeprecations: ['import', 'legacy-js-api'],
-        additionalData: `
-          @import "@/assets/scss/__variables.scss";
-          @import "@/assets/scss/__mixin.scss";
-        `,
-      },
-    },
-  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

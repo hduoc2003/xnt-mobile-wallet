@@ -3034,7 +3034,7 @@ dependencies = [
 
 [[package]]
 name = "neptune-privacy"
-version = "0.2.0"
+version = "0.2.5"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -5485,8 +5485,8 @@ dependencies = [
 
 [[package]]
 name = "tasm-lib"
-version = "1.0.0"
-source = "git+https://github.com/neptuneprivacy/tasm-lib-patch.git?tag=v1.0.1#dd954abf4c894fbbd9edf224bdd58a48a75666e5"
+version = "7.0.0"
+source = "git+https://github.com/neptuneprivacy/tasm-lib?rev=803223357cc7d50ceba68ea1310911639b86f02f#803223357cc7d50ceba68ea1310911639b86f02f"
 dependencies = [
  "anyhow",
  "arbitrary",
@@ -5502,12 +5502,13 @@ dependencies = [
  "strum",
  "tasm-object-derive",
  "triton-vm",
+ "web-time",
 ]
 
 [[package]]
 name = "tasm-object-derive"
-version = "1.0.0"
-source = "git+https://github.com/neptuneprivacy/tasm-lib-patch.git?tag=v1.0.1#dd954abf4c894fbbd9edf224bdd58a48a75666e5"
+version = "7.0.0"
+source = "git+https://github.com/neptuneprivacy/tasm-lib?rev=803223357cc7d50ceba68ea1310911639b86f02f#803223357cc7d50ceba68ea1310911639b86f02f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6313,8 +6314,9 @@ dependencies = [
 
 [[package]]
 name = "triton-air"
-version = "2.0.0"
-source = "git+https://github.com/TritonVM/triton-vm.git?tag=v2.0.0#4f8ab51d92c7f4808d03b4677ed19239e87f3548"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05100018626561a14bdfee44f9e47c767bbec7c645f4707ac5a3541ec648d49f"
 dependencies = [
  "arbitrary",
  "itertools 0.14.0",
@@ -6326,8 +6328,9 @@ dependencies = [
 
 [[package]]
 name = "triton-constraint-builder"
-version = "2.0.0"
-source = "git+https://github.com/TritonVM/triton-vm.git?tag=v2.0.0#4f8ab51d92c7f4808d03b4677ed19239e87f3548"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ceb01697a5d694084a6cb889cd543b86c6f7d8bf972f0f7ccac249a4aae63390"
 dependencies = [
  "itertools 0.14.0",
  "prettyplease",
@@ -6343,8 +6346,9 @@ dependencies = [
 
 [[package]]
 name = "triton-constraint-circuit"
-version = "2.0.0"
-source = "git+https://github.com/TritonVM/triton-vm.git?tag=v2.0.0#4f8ab51d92c7f4808d03b4677ed19239e87f3548"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "961bfa562c091b39f65b8fa0c27890db36ed8968ff9cf1c842db548c76941536"
 dependencies = [
  "arbitrary",
  "itertools 0.14.0",
@@ -6357,8 +6361,9 @@ dependencies = [
 
 [[package]]
 name = "triton-isa"
-version = "2.0.0"
-source = "git+https://github.com/TritonVM/triton-vm.git?tag=v2.0.0#4f8ab51d92c7f4808d03b4677ed19239e87f3548"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee155aabdd118aa503e9bfe46e67c67a46d3c06b57b3ff94fa5a6ebf149e2371"
 dependencies = [
  "arbitrary",
  "get-size2",
@@ -6375,8 +6380,9 @@ dependencies = [
 
 [[package]]
 name = "triton-vm"
-version = "2.0.0"
-source = "git+https://github.com/TritonVM/triton-vm.git?tag=v2.0.0#4f8ab51d92c7f4808d03b4677ed19239e87f3548"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b7f98e447c631135092a38c29a5ba286e77540759560287f6798e2e840a3c79"
 dependencies = [
  "arbitrary",
  "colored",
@@ -6401,6 +6407,7 @@ dependencies = [
  "triton-isa",
  "twenty-first",
  "unicode-width",
+ "web-time",
 ]
 
 [[package]]
@@ -6837,6 +6844,16 @@ name = "web-sys"
 version = "0.3.81"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9367c417a924a74cae129e6a2ae3b47fabb1f8995595ab474029da749a8be120"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "web-time"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -7599,7 +7616,7 @@ dependencies = [
 
 [[package]]
 name = "xnt-rpc-macros"
-version = "0.2.0"
+version = "0.2.5"
 dependencies = [
  "convert_case 0.8.0",
  "quote",

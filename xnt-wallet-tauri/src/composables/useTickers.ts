@@ -6,7 +6,9 @@ export const useTickers = () => {
 
   const fetchXntPrice = async () => {
     try {
-      const { data } = await getXntPrice('https://api.coinmarketcap.com/data-api/v3/cryptocurrency/detail/lite?id=39109')
+      const { data } = await getXntPrice(
+        'https://api.coinmarketcap.com/data-api/v3/cryptocurrency/detail/lite?id=39109',
+      )
       const price = data?.statistics?.price
       tickerStore.setXntPrice(price)
       localStorage.setItem('xntPriceLastFetchTime', Date.now().toString())
@@ -17,6 +19,6 @@ export const useTickers = () => {
   }
 
   return {
-    fetchXntPrice
+    fetchXntPrice,
   }
 }

@@ -43,7 +43,8 @@ echo "Building for Android 64-bit architectures (arm64-v8a, x86_64)..."
 echo "NDK: $ANDROID_NDK_HOME"
 echo "CMake Toolchain: $CMAKE_TOOLCHAIN_FILE"
 
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.." # run from the app (xnt-wallet-tauri) root
 
 echo ""
 echo "Step 1: Building web frontend (Vite)..."
@@ -58,7 +59,7 @@ npm run tauri android build -- --target x86_64
 
 echo ""
 echo "Step 3: Patching WryActivity to remove libc++_shared loading (using static C++ linking)..."
-./patch-wry-activity.sh
+"$SCRIPT_DIR/patch-wry-activity.sh"
 
 echo ""
 echo "Step 4: Assembling release APK + AAB via Gradle (skip rust builds)..."
@@ -86,7 +87,7 @@ fi
 
 echo ""
 echo "Step 5: Signing release AAB..."
-./sign-release.sh "$UNSIGNED_AAB"
+"$SCRIPT_DIR/sign-release.sh" "$UNSIGNED_AAB"
 
 echo ""
 echo "Build + patch + sign complete!"
@@ -94,6 +95,6 @@ echo "  Signed APK (from Gradle signingConfig): $SIGNED_APK"
 echo "  Signed AAB:                               $UNSIGNED_AAB"
 echo ""
 echo "Install APK with:"
-echo "  ./install-apk.sh \"$SIGNED_APK\""
+echo "  scripts/install-apk.sh \"$SIGNED_APK\""
 
 

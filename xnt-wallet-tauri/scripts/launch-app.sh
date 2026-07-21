@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Script to launch Neptune Wallet on an ADB-connected Android device
-# Usage: ./launch-app.sh
+# Usage: scripts/launch-app.sh
 
 set -e
 
@@ -33,7 +33,7 @@ fi
 # Check if app is installed
 if ! adb shell pm list packages | grep -q "$PACKAGE_NAME"; then
     echo -e "${RED}Error: App not installed${NC}"
-    echo "Install it first using: ./install-apk.sh"
+    echo "Install it first using: scripts/install-apk.sh"
     exit 1
 fi
 
@@ -42,7 +42,7 @@ echo "Starting $MAIN_ACTIVITY..."
 if adb shell am start -n "$MAIN_ACTIVITY"; then
     echo -e "${GREEN}✓ App launched successfully!${NC}"
     echo ""
-    echo "View logs with: ./show-logs.sh"
+    echo "View logs with: scripts/show-logs.sh"
 else
     echo -e "${RED}✗ Failed to launch app${NC}"
     exit 1

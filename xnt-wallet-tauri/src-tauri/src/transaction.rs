@@ -9,8 +9,8 @@ use neptune_privacy::protocol::consensus::transaction::transaction_proof::Transa
 use neptune_privacy::protocol::consensus::transaction::validity::collect_lock_scripts::{
     CollectLockScripts, CollectLockScriptsWitness,
 };
-use neptune_privacy::protocol::consensus::transaction::validity::collect_type_scripts::{
-    CollectTypeScripts, CollectTypeScriptsWitness,
+use neptune_privacy::protocol::consensus::transaction::validity::collect_type_scripts_v2::{
+    CollectTypeScriptsV2, CollectTypeScriptsV2Witness,
 };
 use neptune_privacy::protocol::consensus::transaction::validity::kernel_to_outputs::{
     KernelToOutputs, KernelToOutputsWitness,
@@ -582,7 +582,7 @@ async fn produce_proof_collection_in_process(
     let removal_records_integrity_witness = RemovalRecordsIntegrityWitness::from(primitive_witness);
     let collect_lock_scripts_witness = CollectLockScriptsWitness::from(primitive_witness);
     let kernel_to_outputs_witness = KernelToOutputsWitness::from(primitive_witness);
-    let collect_type_scripts_witness = CollectTypeScriptsWitness::from(primitive_witness);
+    let collect_type_scripts_witness = CollectTypeScriptsV2Witness::from(primitive_witness);
     
     let txk_mast_hash = primitive_witness.kernel.mast_hash();
     let txk_mast_hash_as_input = PublicInput::new(txk_mast_hash.reversed().values().to_vec());
@@ -616,9 +616,9 @@ async fn produce_proof_collection_in_process(
     )
     .await?;
     
-    // Prove CollectTypeScripts
+    // Prove CollectTypeScriptsV2
     let collect_type_scripts = prove_in_process(
-        CollectTypeScripts.program(),
+        CollectTypeScriptsV2.program(),
         collect_type_scripts_witness.claim(),
         collect_type_scripts_witness.nondeterminism(),
         max_log2_padded_height,
@@ -637,36 +637,51 @@ async fn produce_proof_collection_in_process(
         lock_scripts_halt.push(proof);
     }
     
-    // Prove type scripts
-    let mut type_scripts_halt = Vec::new();
+    // Prove type scripts (V2: remap legacy TimeLock → TimeLockV2)
+    use neptune_privacy::protocol::consensus::type_scripts::time_lock::TimeLock;
+    use neptune_privacy::protocol::consensus::type_scripts::time_lock_v2::TimeLockV2;
+    use neptune_privacy::protocol::consensus::type_scripts::known_type_scripts::match_type_script_and_generate_witness_v2;
+    let old_timelock_hash = TimeLock.hash();
+    let new_timelock_hash = TimeLockV2.hash();
+    // Collect deduplicated remapped hashes (mirrors CollectTypeScriptsV2 output)
+    let mut remapped_hashes: Vec<Digest> = vec![];
     for tsaw in &primitive_witness.type_scripts_and_witnesses {
-        let type_script_program = tsaw.program.clone();
+        let h = tsaw.program.hash();
+        let remapped = if h == old_timelock_hash { new_timelock_hash } else { h };
+        if !remapped_hashes.contains(&remapped) {
+            remapped_hashes.push(remapped);
+        }
+    }
+    let mut type_scripts_halt = Vec::new();
+    for type_script_hash in &remapped_hashes {
+        let v2_tsaw = match_type_script_and_generate_witness_v2(
+            *type_script_hash,
+            primitive_witness.kernel.clone(),
+            primitive_witness.input_utxos.clone(),
+            primitive_witness.output_utxos.clone(),
+        )
+        .ok_or_else(|| format!("Unknown type script hash: {}", type_script_hash.to_hex()))?;
         let public_input: Vec<_> = [txk_mast_hash, salted_inputs_hash, salted_outputs_hash]
             .into_iter()
             .flat_map(|d| d.reversed().values())
             .collect();
-        let claim = Claim::new(type_script_program.hash()).with_input(public_input);
-        let nondeterminism = tsaw.nondeterminism();
+        let claim = Claim::new(*type_script_hash).with_input(public_input);
         let proof = prove_in_process(
-            type_script_program,
+            v2_tsaw.program.clone(),
             claim,
-            nondeterminism,
+            v2_tsaw.nondeterminism(),
             max_log2_padded_height,
         )
         .await?;
         type_scripts_halt.push(proof);
     }
-    
+
     let lock_script_hashes = primitive_witness
         .lock_scripts_and_witnesses
         .iter()
         .map(|lsaw| lsaw.program.hash())
         .collect();
-    let type_script_hashes = primitive_witness
-        .type_scripts_and_witnesses
-        .iter()
-        .map(|tsaw| tsaw.program.hash())
-        .collect();
+    let type_script_hashes = remapped_hashes;
     
     let merge_bit_mast_path = primitive_witness.kernel.mast_path(
         neptune_privacy::protocol::consensus::transaction::transaction_kernel::TransactionKernelField::MergeBit,

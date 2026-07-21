@@ -16,9 +16,14 @@ const isDark = computed({
 
 <template>
   <div class="flex items-center gap-2">
-    <Sun class="h-4 w-4 text-muted-foreground transition-colors" :class="{ 'text-foreground': !isDark }" />
+    <Sun
+      class="h-4 w-4 text-muted-foreground transition-colors"
+      :class="{ 'text-foreground': !isDark }"
+    />
     <Switch v-model="isDark" />
-    <Moon class="h-4 w-4 text-muted-foreground transition-colors" :class="{ 'text-foreground': isDark }" />
+    <Moon
+      class="h-4 w-4 text-muted-foreground transition-colors"
+      :class="{ 'text-foreground': isDark }"
+    />
   </div>
 </template>
-

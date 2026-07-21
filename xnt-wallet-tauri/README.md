@@ -95,7 +95,7 @@ This project uses the Neptune core library directly in Rust, providing the same 
 
 run script : 
 ```bash
-./build-android.sh
+scripts/build-android.sh
 ```
 
 

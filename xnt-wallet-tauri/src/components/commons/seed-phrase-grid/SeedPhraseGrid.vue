@@ -69,7 +69,11 @@ defineExpose({
               <p class="max-w-sm text-center text-sm font-medium text-muted-foreground">
                 {{ revealMessage }}
               </p>
-              <Button size="lg" class="mt-2 h-12 px-8 text-base font-semibold" @click="handleReveal">
+              <Button
+                size="lg"
+                class="mt-2 h-12 px-8 text-base font-semibold"
+                @click="handleReveal"
+              >
                 <Eye :size="20" class="mr-2" />
                 Reveal Seed Phrase
               </Button>
@@ -84,7 +88,9 @@ defineExpose({
               class="flex items-center gap-2 rounded-lg border-2 border-border bg-muted/30 px-4 py-3 transition-all hover:border-primary/50 hover:bg-muted/50"
             >
               <span class="shrink-0 text-xs font-bold text-muted-foreground">{{ index + 1 }}.</span>
-              <span class="min-w-0 flex-1 select-all wrap-break-words text-base font-semibold text-foreground">
+              <span
+                class="min-w-0 flex-1 select-all wrap-break-words text-base font-semibold text-foreground"
+              >
                 {{ word }}
               </span>
             </div>
@@ -107,4 +113,3 @@ defineExpose({
     </Button>
   </div>
 </template>
-

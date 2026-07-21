@@ -54,7 +54,10 @@ onMounted(async () => {
     // Detect native date/time picker activation so we don't logout during picking
     focusInHandler = (e: FocusEvent) => {
       const target = e.target as HTMLElement
-      if (target instanceof HTMLInputElement && (target.type === 'date' || target.type === 'time')) {
+      if (
+        target instanceof HTMLInputElement &&
+        (target.type === 'date' || target.type === 'time')
+      ) {
         nativePickerActive = true
       }
     }
@@ -93,6 +96,5 @@ onUnmounted(() => {
 
 <template>
   <router-view />
-  <Toaster richColors closeButton :duration="2000" />
+  <Toaster position="top-center" rich-colors :duration="2000" />
 </template>
-  

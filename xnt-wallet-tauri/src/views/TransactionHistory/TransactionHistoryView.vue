@@ -29,19 +29,27 @@ const openExplorer = async (utxoDigest: string) => {
 
 const statusBadgeClass = (status?: string) => {
   switch (status) {
-    case 'confirmed': return 'bg-green-500/15 text-green-600 border-green-500/30'
-    case 'pending':   return 'bg-amber-500/15 text-amber-600 border-amber-500/30'
-    case 'failed':    return 'bg-red-500/15 text-red-600 border-red-500/30'
-    default:          return 'bg-muted text-muted-foreground border-border'
+    case 'confirmed':
+      return 'bg-green-500/15 text-green-600 border-green-500/30'
+    case 'pending':
+      return 'bg-amber-500/15 text-amber-600 border-amber-500/30'
+    case 'failed':
+      return 'bg-red-500/15 text-red-600 border-red-500/30'
+    default:
+      return 'bg-muted text-muted-foreground border-border'
   }
 }
 
 const statusLabel = (status?: string) => {
   switch (status) {
-    case 'confirmed': return 'Confirmed'
-    case 'pending':   return 'Pending'
-    case 'failed':    return 'Failed'
-    default:          return 'Unknown'
+    case 'confirmed':
+      return 'Confirmed'
+    case 'pending':
+      return 'Pending'
+    case 'failed':
+      return 'Failed'
+    default:
+      return 'Unknown'
   }
 }
 
@@ -69,7 +77,10 @@ onMounted(async () => {
       </div>
 
       <!-- Transactions list -->
-      <div v-if="transactions.length === 0" class="flex flex-col items-center justify-center py-16 text-center">
+      <div
+        v-if="transactions.length === 0"
+        class="flex flex-col items-center justify-center py-16 text-center"
+      >
         <History class="mb-4 size-12 text-muted-foreground opacity-50" />
         <p class="text-sm text-muted-foreground">No transactions yet</p>
       </div>

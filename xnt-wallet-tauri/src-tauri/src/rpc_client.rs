@@ -125,25 +125,6 @@ pub async fn get_aocl_leaf_indices(
     Ok(indices)
 }
 
-pub async fn get_utxos_by_receiver(
-    client: &Client,
-    rpc_url: &str,
-    receiver_id_hash: &str,
-    from_block_height: u64,
-    to_block_height: u64,
-) -> Result<Value, String> {
-    call_json_rpc(
-        client,
-        rpc_url,
-        "archival_getUtxosByReceiver",
-        serde_json::json!({
-            "receiverIdHash": receiver_id_hash,
-            "fromBlockHeight": from_block_height,
-            "toBlockHeight": to_block_height
-        }),
-    ).await
-}
-
 pub async fn restore_membership_proof(
     client: &Client,
     rpc_url: &str,

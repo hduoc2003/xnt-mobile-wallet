@@ -55,24 +55,24 @@ const handlePasswordSubmit = async (submittedPassword: string) => {
 
   try {
     isLoading.value = true
-    
+
     const result = await recoverWalletFromSeed(seedPhrase.value)
-    
+
     if (!result.address) {
       throw new Error('Failed to recover wallet: No address returned')
     }
-    
+
     const keystoreFileName = await createKeystore(seedPhrase.value.join(' '), password.value, true)
-    
+
     if (!keystoreFileName) {
       throw new Error('Failed to create keystore')
     }
-    
+
     clearTransactions()
     emit('accessWallet')
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
-    
+
     if (err instanceof Error && err.message.includes('Invalid seed phrase')) {
       isSeedPhraseValid.value = false
       toast.error('Invalid Seed Phrase', {
@@ -98,13 +98,17 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="relative flex min-h-full flex-col bg-linear-to-br from-background via-background to-primary/5 p-4">
+  <div
+    class="relative flex min-h-full flex-col bg-linear-to-br from-background via-background to-primary/5 p-4"
+  >
     <!-- Content Container -->
     <div class="flex flex-1 flex-col items-center justify-center py-4">
       <div class="w-full max-w-md space-y-8">
         <!-- Header -->
         <div class="flex flex-col items-center space-y-4 text-center">
-          <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-primary to-accent shadow-xl">
+          <div
+            class="flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-primary to-accent shadow-xl"
+          >
             <KeyRound :size="32" class="text-primary-foreground" />
           </div>
 
@@ -113,7 +117,11 @@ onUnmounted(() => {
               {{ showPasswordForm ? 'Set Password' : 'Import Wallet' }}
             </h1>
             <p class="text-base text-muted-foreground">
-              {{ showPasswordForm ? 'Secure your recovered wallet' : 'Enter your 18-word recovery phrase' }}
+              {{
+                showPasswordForm
+                  ? 'Secure your recovered wallet'
+                  : 'Enter your 18-word recovery phrase'
+              }}
             </p>
           </div>
         </div>
@@ -133,12 +141,7 @@ onUnmounted(() => {
 
               <!-- Action Buttons -->
               <div class="flex gap-3">
-                <Button
-                  variant="outline"
-                  size="lg"
-                  class="h-12 flex-1 gap-2"
-                  @click="handleCancel"
-                >
+                <Button variant="outline" size="lg" class="h-12 flex-1 gap-2" @click="handleCancel">
                   <ChevronLeft :size="18" />
                   Cancel
                 </Button>
@@ -178,7 +181,10 @@ onUnmounted(() => {
         </Card>
 
         <!-- Footer Info -->
-        <div v-if="!showPasswordForm" class="rounded-xl border border-border/50 bg-muted/30 p-4 backdrop-blur-sm">
+        <div
+          v-if="!showPasswordForm"
+          class="rounded-xl border border-border/50 bg-muted/30 p-4 backdrop-blur-sm"
+        >
           <p class="text-center text-xs text-muted-foreground">
             <Shield :size="14" class="mr-1 inline" />
             Your recovery phrase is never shared and stays on your device

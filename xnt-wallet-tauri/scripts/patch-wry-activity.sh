@@ -3,7 +3,9 @@
 # Script to patch WryActivity.kt to remove libc++_shared loading (using static C++ linking)
 # This needs to be run after each Tauri Android build
 
-WRY_ACTIVITY_FILE="src-tauri/gen/android/app/src/main/java/com/xnt/wallet/generated/WryActivity.kt"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)" # the app (xnt-wallet-tauri) root
+WRY_ACTIVITY_FILE="$ROOT/src-tauri/gen/android/app/src/main/java/com/xnt/wallet/generated/WryActivity.kt"
 
 if [ ! -f "$WRY_ACTIVITY_FILE" ]; then
     echo "Error: WryActivity.kt not found at $WRY_ACTIVITY_FILE"

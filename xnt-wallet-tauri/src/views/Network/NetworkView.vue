@@ -80,7 +80,9 @@ onUnmounted(() => {
       <!-- Loading State -->
       <Card v-if="loading" class="border-2 border-border/50 shadow-xl">
         <CardContent class="flex flex-col items-center justify-center py-16">
-          <div class="mb-4 size-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <div
+            class="mb-4 size-12 animate-spin rounded-full border-4 border-primary border-t-transparent"
+          />
           <p class="text-sm text-muted-foreground">Loading network data...</p>
         </CardContent>
       </Card>
@@ -105,16 +107,12 @@ onUnmounted(() => {
 
       <template v-else>
         <!-- Network Data -->
-        <NetworkInfoCard
-          :network="network"
-          :block-height="blockHeight"
-          :last-update="lastUpdate"
-        />
+        <NetworkInfoCard :network="network" :block-height="blockHeight" :last-update="lastUpdate" />
       </template>
 
-        <RpcEndpointCard @endpoint-updated="loadNetworkData" />
+      <RpcEndpointCard @endpoint-updated="loadNetworkData" />
 
-        <InfoCard />
+      <InfoCard />
     </div>
   </div>
 </template>

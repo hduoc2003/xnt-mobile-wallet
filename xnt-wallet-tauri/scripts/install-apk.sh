@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Script to install the Neptune Wallet APK to an ADB-connected Android device
-# Usage: ./install-apk.sh [apk-path]
+# Usage: scripts/install-apk.sh [apk-path]
 
 set -e
 
@@ -13,9 +13,17 @@ NC='\033[0m' # No Color
 
 # Get the script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APK_DIR="$SCRIPT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/release"
-APK_NAME="app-universal-release-signed.apk"
-DEFAULT_APK="$APK_DIR/$APK_NAME"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)" # the app (xnt-wallet-tauri) root
+APK_DIR="$ROOT/src-tauri/gen/android/app/build/outputs/apk/universal/release"
+APK_NAME_SIGNED="app-universal-release-signed.apk"
+APK_NAME_GRADLE="app-universal-release.apk"
+DEFAULT_APK=""
+
+if [ -f "$APK_DIR/$APK_NAME_SIGNED" ]; then
+    DEFAULT_APK="$APK_DIR/$APK_NAME_SIGNED"
+else
+    DEFAULT_APK="$APK_DIR/$APK_NAME_GRADLE"
+fi
 
 # Use provided APK path or default
 APK_PATH="${1:-$DEFAULT_APK}"
@@ -32,16 +40,26 @@ echo "================================"
 echo "APK: $APK_PATH"
 echo ""
 
-# Check if adb is available
-if ! command -v adb &> /dev/null; then
+# Find adb
+ADB=""
+if command -v adb &> /dev/null; then
+    ADB="adb"
+elif [ -n "$ANDROID_HOME" ] && [ -x "$ANDROID_HOME/platform-tools/adb" ]; then
+    ADB="$ANDROID_HOME/platform-tools/adb"
+elif [ -x "$HOME/Library/Android/sdk/platform-tools/adb" ]; then
+    ADB="$HOME/Library/Android/sdk/platform-tools/adb"
+fi
+
+if [ -z "$ADB" ]; then
     echo -e "${RED}Error: adb command not found${NC}"
     echo "Please install Android SDK Platform Tools and add it to your PATH"
+    echo "Expected path: $HOME/Library/Android/sdk/platform-tools/adb"
     exit 1
 fi
 
 # Check for connected devices
 echo "Checking for connected devices..."
-DEVICES=$(adb devices | grep -v "List" | grep "device$" | wc -l | tr -d ' ')
+DEVICES=$("$ADB" devices | grep -v "List" | grep "device$" | wc -l | tr -d ' ')
 
 if [ "$DEVICES" -eq 0 ]; then
     echo -e "${RED}Error: No Android devices connected${NC}"
@@ -57,7 +75,7 @@ fi
 
 # Show connected devices
 echo -e "${GREEN}Found $DEVICES connected device(s):${NC}"
-adb devices | grep -v "List" | grep "device$" | while read -r line; do
+"$ADB" devices | grep -v "List" | grep "device$" | while read -r line; do
     DEVICE_ID=$(echo "$line" | awk '{print $1}')
     echo "  - $DEVICE_ID"
 done
@@ -78,9 +96,9 @@ echo ""
 # Uninstall existing app if present (optional - comment out if you want to keep data)
 PACKAGE_NAME="com.draplydo.neptune_wallet_tauri"
 echo "Checking for existing installation..."
-if adb shell pm list packages | grep -q "$PACKAGE_NAME"; then
+if "$ADB" shell pm list packages | grep -q "$PACKAGE_NAME"; then
     echo -e "${YELLOW}Found existing installation. Uninstalling...${NC}"
-    adb uninstall "$PACKAGE_NAME" || echo "Uninstall failed (may not be installed)"
+    "$ADB" uninstall "$PACKAGE_NAME" || echo "Uninstall failed (may not be installed)"
     echo ""
 fi
 
@@ -110,26 +128,26 @@ fi
 
 # Install the APK
 echo -e "${GREEN}Installing APK...${NC}"
-if adb install -r "$APK_PATH"; then
+if "$ADB" install -r "$APK_PATH"; then
     echo ""
     echo -e "${GREEN}✓ Installation successful!${NC}"
     echo ""
     echo "You can now:"
     echo "1. Launch the app from your device"
-    echo "2. View logs using: ./show-logs.sh"
-    echo "3. Launch the app using: ./launch-app.sh"
+    echo "2. View logs using: scripts/show-logs.sh"
+    echo "3. Launch the app using: scripts/launch-app.sh"
 else
     echo ""
     echo -e "${RED}✗ Installation failed${NC}"
     echo ""
     echo "Common issues:"
-    echo "- APK not signed (try: ./sign-apk.sh $APK_PATH)"
+    echo "- APK not signed (try: scripts/sign-apk.sh $APK_PATH)"
     echo "- Device storage full"
     echo "- Insufficient permissions"
-    echo "- Try: adb install -r -d $APK_PATH"
+    echo "- Try: $ADB install -r -d $APK_PATH"
     echo ""
     echo "To sign the APK first, run:"
-    echo "  ./sign-apk.sh $APK_PATH"
+    echo "  scripts/sign-apk.sh $APK_PATH"
     exit 1
 fi
 

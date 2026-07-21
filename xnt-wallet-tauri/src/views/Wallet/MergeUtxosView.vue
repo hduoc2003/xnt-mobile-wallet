@@ -33,15 +33,14 @@ const isUtxoTimelocked = (utxo: Utxo) => {
   return releaseMs > now
 }
 
-
 // Use additionRecord as the unique key.
 const utxoKey = (utxo: Utxo) => utxo.additionRecord
 
-const isSelected = (utxo: Utxo) =>
-  selectedUtxos.value.some((u) => utxoKey(u) === utxoKey(utxo))
+const isSelected = (utxo: Utxo) => selectedUtxos.value.some((u) => utxoKey(u) === utxoKey(utxo))
 
 const isDisabled = (utxo: Utxo) => {
   if (isUtxoTimelocked(utxo)) return true
+  if (utxo.isPending) return true
   if (isSelected(utxo)) return false
   return selectedUtxos.value.length >= MAX_SELECT
 }
@@ -56,19 +55,20 @@ const toggleUtxo = (utxo: Utxo) => {
 }
 
 const totalSelected = computed(() =>
-  selectedUtxos.value.reduce((s, u) => s + parseFloat(u.amount || '0'), 0)
+  selectedUtxos.value.reduce((s, u) => s + parseFloat(u.amount || '0'), 0),
 )
 
 const netAmount = computed(() => totalSelected.value - parseFloat(fee.value || '0'))
 
 // Per-input spending key hex — one entry per selected UTXO, matched by key type.
 // The backend accepts this array to unlock mixed-key inputs (Generation + dCTIDH).
+// NOTE: store.getSpendingKey = Generation key; store.getGenerationSpendingKey = dCTIDH key.
 const spendingKeyHexes = computed(() =>
   selectedUtxos.value.map((u) =>
     u.keyType === 'Generation'
-      ? (store.getGenerationSpendingKey ?? store.getSpendingKey ?? '')
-      : (store.getSpendingKey ?? '')
-  )
+      ? (store.getSpendingKey ?? store.getGenerationSpendingKey ?? '')
+      : (store.getGenerationSpendingKey ?? store.getSpendingKey ?? ''),
+  ),
 )
 
 // Primary key for the required spendingKeyHex field (used only for change address
@@ -77,14 +77,12 @@ const spendingKeyHexes = computed(() =>
 const primarySpendingKeyHex = computed(() => {
   const firstKeyType = selectedUtxos.value[0]?.keyType || 'dCTIDH'
   return firstKeyType === 'Generation'
-    ? (store.getGenerationSpendingKey ?? store.getSpendingKey)
-    : (store.getSpendingKey ?? store.getGenerationSpendingKey)
+    ? (store.getSpendingKey ?? store.getGenerationSpendingKey)
+    : (store.getGenerationSpendingKey ?? store.getSpendingKey)
 })
 
 // Merge output always goes to the dCTIDH address.
-const ownAddress = computed(
-  () => store.getDctidh_address ?? store.getAddress
-)
+const ownAddress = computed(() => store.getDctidh_address ?? store.getAddress)
 
 const isFeeValid = computed(() => {
   if (!fee.value) return false
@@ -104,7 +102,7 @@ const isFormValid = computed(
     selectedUtxos.value.length >= 1 &&
     isFeeValid.value &&
     netAmount.value > 0 &&
-    !sendLoading.value
+    !sendLoading.value,
 )
 
 const formatDecimal = (value: string) => {
@@ -152,9 +150,7 @@ const handleConfirmMerge = async () => {
 
     const inputAdditionRecords = selectedUtxos.value.map(
       (utxo) =>
-        (utxo as any).addition_record_hex ||
-        utxo.additionRecord ||
-        (utxo as any).addition_record
+        (utxo as any).addition_record_hex || utxo.additionRecord || (utxo as any).addition_record,
     )
 
     const netStr = netAmount.value.toFixed(8)
@@ -216,12 +212,10 @@ onMounted(async () => {
   try {
     loading.value = true
     const result = await getUtxos()
-    const utxos =
-      result?.result?.utxos ||
-      result?.utxos ||
-      store.getUtxos ||
-      []
-    allUtxos.value = Array.isArray(utxos) ? utxos : []
+    const utxos = result?.result?.utxos || result?.utxos || store.getUtxos || []
+    allUtxos.value = (Array.isArray(utxos) ? utxos : []).filter(
+      (u: any) => !(u.isPending ?? u.is_pending),
+    )
   } catch (error) {
     toast.error('Failed to load UTXOs')
   } finally {
@@ -254,9 +248,7 @@ onMounted(async () => {
         </CardHeader>
         <CardContent class="space-y-4">
           <div class="space-y-2">
-            <Label for="fee">
-              Priority Fee <span class="text-destructive">*</span>
-            </Label>
+            <Label for="fee"> Priority Fee <span class="text-destructive">*</span> </Label>
             <Input
               id="fee"
               v-model="fee"
@@ -295,7 +287,9 @@ onMounted(async () => {
         <CardContent>
           <!-- Loading -->
           <div v-if="loading" class="flex items-center justify-center py-8">
-            <div class="size-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            <div
+              class="size-8 animate-spin rounded-full border-4 border-primary border-t-transparent"
+            />
           </div>
 
           <!-- Empty -->
@@ -328,7 +322,7 @@ onMounted(async () => {
                 @change.stop="toggleUtxo(utxo)"
                 @click.stop
               />
-                <div class="min-w-0 flex-1 space-y-1">
+              <div class="min-w-0 flex-1 space-y-1">
                 <div class="flex items-center gap-2 flex-wrap">
                   <code class="break-all font-mono text-xs text-foreground">
                     {{ (utxo as any).utxoDigest }}

@@ -43,7 +43,6 @@ const handleSubmitPassword = async (password: string) => {
     isLoading.value = false
   }
 }
-
 </script>
 
 <template>
