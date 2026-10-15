@@ -615,11 +615,17 @@ export function useNeptuneWallet() {
     }
   }
 
-  const selectUtxos = (utxos: any[], neededAmount: number, fee: number) =>
-    selectSpendableUtxos(utxos, neededAmount, fee, {
-      genKey: store.getSpendingKey || '',
-      dctidhKey: store.getGenerationSpendingKey || '',
-    })
+  const selectUtxos = (utxos: any[], neededAmount: number, fee: number, maxInputs: number) =>
+    selectSpendableUtxos(
+      utxos,
+      neededAmount,
+      fee,
+      {
+        genKey: store.getSpendingKey || '',
+        dctidhKey: store.getGenerationSpendingKey || '',
+      },
+      maxInputs,
+    )
 
   const clearWallet = () => {
     store.clearWallet()

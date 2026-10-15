@@ -1,12 +1,13 @@
 import { ref, onActivated, onDeactivated, onUnmounted } from 'vue'
 import type { BridgeDepositRecord } from '@/types'
-import { BRIDGE_POLLING_INTERVAL, MAX_INPUTS_PER_TX, toAtomicUnits } from '@/utils'
+import { BRIDGE_POLLING_INTERVAL, toAtomicUnits } from '@/utils'
 import { useNeptuneWallet } from './useNeptuneWallet'
 
 export interface BridgeDepositForm {
   midenAddress: string
   amount: string
   fee: string
+  maxInputs: number
 }
 
 /** Text of a JSON-RPC error object (`{ code, message, data? }`) or any other thrown value. */
@@ -71,7 +72,7 @@ export const useBridgeDeposit = () => {
   const submitDeposit = async (form: BridgeDepositForm) => {
     const utxosResult = await getUtxos()
     const utxos = utxosResult?.result?.utxos || utxosResult?.utxos || []
-    const selection = selectUtxos(utxos, Number(form.amount), Number(form.fee))
+    const selection = selectUtxos(utxos, Number(form.amount), Number(form.fee), form.maxInputs)
     if (selection.selectedUtxos.length === 0) {
       throw new Error(
         'No spendable UTXOs: wait for your pending transaction to confirm or drop, then try again',
@@ -80,7 +81,7 @@ export const useBridgeDeposit = () => {
     const needed = toAtomicUnits(form.amount) + toAtomicUnits(form.fee)
     if (toAtomicUnits(selection.totalAmount) < needed) {
       throw new Error(
-        `Your ${MAX_INPUTS_PER_TX} largest spendable UTXOs hold ${selection.totalAmount} XNT; amount + fee is ${needed / 1e8} XNT`,
+        `Your ${form.maxInputs} largest spendable UTXOs hold ${selection.totalAmount} XNT; amount + fee is ${needed / 1e8} XNT`,
       )
     }
 

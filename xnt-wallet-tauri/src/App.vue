@@ -5,7 +5,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { Toaster } from '@/components/ui/sonner'
 import { useNeptuneWallet } from '@/composables'
 import { useNeptuneStore } from '@/stores'
-import { DESKTOP_IDLE_LOCK_MS } from '@/utils'
+import { DESKTOP_IDLE_LOCK_MS, IS_MOBILE } from '@/utils'
 
 const router = useRouter()
 const neptuneStore = useNeptuneStore()
@@ -21,8 +21,6 @@ let focusInHandler: ((e: FocusEvent) => void) | null = null
 
 // Phones lock when the app goes to the background; desktops after a quiet spell instead,
 // since any click on another window would otherwise lock them.
-const platform = import.meta.env.TAURI_ENV_PLATFORM
-const IS_MOBILE = platform === 'android' || platform === 'ios'
 const ACTIVITY_EVENTS = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'] as const
 let idleTimer: ReturnType<typeof setTimeout> | undefined
 let lastActivityMs = Date.now()

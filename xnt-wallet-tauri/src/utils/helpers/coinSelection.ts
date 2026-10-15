@@ -1,6 +1,3 @@
-/** Maximum number of inputs a single transaction may combine. */
-export const MAX_INPUTS_PER_TX = 5
-
 /**
  * Converts a decimal XNT value to integer atomic units (XNT has 8 decimal
  * places). Selection and balance math must run on these integers: comparing
@@ -30,13 +27,14 @@ export interface CoinSelection {
  * Mixed Generation + dCTIDH inputs are supported by the backend via per-input
  * spending keys, so selection is intentionally not restricted to a single key
  * type. This keeps it consistent with the "max sendable" figure, which likewise
- * sums the top {@link MAX_INPUTS_PER_TX} UTXOs regardless of key type.
+ * sums the top `maxInputs` UTXOs regardless of key type.
  */
 export function selectSpendableUtxos(
   utxos: any[],
   neededAmount: number,
   fee: number,
   keys: SpendingKeys,
+  maxInputs: number,
 ): CoinSelection {
   const neededAtomic = toAtomicUnits(neededAmount) + toAtomicUnits(fee)
   const now = Date.now()
@@ -66,7 +64,7 @@ export function selectSpendableUtxos(
     if (!keyForUtxo(utxo)) continue
     selected.push(utxo)
     totalAtomic += amtAtomic
-    if (totalAtomic >= neededAtomic || selected.length >= MAX_INPUTS_PER_TX) break
+    if (totalAtomic >= neededAtomic || selected.length >= maxInputs) break
   }
 
   const spendingKeyHexes = selected.map(keyForUtxo)

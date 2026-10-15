@@ -4,9 +4,10 @@ import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { ArrowLeft, ArrowRightLeft } from 'lucide-vue-next'
 import { useBridgeDeposit, useBridgeFees, useFormat } from '@/composables'
+import { MaxInputsControl } from '@/components/commons'
 import {
   DEFAULT_FEE,
-  MAX_INPUTS_PER_TX,
+  DEFAULT_MAX_INPUTS,
   MIN_BRIDGE_AMOUNT,
   fromBaseUnits,
   isBridgeDepositInProgress,
@@ -25,6 +26,7 @@ const inProgress = computed(() => deposits.value.filter(isBridgeDepositInProgres
 const midenAddress = ref('')
 const amount = ref('')
 const fee = ref(DEFAULT_FEE)
+const maxInputs = ref(DEFAULT_MAX_INPUTS)
 const submitting = ref(false)
 
 // XNT has 8 decimals; anything else would be rounded or rejected by the backend.
@@ -68,7 +70,12 @@ const handleSubmit = async () => {
   if (!isFormValid.value) return
   submitting.value = true
   try {
-    await submitDeposit({ midenAddress: midenAddress.value, amount: amount.value, fee: fee.value })
+    await submitDeposit({
+      midenAddress: midenAddress.value,
+      amount: amount.value,
+      fee: fee.value,
+      maxInputs: maxInputs.value,
+    })
     toast.success('Deposit submitted', { description: 'WXNT is minted after the deposit is mined' })
     amount.value = ''
   } catch (error: unknown) {
@@ -183,9 +190,10 @@ onActivated(async () => {
             </p>
           </div>
 
+          <MaxInputsControl v-model="maxInputs" :disabled="submitting" />
+
           <p class="text-xs text-muted-foreground">
-            The deposit is proven on this device, which can take a minute. Uses at most
-            {{ MAX_INPUTS_PER_TX }} UTXOs.
+            The deposit is proven on this device, which can take a minute.
           </p>
 
           <Button
