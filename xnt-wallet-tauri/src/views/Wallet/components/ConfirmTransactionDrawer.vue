@@ -28,7 +28,7 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
-const { formatHash, formatXnt } = useFormat()
+const { formatAddress, formatXnt } = useFormat()
 
 const isOpen = computed({
   get: () => props.open,
@@ -61,9 +61,10 @@ const handleCancel = () => {
           <div class="space-y-3">
             <Label class="text-sm font-medium text-muted-foreground">Recipient Address</Label>
             <div
-              class="break-all rounded-lg border border-border bg-muted/50 p-4 font-mono text-sm"
+              class="rounded-lg border border-border bg-muted/50 p-4 font-mono text-sm"
+              :title="props.recipientAddress"
             >
-              {{ formatHash(props.recipientAddress) }}
+              {{ formatAddress(props.recipientAddress) }}
               <CopyButton :value="props.recipientAddress" label="Address" />
             </div>
           </div>

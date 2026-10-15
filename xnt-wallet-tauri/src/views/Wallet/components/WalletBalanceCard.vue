@@ -17,7 +17,7 @@ const props = withDefaults(defineProps<Props>(), {
   loading: false,
 })
 
-const { formatAmount, formatHash, formatXnt } = useFormat()
+const { formatAmount, formatAddress, formatXnt } = useFormat()
 const neptuneStore = useNeptuneStore()
 const tickerStore = useTickerStore()
 const isCopied = ref(false)
@@ -38,24 +38,18 @@ const selectedType = computed({
   set: (val: 'dctidh' | 'generation') => neptuneStore.setAddressType(val),
 })
 
-const dctidh_address = computed(
-  () => neptuneStore.getDctidh_address || neptuneStore.getWallet?.address || '',
+const receiveAddress = computed(() =>
+  selectedType.value === 'generation'
+    ? neptuneStore.getGeneration_address
+    : neptuneStore.getDctidh_address,
 )
-const generation_address = computed(() => neptuneStore.getGeneration_address || '')
 
-const receiveAddress = computed(() => {
-  if (selectedType.value === 'generation') return generation_address.value
-  return dctidh_address.value
-})
-
-const displayAddress = computed(() => {
-  if (selectedType.value === 'generation') {
-    return formatHash(generation_address.value)
-  }
-  return dctidh_address.value
-})
+const displayAddress = computed(() =>
+  receiveAddress.value === null ? 'Address unavailable' : formatAddress(receiveAddress.value),
+)
 
 const handleCopyAddress = async () => {
+  if (receiveAddress.value === null) return
   try {
     await navigator.clipboard.writeText(receiveAddress.value)
     isCopied.value = true
@@ -69,6 +63,7 @@ const handleCopyAddress = async () => {
 }
 
 const handleCopyFromModal = async () => {
+  if (receiveAddress.value === null) return
   try {
     await navigator.clipboard.writeText(receiveAddress.value)
     isCopied.value = true
@@ -192,7 +187,7 @@ onUnmounted(() => {
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-transparent text-muted-foreground hover:bg-muted',
               ]"
-              :disabled="!generation_address"
+              :disabled="neptuneStore.getGeneration_address === null"
               @click="selectedType = 'generation'"
             >
               Generation
@@ -203,7 +198,7 @@ onUnmounted(() => {
         <!-- Clickable address box -->
         <div
           class="flex items-center gap-2 rounded-lg border border-border bg-muted/50 p-3 transition-colors hover:bg-muted cursor-pointer"
-          @click="showCopyModal = true"
+          @click="showCopyModal = receiveAddress !== null"
         >
           <code
             class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-foreground md:text-sm"

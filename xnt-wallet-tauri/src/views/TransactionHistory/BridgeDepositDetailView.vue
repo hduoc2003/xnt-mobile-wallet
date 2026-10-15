@@ -18,7 +18,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const { deposits, refreshError, load, refresh } = useBridgeDeposit()
-const { formatXnt } = useFormat()
+const { formatAddress, formatXnt } = useFormat()
 const { fees, loadFees } = useBridgeFees()
 
 /** WXNT base units as WXNT, or labelled base units while the decimals are unknown. */
@@ -113,8 +113,8 @@ onMounted(async () => {
         <CardContent class="space-y-3 text-sm">
           <div>
             <Label class="text-xs text-muted-foreground">Leviathan recipient</Label>
-            <p v-if="record.midenAddress" class="break-all font-mono text-xs">
-              {{ record.midenAddress }}
+            <p v-if="record.midenAddress" class="font-mono text-xs" :title="record.midenAddress">
+              {{ formatAddress(record.midenAddress) }}
               <CopyButton :value="record.midenAddress" label="Recipient" />
             </p>
             <p v-else class="text-xs text-muted-foreground">

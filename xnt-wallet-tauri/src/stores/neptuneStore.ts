@@ -23,7 +23,7 @@ export const useNeptuneStore = defineStore('neptune', () => {
 
   const keystoreFileName = ref<string | null>(null)
   const rpcUrl = ref<string | null>(null)
-  const addressType = ref<'dctidh' | 'generation'>('generation')
+  const addressType = ref<'dctidh' | 'generation'>('dctidh')
 
   // ===== SETTERS =====
 
@@ -101,7 +101,7 @@ export const useNeptuneStore = defineStore('neptune', () => {
       utxos: [],
       minBlockHeight: null,
     }
-    addressType.value = 'generation'
+    addressType.value = 'dctidh'
   }
 
   // ===== GETTERS =====
