@@ -10,6 +10,7 @@ export const DEFAULT_FEE = '0.1'
 export const DESKTOP_IDLE_LOCK_MS = 1000 * 60 * 15
 export const IS_MOBILE =
   import.meta.env.TAURI_ENV_PLATFORM === 'android' || import.meta.env.TAURI_ENV_PLATFORM === 'ios'
-/** Upper bound for the Max inputs control; proving memory grows with every input. */
+/** Upper bound for the max-inputs setting; proving memory grows with every input. */
 export const MAX_INPUTS_LIMIT = 5
-export const DEFAULT_MAX_INPUTS = IS_MOBILE ? 2 : MAX_INPUTS_LIMIT
+export const DEFAULT_MAX_INPUTS = IS_MOBILE ? 3 : MAX_INPUTS_LIMIT
+export const DEFAULT_LOW_MEMORY_PROVING = IS_MOBILE

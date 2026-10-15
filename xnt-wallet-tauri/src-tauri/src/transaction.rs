@@ -18,6 +18,7 @@ use neptune_privacy::state::wallet::utxo_notification::UtxoNotificationMedium;
 use neptune_privacy::util_types::mutator_set::ms_membership_proof::MsMembershipProof;
 use neptune_privacy::util_types::mutator_set::removal_record::absolute_index_set::AbsoluteIndexSet;
 use neptune_privacy::prelude::twenty_first::prelude::Tip5;
+use neptune_privacy::prelude::triton_vm::config::{overwrite_lde_trace_caching_to, CacheDecision};
 use neptune_privacy::util_types::mutator_set::mutator_set_accumulator::MutatorSetAccumulator;
 use num_traits::identities::Zero;
 use num_traits::ops::checked::CheckedSub;
@@ -114,6 +115,37 @@ pub(crate) struct ValidatedInputs {
     /// Primary spending key from `spendingKeyHex`; change goes to its address.
     pub primary_key: SpendingKey,
     pub total: NativeCurrencyAmount,
+}
+
+/// `low_memory` proves without caching the LDE trace; otherwise triton-vm decides from free memory.
+pub(crate) async fn prove(
+    primitive_witness: PrimitiveWitness,
+    network: Network,
+    block_height: BlockHeight,
+    low_memory: bool,
+) -> Result<ProofCollection, String> {
+    if !low_memory {
+        return ProofCollection::produce_in_process(&primitive_witness, network, block_height)
+            .await
+            .map_err(|e| format!("Failed to generate proof collection: {e}"));
+    }
+    // triton-vm keeps this choice per thread, and core proves on its own spawn_blocking thread.
+    tokio::task::spawn_blocking(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .on_thread_start(|| overwrite_lde_trace_caching_to(CacheDecision::NoCache))
+            .build()
+            .map_err(|e| format!("Failed to start the prover runtime: {e}"))?;
+        runtime
+            .block_on(ProofCollection::produce_in_process(
+                &primitive_witness,
+                network,
+                block_height,
+            ))
+            .map_err(|e| format!("Failed to generate proof collection: {e}"))
+    })
+    .await
+    .map_err(|e| format!("Prover task failed: {e}"))?
 }
 
 pub(crate) fn http_client() -> Result<Client, String> {
@@ -340,6 +372,9 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
     let fee = payload["fee"]
         .as_str()
         .ok_or_else(|| "Missing fee in payload".to_string())?;
+    let low_memory_proving = payload["lowMemoryProving"]
+        .as_bool()
+        .ok_or("Missing lowMemoryProving in payload")?;
     
     let client = http_client()?;
     let network = fetch_network(&client, &rpc_url).await?;
@@ -427,15 +462,19 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
     );
     
     let primitive_witness: PrimitiveWitness = tx_details.primitive_witness();
+    let kernel = primitive_witness.kernel.clone();
     let block_height = rpc_client::get_chain_height(&client, &rpc_url).await?;
-    let proof_collection =
-        ProofCollection::produce_in_process(&primitive_witness, network, BlockHeight::from(block_height))
-            .await
-            .map_err(|e| format!("Failed to generate proof collection: {}", e))?;
+    let proof_collection = prove(
+        primitive_witness,
+        network,
+        BlockHeight::from(block_height),
+        low_memory_proving,
+    )
+    .await?;
     
     let proof = TransactionProof::ProofCollection(proof_collection);
     let transaction = TransactionBuilder::new()
-        .transaction_kernel(primitive_witness.kernel.clone())
+        .transaction_kernel(kernel)
         .transaction_proof(proof)
         .build()
         .map_err(|e| format!("Failed to build transaction: {}", e))?;

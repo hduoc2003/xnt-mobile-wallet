@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
-import { Database, Wallet, History, Network } from 'lucide-vue-next'
+import { Database, Wallet, History, Settings } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 
@@ -52,7 +52,7 @@ const navItems = [
   { name: 'Wallet', icon: Wallet, route: '/', label: 'Wallet' },
   { name: 'UTXO', icon: Database, route: '/utxo', label: 'UTXO' },
   { name: 'History', icon: History, route: '/transaction-history', label: 'History' },
-  { name: 'Network', icon: Network, route: '/network', label: 'Network' },
+  { name: 'Settings', icon: Settings, route: '/settings', label: 'Settings' },
 ]
 
 const isActiveRoute = (routePath: string) => {

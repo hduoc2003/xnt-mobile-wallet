@@ -1,4 +1,5 @@
 export * from './authStore'
 export * from './neptuneStore'
+export * from './settingsStore'
 export * from './tickerStore'
 export * from './transactionStore'

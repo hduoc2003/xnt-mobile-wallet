@@ -5,9 +5,8 @@ import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { Send, ArrowLeft } from 'lucide-vue-next'
 import { useNeptuneWallet, useFormat, useTransaction } from '@/composables'
-import { useNeptuneStore } from '@/stores'
-import { DEFAULT_FEE, DEFAULT_MAX_INPUTS, toAtomicUnits } from '@/utils'
-import { MaxInputsControl } from '@/components/commons'
+import { useNeptuneStore, useSettingsStore } from '@/stores'
+import { DEFAULT_FEE, toAtomicUnits } from '@/utils'
 import ConfirmTransactionDrawer from './components/ConfirmTransactionDrawer.vue'
 import ProofGenerationModal from './components/ProofGenerationModal.vue'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -26,7 +25,8 @@ const { addTransaction } = useTransaction()
 const { formatXnt } = useFormat()
 
 const availableBalance = ref('0')
-const maxInputs = ref(DEFAULT_MAX_INPUTS)
+const settingsStore = useSettingsStore()
+const maxInputs = computed(() => settingsStore.maxInputsPerTx)
 const loadedUtxos = ref<any[]>([])
 const maxSendable = computed(() => computeMaxSendable(loadedUtxos.value, maxInputs.value))
 const pendingBalance = ref('0')
@@ -130,7 +130,9 @@ const toggleUtxo = (u: any) => {
   if (isSelectedUtxo(u)) {
     manualSelected.value = manualSelected.value.filter((s) => utxoKey(s) !== utxoKey(u))
   } else if (manualSelected.value.length >= maxInputs.value) {
-    toast.error(`At most ${maxInputs.value} inputs per transaction; raise Max inputs to pick more`)
+    toast.error(
+      `At most ${maxInputs.value} inputs per transaction; raise Max inputs in Settings to pick more`,
+    )
   } else {
     manualSelected.value = [...manualSelected.value, u]
   }
@@ -215,7 +217,7 @@ const amountErrorMessage = computed(() => {
   if (manualMode.value) {
     if (manualSelected.value.length === 0) return 'Select at least one UTXO below'
     if (manualSelected.value.length > maxInputs.value) {
-      return `${manualSelected.value.length} UTXOs selected; Max inputs is ${maxInputs.value}`
+      return `${manualSelected.value.length} UTXOs selected; Max inputs in Settings is ${maxInputs.value}`
     }
     const fee = parseFloat(priorityFee.value || '0')
     const need = toAtomicUnits(num) + toAtomicUnits(isNaN(fee) ? 0 : fee)
@@ -584,7 +586,7 @@ onMounted(async () => {
               />
               <p v-if="showLimitInfo && !manualMode" class="text-[11px] text-muted-foreground">
                 You can spend at most {{ formatXnt(maxSendable) }} XNT in a single transaction. This
-                limit is the sum of your {{ maxInputs }} largest UTXOs (Max inputs below).
+                limit is the sum of your {{ maxInputs }} largest UTXOs (Max inputs in Settings).
               </p>
               <p v-if="amountErrorMessage" class="text-xs text-destructive">
                 {{ amountErrorMessage }}
@@ -608,8 +610,6 @@ onMounted(async () => {
               </p>
             </div>
           </div>
-
-          <MaxInputsControl v-model="maxInputs" :disabled="sendLoading" />
 
           <!-- Advanced: manual UTXO selection -->
           <div class="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
@@ -641,8 +641,8 @@ onMounted(async () => {
 
             <p v-if="showManualInfo" class="text-xs text-muted-foreground">
               💡 By default the wallet auto-selects up to {{ maxInputs }} of your largest UTXOs. If
-              sending crashes during proof generation, lower Max inputs or pick fewer UTXOs here to
-              build a lighter transaction.
+              sending crashes during proof generation, lower Max inputs in Settings or pick fewer
+              UTXOs here to build a lighter transaction.
             </p>
 
             <template v-if="manualMode">

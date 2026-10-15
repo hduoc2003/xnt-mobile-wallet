@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Network, RefreshCw } from 'lucide-vue-next'
+import { RefreshCw, Settings } from 'lucide-vue-next'
 
 defineProps<{
   loading?: boolean
@@ -14,11 +14,11 @@ defineEmits<{
   <div class="flex items-center justify-between">
     <div class="flex items-center gap-3">
       <div class="rounded-full bg-primary/10 p-3">
-        <Network class="size-6 text-primary" />
+        <Settings class="size-6 text-primary" />
       </div>
       <div>
-        <h1 class="text-2xl font-bold text-foreground">Network Status</h1>
-        <p class="text-sm text-muted-foreground">Real-time blockchain information</p>
+        <h1 class="text-2xl font-bold text-foreground">Settings</h1>
+        <p class="text-sm text-muted-foreground">Network, RPC endpoint and transactions</p>
       </div>
     </div>
 

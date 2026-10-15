@@ -52,6 +52,7 @@ export interface PayloadBuildBridgeDeposit {
   fee: string
   spendingKeyHex: string
   spendingKeyHexes: string[]
+  lowMemoryProving: boolean
 }
 
 export interface RelayerDepositStatus {

@@ -1,4 +1,4 @@
-import { useNeptuneStore } from '@/stores'
+import { useNeptuneStore, useSettingsStore } from '@/stores'
 import * as API from '@/api/neptuneApi'
 import type {
   BalanceResult,
@@ -17,6 +17,7 @@ import {
 
 export function useNeptuneWallet() {
   const store = useNeptuneStore()
+  const settingsStore = useSettingsStore()
 
   const generateWallet = async (): Promise<GenerateSeedResult> => {
     try {
@@ -577,6 +578,7 @@ export function useNeptuneWallet() {
       outputAddresses: args.outputAddresses,
       outputAmounts: args.outputAmounts,
       fee: args.fee,
+      lowMemoryProving: settingsStore.lowMemoryProving,
     }
 
     if (args.timelockReleaseDate !== undefined) {

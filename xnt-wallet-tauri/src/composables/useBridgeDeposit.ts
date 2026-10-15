@@ -1,5 +1,6 @@
 import { ref, onActivated, onDeactivated, onUnmounted } from 'vue'
 import type { BridgeDepositRecord } from '@/types'
+import { useSettingsStore } from '@/stores'
 import { BRIDGE_POLLING_INTERVAL, toAtomicUnits } from '@/utils'
 import { useNeptuneWallet } from './useNeptuneWallet'
 
@@ -7,7 +8,6 @@ export interface BridgeDepositForm {
   midenAddress: string
   amount: string
   fee: string
-  maxInputs: number
 }
 
 /** Text of a JSON-RPC error object (`{ code, message, data? }`) or any other thrown value. */
@@ -24,6 +24,7 @@ const isPending = (record: BridgeDepositRecord) =>
 
 export const useBridgeDeposit = () => {
   const { getUtxos, selectUtxos, broadcastSignedTransaction } = useNeptuneWallet()
+  const settingsStore = useSettingsStore()
   const deposits = ref<BridgeDepositRecord[]>([])
   const refreshError = ref<string>()
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -72,7 +73,12 @@ export const useBridgeDeposit = () => {
   const submitDeposit = async (form: BridgeDepositForm) => {
     const utxosResult = await getUtxos()
     const utxos = utxosResult?.result?.utxos || utxosResult?.utxos || []
-    const selection = selectUtxos(utxos, Number(form.amount), Number(form.fee), form.maxInputs)
+    const selection = selectUtxos(
+      utxos,
+      Number(form.amount),
+      Number(form.fee),
+      settingsStore.maxInputsPerTx,
+    )
     if (selection.selectedUtxos.length === 0) {
       throw new Error(
         'No spendable UTXOs: wait for your pending transaction to confirm or drop, then try again',
@@ -81,7 +87,7 @@ export const useBridgeDeposit = () => {
     const needed = toAtomicUnits(form.amount) + toAtomicUnits(form.fee)
     if (toAtomicUnits(selection.totalAmount) < needed) {
       throw new Error(
-        `Your ${form.maxInputs} largest spendable UTXOs hold ${selection.totalAmount} XNT; amount + fee is ${needed / 1e8} XNT`,
+        `Your ${settingsStore.maxInputsPerTx} largest spendable UTXOs hold ${selection.totalAmount} XNT; amount + fee is ${needed / 1e8} XNT`,
       )
     }
 
@@ -94,6 +100,7 @@ export const useBridgeDeposit = () => {
       fee: form.fee,
       spendingKeyHex: selection.spendingKeyHex,
       spendingKeyHexes: selection.spendingKeyHexes,
+      lowMemoryProving: settingsStore.lowMemoryProving,
     })
     if (!built.success) throw new Error(describeError(built.error))
 

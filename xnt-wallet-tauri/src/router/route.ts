@@ -33,7 +33,7 @@ export const routes: RouteRecordRaw[] = [
       { path: '/utxo', name: 'utxo', component: Pages.UTXOPage },
       { path: '/wallet/merge', name: 'merge-utxos', component: Pages.MergeUtxosPage },
       { path: '/wallet/bridge', name: 'bridge-deposit', component: Pages.BridgeDepositPage },
-      { path: '/network', name: 'network', component: Pages.NetworkPage },
+      { path: '/settings', name: 'settings', component: Pages.NetworkPage },
       {
         path: '/transaction-history',
         name: 'transaction-history',

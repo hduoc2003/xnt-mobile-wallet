@@ -10,7 +10,6 @@ use neptune_privacy::protocol::consensus::bridge::deposit_announcement::{
     parse_miden_address, MIN_BRIDGE_AMOUNT,
 };
 use neptune_privacy::protocol::consensus::transaction::transaction_proof::TransactionProof;
-use neptune_privacy::protocol::consensus::transaction::validity::proof_collection::ProofCollection;
 use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
 use neptune_privacy::state::wallet::transaction_input::TxInputList;
 use num_traits::{CheckedAdd, Zero};
@@ -27,6 +26,7 @@ pub(crate) struct DepositRequest {
     pub miden_address: String,
     pub amount: NativeCurrencyAmount,
     pub fee: NativeCurrencyAmount,
+    pub low_memory_proving: bool,
 }
 
 /// Checks everything that needs no node, so bad input fails before any proving.
@@ -47,6 +47,9 @@ pub(crate) fn parse_deposit_request(
     if fee < NativeCurrencyAmount::zero() {
         return Err("Fee can't be negative".to_string());
     }
+    let low_memory_proving = payload["lowMemoryProving"]
+        .as_bool()
+        .ok_or("Missing lowMemoryProving in payload")?;
     let input_count = payload["inputAdditionRecords"]
         .as_array()
         .ok_or("Missing inputAdditionRecords in payload")?
@@ -67,6 +70,7 @@ pub(crate) fn parse_deposit_request(
         },
         amount,
         fee,
+        low_memory_proving,
     })
 }
 
@@ -120,16 +124,17 @@ async fn build(app: &AppHandle, payload: &Value) -> Result<String, String> {
     .map_err(|e| format!("Failed to build deposit: {e}"))?;
 
     let primitive_witness = details.primitive_witness();
+    let kernel = primitive_witness.kernel.clone();
     let block_height = rpc_client::get_chain_height(&client, &rpc_url).await?;
-    let proof_collection = ProofCollection::produce_in_process(
-        &primitive_witness,
+    let proof_collection = transaction::prove(
+        primitive_witness,
         network,
         BlockHeight::from(block_height),
+        request.low_memory_proving,
     )
-    .await
-    .map_err(|e| format!("Failed to prove deposit: {e}"))?;
+    .await?;
     let transaction = TransactionBuilder::new()
-        .transaction_kernel(primitive_witness.kernel.clone())
+        .transaction_kernel(kernel)
         .transaction_proof(TransactionProof::ProofCollection(proof_collection))
         .build()
         .map_err(|e| format!("Failed to build transaction: {e}"))?;
@@ -188,6 +193,7 @@ mod tests {
             "midenAddress": address,
             "amount": amount,
             "fee": "0.01",
+            "lowMemoryProving": true,
         })
     }
 
