@@ -11,6 +11,9 @@ on:
   push:
     tags: ['v*']
 
+permissions:
+  contents: read
+
 concurrency:
   group: desktop-${{ github.ref }}
   cancel-in-progress: true

@@ -31,7 +31,9 @@ interface HistoryRow {
   status: string
   tone: Tone
   detail?: string
+  /** Broadcast tx id; hidden once mined, since the node may merge the tx into another first. */
   txId?: string
+  blockHeight?: number
   /** Leviathan mint tx, once the relayer submitted the mint. */
   mintTxId?: string
 }
@@ -90,7 +92,9 @@ const rows = computed<HistoryRow[]>(() => {
     amount: tx.amount,
     fee: tx.fee,
     timeMs: new Date(tx.time).getTime(),
-    txId: tx.txId,
+    ...(typeof tx.status === 'object' && tx.status.state === 'confirmed'
+      ? { blockHeight: tx.status.blockHeight ?? undefined }
+      : { txId: tx.txId }),
     ...sentStatus(tx),
   }))
   const incoming: HistoryRow[] = received.value.map((r) => ({
@@ -113,7 +117,9 @@ const rows = computed<HistoryRow[]>(() => {
     status: bridgeDepositBadge(d).label,
     tone: BRIDGE_TONE[d.status.state],
     detail: bridgeDepositDetail(d),
-    txId: d.txId,
+    ...(d.status.state === 'confirmed' || d.status.state === 'minted'
+      ? { blockHeight: d.status.blockHeight ?? undefined }
+      : { txId: d.txId }),
     mintTxId: d.relayer?.mintTxId ?? undefined,
   }))
   return [...sent, ...incoming, ...bridge].sort((a, b) => b.timeMs - a.timeMs)
@@ -264,7 +270,14 @@ const shortId = (hex: string) => `${hex.slice(0, 10)}…${hex.slice(-6)}`
                   {{ new Date(row.timeMs).toLocaleString() }}
                 </p>
                 <p
-                  v-if="row.txId"
+                  v-if="row.blockHeight !== undefined"
+                  class="font-mono text-[10px] text-muted-foreground"
+                >
+                  block {{ row.blockHeight }}
+                  <ExplorerLink :path="`/block/${row.blockHeight}`" />
+                </p>
+                <p
+                  v-else-if="row.txId"
                   class="font-mono text-[10px] text-muted-foreground"
                   :title="row.txId"
                 >

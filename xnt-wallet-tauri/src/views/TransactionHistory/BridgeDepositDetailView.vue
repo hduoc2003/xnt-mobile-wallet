@@ -31,11 +31,9 @@ const loaded = ref(false)
 const commitment = computed(() => String(route.params.commitment))
 const record = computed(() => deposits.value.find((d) => d.utxoCommitment === commitment.value))
 
-const blockHeight = computed(() => {
+const mined = computed(() => {
   const status = record.value?.status
-  return status && (status.state === 'confirmed' || status.state === 'minted')
-    ? status.blockHeight
-    : null
+  return status && (status.state === 'confirmed' || status.state === 'minted') ? status : undefined
 })
 
 const relayerStatus = computed(() => {
@@ -132,10 +130,11 @@ onMounted(async () => {
             </div>
             <div>
               <Label class="text-xs text-muted-foreground">XNT block</Label>
-              <p v-if="blockHeight === null">Not mined yet</p>
+              <p v-if="!mined">Not mined yet</p>
+              <p v-else-if="mined.blockHeight === null">Mined, block unknown</p>
               <p v-else>
-                {{ blockHeight }}
-                <ExplorerLink :path="`/block/${blockHeight}`" />
+                {{ mined.blockHeight }}
+                <ExplorerLink :path="`/block/${mined.blockHeight}`" />
               </p>
             </div>
             <div>
@@ -154,7 +153,7 @@ onMounted(async () => {
           <p v-if="record.relayerError" class="text-xs text-destructive">
             Last relayer check failed: {{ record.relayerError }}
           </p>
-          <div>
+          <div v-if="!mined">
             <Label class="text-xs text-muted-foreground">XNT tx id</Label>
             <p class="break-all font-mono text-xs">
               {{ record.txId }}
