@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { CopyButton, ExplorerLink } from '@/components/commons'
+import { ref, computed, onActivated, onMounted, onUnmounted } from 'vue'
 import { Database, RefreshCw, GitMerge } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useRouter } from 'vue-router'
@@ -15,7 +16,7 @@ import { Separator } from '@/components/ui/separator'
 const router = useRouter()
 const neptuneStore = useNeptuneStore()
 const { getUtxos, forceRescanUtxos } = useNeptuneWallet()
-const { formatAmount } = useFormat()
+const { formatXnt } = useFormat()
 
 const loading = ref(false)
 const isScanning = ref(false)
@@ -103,9 +104,9 @@ onMounted(async () => {
   } catch (error) {
     console.error('Failed to listen for scan progress:', error)
   }
-
-  await getUtxosData()
 })
+
+onActivated(getUtxosData)
 
 onUnmounted(() => {
   if (progressUnlisten) {
@@ -155,7 +156,7 @@ onUnmounted(() => {
             <div class="space-y-1">
               <p class="text-sm text-muted-foreground">Total Amount</p>
               <p class="break-all text-xl font-bold text-primary sm:text-2xl">
-                {{ formatAmount(+inUseUtxosAmount, 4) }} <span class="text-lg">XNT</span>
+                {{ formatXnt(inUseUtxosAmount) }} <span class="text-lg">XNT</span>
               </p>
             </div>
           </div>
@@ -176,7 +177,8 @@ onUnmounted(() => {
             <GitMerge class="size-4 mr-1" /> Merge
           </Button>
         </CardHeader>
-        <CardContent v-if="isScanning" class="space-y-4">
+        <!-- A background rescan keeps showing the cached list. -->
+        <CardContent v-if="isScanning && !utxosList.length" class="space-y-4">
           <div class="space-y-3">
             <div class="flex items-center justify-between">
               <p class="text-sm font-medium text-foreground">
@@ -199,7 +201,7 @@ onUnmounted(() => {
         </CardContent>
         <CardContent v-else>
           <!-- Loading State -->
-          <div v-if="loading" class="flex items-center justify-center py-4">
+          <div v-if="loading && !utxosList.length" class="flex items-center justify-center py-4">
             <div
               class="size-8 animate-spin rounded-full border-4 border-primary border-t-transparent"
             />
@@ -215,7 +217,7 @@ onUnmounted(() => {
           </div>
 
           <!-- UTXO Cards -->
-          <div v-if="!loading && utxosList.length > 0" class="space-y-3">
+          <div v-if="utxosList.length > 0" class="space-y-3">
             <Card
               v-for="(utxo, index) in utxosList"
               :key="index"
@@ -226,6 +228,8 @@ onUnmounted(() => {
                   <Label class="text-xs text-muted-foreground">UTXO Digest</Label>
                   <code class="block break-all font-mono text-xs text-foreground">
                     {{ utxo.utxoDigest }}
+                    <CopyButton :value="utxo.utxoDigest" label="UTXO digest" />
+                    <ExplorerLink :path="`/utxo/${utxo.utxoDigest}`" />
                   </code>
                 </div>
                 <Separator />
@@ -233,7 +237,7 @@ onUnmounted(() => {
                   <div class="space-y-1">
                     <Label class="text-xs text-muted-foreground">Amount</Label>
                     <p class="break-all font-mono text-sm font-semibold text-primary">
-                      {{ formatAmount(+utxo.amount, 4) }} <span class="text-xs">XNT</span>
+                      {{ formatXnt(utxo.amount) }} <span class="text-xs">XNT</span>
                     </p>
                   </div>
                   <div class="space-y-1">

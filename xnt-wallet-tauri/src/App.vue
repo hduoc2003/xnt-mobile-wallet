@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { Toaster } from '@/components/ui/sonner'
 import { useNeptuneWallet } from '@/composables'
 import { useNeptuneStore } from '@/stores'
+import { DESKTOP_IDLE_LOCK_MS } from '@/utils'
 
 const router = useRouter()
 const neptuneStore = useNeptuneStore()
@@ -17,6 +18,33 @@ let shouldRedirect = false
 let visibilityChangeHandler: (() => void) | null = null
 let nativePickerActive = false
 let focusInHandler: ((e: FocusEvent) => void) | null = null
+
+// Phones lock when the app goes to the background; desktops after a quiet spell instead,
+// since any click on another window would otherwise lock them.
+const platform = import.meta.env.TAURI_ENV_PLATFORM
+const IS_MOBILE = platform === 'android' || platform === 'ios'
+const ACTIVITY_EVENTS = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'] as const
+let idleTimer: ReturnType<typeof setTimeout> | undefined
+let lastActivityMs = Date.now()
+
+const lockAfterIdle = () => {
+  if (router.currentRoute.value.name === 'auth') return
+  clearWallet()
+  router.replace('/auth').catch(() => {})
+}
+
+const resetIdleTimer = () => {
+  // Input right after waking must not erase an idle spell that already ran out.
+  if (Date.now() - lastActivityMs >= DESKTOP_IDLE_LOCK_MS) lockAfterIdle()
+  lastActivityMs = Date.now()
+  clearTimeout(idleTimer)
+  idleTimer = setTimeout(lockAfterIdle, DESKTOP_IDLE_LOCK_MS)
+}
+
+// Timers pause while the machine sleeps, so also check the elapsed time on wake.
+const lockIfIdleTooLong = () => {
+  if (Date.now() - lastActivityMs >= DESKTOP_IDLE_LOCK_MS) lockAfterIdle()
+}
 
 const handleAppBlur = () => {
   if (router.currentRoute.value.name === 'auth') return
@@ -43,6 +71,13 @@ const handleAppFocus = () => {
 }
 
 onMounted(async () => {
+  if (!IS_MOBILE) {
+    window.addEventListener('focus', lockIfIdleTooLong)
+    document.addEventListener('visibilitychange', lockIfIdleTooLong)
+    ACTIVITY_EVENTS.forEach((event) => window.addEventListener(event, resetIdleTimer))
+    resetIdleTimer()
+    return
+  }
   try {
     unlistenBlur = await listen('tauri://blur', handleAppBlur)
     unlistenFocus = await listen('tauri://focus', handleAppFocus)
@@ -76,6 +111,10 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('focus', lockIfIdleTooLong)
+  document.removeEventListener('visibilitychange', lockIfIdleTooLong)
+  ACTIVITY_EVENTS.forEach((event) => window.removeEventListener(event, resetIdleTimer))
+  clearTimeout(idleTimer)
   unlistenFocus?.()
   unlistenBlur?.()
   unlistenFocus = null

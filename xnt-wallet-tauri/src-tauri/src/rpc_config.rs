@@ -4,7 +4,7 @@ use tauri::{AppHandle, Manager};
 use serde::{Deserialize, Serialize};
 
 const CONFIG_FILE: &str = "config.json";
-pub const DEFAULT_RPC_URL: &str = "https://api.xntscan.io";
+pub const DEFAULT_RPC_URL: &str = env!("XNT_DEFAULT_RPC_URL");
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct Config {
@@ -88,3 +88,32 @@ pub fn set_rpc_endpoint(app: &AppHandle, endpoint: String) -> Result<(), String>
     Ok(())
 }
 
+/// Custom endpoint from config, else the build's default.
+pub async fn resolve_rpc_url(app: &AppHandle) -> Result<String, String> {
+    let app = app.clone();
+    let custom = tokio::task::spawn_blocking(move || get_custom_rpc_endpoint(&app))
+        .await
+        .map_err(|e| format!("Config read task failed: {e}"))?;
+    Ok(custom.unwrap_or_else(|| DEFAULT_RPC_URL.to_string()))
+}
+
+/// Origin (scheme + host + port) of the RPC URL; the edge serves the relayer routes there.
+pub fn edge_base_url(rpc_url: &str) -> Result<String, String> {
+    let url = reqwest::Url::parse(rpc_url).map_err(|e| format!("Invalid RPC URL {rpc_url}: {e}"))?;
+    Ok(url.origin().ascii_serialization())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::edge_base_url;
+
+    #[test]
+    fn edge_base_url_strips_path() {
+        assert_eq!(
+            edge_base_url("https://leviathandev.neptune.io/xnt-rpc").unwrap(),
+            "https://leviathandev.neptune.io"
+        );
+        assert_eq!(edge_base_url("http://127.0.0.1:9897").unwrap(), "http://127.0.0.1:9897");
+        assert!(edge_base_url("not a url").is_err());
+    }
+}

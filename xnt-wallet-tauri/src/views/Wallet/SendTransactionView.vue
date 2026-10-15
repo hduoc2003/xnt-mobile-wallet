@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import { CopyButton, ExplorerLink } from '@/components/commons'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { Send, ArrowLeft } from 'lucide-vue-next'
 import { useNeptuneWallet, useFormat, useTransaction } from '@/composables'
 import { useNeptuneStore } from '@/stores'
-import { toAtomicUnits } from '@/utils'
+import { DEFAULT_FEE, toAtomicUnits } from '@/utils'
 import ConfirmTransactionDrawer from './components/ConfirmTransactionDrawer.vue'
 import ProofGenerationModal from './components/ProofGenerationModal.vue'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -21,7 +22,7 @@ const {
   selectUtxos,
 } = useNeptuneWallet()
 const { addTransaction } = useTransaction()
-const { formatAmount } = useFormat()
+const { formatXnt } = useFormat()
 
 const availableBalance = ref('0')
 const maxSendable = ref('0')
@@ -35,7 +36,7 @@ const showManualInfo = ref(false)
 
 const outputAddress = ref('')
 const outputAmount = ref('')
-const priorityFee = ref('0.1')
+const priorityFee = ref(DEFAULT_FEE)
 const enableTimelock = ref(false)
 const timelockDate = ref('')
 const timelockTime = ref('12:00') // Default to noon
@@ -212,14 +213,14 @@ const amountErrorMessage = computed(() => {
     const fee = parseFloat(priorityFee.value || '0')
     const need = toAtomicUnits(num) + toAtomicUnits(isNaN(fee) ? 0 : fee)
     if (toAtomicUnits(manualSelectedTotal.value) < need) {
-      return `Selected UTXOs (${formatAmount(manualSelectedTotal.value)} XNT) don't cover amount + fee`
+      return `Selected UTXOs (${formatXnt(manualSelectedTotal.value)} XNT) don't cover amount + fee`
     }
     return ''
   }
 
   const maxPerTx = parseFloat(maxSendable.value || '0')
   if (!isNaN(maxPerTx) && maxPerTx > 0 && num > maxPerTx) {
-    return `Maximum per transaction is ${formatAmount(maxPerTx)} XNT (sum of your 5 largest UTXOs)`
+    return `Maximum per transaction is ${formatXnt(maxPerTx)} XNT (sum of your 5 largest UTXOs)`
   }
 
   return ''
@@ -454,6 +455,8 @@ const handleConfirmSend = async () => {
 
     addTransaction({
       id: firstDigest,
+      txId: txResult.txId,
+      outputCommitments: outputUtxoDigests,
       toAddress: normalizedAddress.value,
       amount: Number.isFinite(amountNum) ? amountNum : 0,
       fee: Number.isFinite(feeNum) ? feeNum : 0,
@@ -512,7 +515,7 @@ onMounted(async () => {
       <Alert v-if="balanceStuckInPending" variant="destructive" class="mb-2">
         <AlertTitle>Balance in pending transaction</AlertTitle>
         <AlertDescription>
-          Your {{ formatAmount(+pendingBalance) }} XNT is currently in a transaction waiting in the
+          Your {{ formatXnt(pendingBalance) }} XNT is currently in a transaction waiting in the
           mempool. You cannot send again until that transaction confirms or is dropped. This applies
           on this device and if you switch device.
         </AlertDescription>
@@ -555,7 +558,7 @@ onMounted(async () => {
                 <Label for="amount"> Amount <span class="text-destructive">*</span> </Label>
                 <div v-if="!manualMode" class="flex items-center gap-2">
                   <Badge variant="outline" class="text-xs">
-                    Max: {{ formatAmount(+maxSendable) }} XNT
+                    Max: {{ formatXnt(maxSendable) }} XNT
                   </Badge>
                   <button
                     type="button"
@@ -575,8 +578,8 @@ onMounted(async () => {
                 @blur="handleAmountBlur"
               />
               <p v-if="showLimitInfo && !manualMode" class="text-[11px] text-muted-foreground">
-                You can spend at most {{ formatAmount(+maxSendable) }} XNT in a single transaction.
-                This limit is the sum of your 5 largest UTXOs to prevent crash when generate proof.
+                You can spend at most {{ formatXnt(maxSendable) }} XNT in a single transaction. This
+                limit is the sum of your 5 largest UTXOs to prevent crash when generate proof.
               </p>
               <p v-if="amountErrorMessage" class="text-xs text-destructive">
                 {{ amountErrorMessage }}
@@ -639,14 +642,14 @@ onMounted(async () => {
               <!-- Selection summary -->
               <div class="flex flex-wrap items-center gap-2 text-xs">
                 <Badge variant="outline">{{ manualSelected.length }} selected</Badge>
-                <Badge variant="outline">Total: {{ formatAmount(manualSelectedTotal) }} XNT</Badge>
+                <Badge variant="outline">Total: {{ formatXnt(manualSelectedTotal) }} XNT</Badge>
                 <Badge
                   v-if="
                     manualSelected.length > 0 && outputAmount && isFeeValid && manualChange >= 0
                   "
                   variant="secondary"
                 >
-                  Change: {{ formatAmount(manualChange) }} XNT
+                  Change: {{ formatXnt(manualChange) }} XNT
                 </Badge>
               </div>
 
@@ -680,7 +683,7 @@ onMounted(async () => {
                   <div class="min-w-0 flex-1 space-y-1">
                     <div class="flex flex-wrap items-center gap-2">
                       <span class="font-mono font-semibold text-primary">
-                        {{ formatAmount(+utxo.amount, 4) }} XNT
+                        {{ formatXnt(utxo.amount) }} XNT
                       </span>
                       <Badge variant="secondary" class="text-xs">
                         {{ utxo.keyType || 'dCTIDH' }}
@@ -690,7 +693,11 @@ onMounted(async () => {
                       </Badge>
                     </div>
                     <div class="flex gap-3 text-xs text-muted-foreground">
-                      <code class="font-mono">{{ shortDigest(utxo.utxoDigest) }}</code>
+                      <code class="font-mono">
+                        {{ shortDigest(utxo.utxoDigest) }}
+                        <CopyButton :value="utxo.utxoDigest" label="UTXO digest" />
+                        <ExplorerLink :path="`/utxo/${utxo.utxoDigest}`" />
+                      </code>
                     </div>
                   </div>
                 </div>

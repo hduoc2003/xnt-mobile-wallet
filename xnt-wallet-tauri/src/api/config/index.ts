@@ -1,8 +1,8 @@
-import { STATUS_CODE_SUCCESS } from '@/utils'
+import { RPC_URL, STATUS_CODE_SUCCESS } from '@/utils'
 import axios from 'axios'
 
 axios.defaults.withCredentials = false
-export const API_URL = import.meta.env.VITE_APP_API || 'https://api.xntscan.io'
+export const API_URL = RPC_URL
 
 const instance = axios.create({
   baseURL: API_URL,

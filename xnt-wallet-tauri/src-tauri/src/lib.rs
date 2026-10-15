@@ -7,12 +7,15 @@ use android_logger;
 #[cfg(target_os = "android")]
 use libc;
 
+mod bridge_deposit;
+mod bridge_status;
 mod keys;
 mod keystore;
 mod proxy;
 mod rpc_client;
 mod rpc_config;
 mod transaction;
+mod tx_status;
 mod utxo_cache;
 mod utxo_scanning;
 
@@ -177,6 +180,37 @@ async fn get_custom_rpc_endpoint(app: tauri::AppHandle) -> Result<Option<String>
 }
 
 #[tauri::command]
+async fn build_bridge_deposit(app: tauri::AppHandle, payload: serde_json::Value) -> Result<String, String> {
+    bridge_deposit::build_bridge_deposit(app, payload).await
+}
+
+#[tauri::command]
+async fn list_bridge_deposits(app: tauri::AppHandle) -> Result<Vec<bridge_status::DepositRecord>, String> {
+    bridge_status::list(&app).await
+}
+
+#[tauri::command]
+async fn discard_bridge_deposit(
+    app: tauri::AppHandle,
+    commitment: String,
+) -> Result<Vec<bridge_status::DepositRecord>, String> {
+    bridge_status::discard(&app, &commitment).await
+}
+
+#[tauri::command]
+async fn refresh_bridge_deposits(app: tauri::AppHandle) -> Result<Vec<bridge_status::DepositRecord>, String> {
+    bridge_status::refresh(&app).await
+}
+
+#[tauri::command]
+async fn tx_statuses(
+    app: tauri::AppHandle,
+    commitments: Vec<String>,
+) -> Result<Vec<tx_status::TxStatus>, String> {
+    tx_status::statuses(&app, &commitments).await
+}
+
+#[tauri::command]
 fn log_message(level: String, message: String) -> Result<(), String> {
     let lvl = match level.to_lowercase().as_str() {
         "trace" => Level::Trace,
@@ -262,6 +296,11 @@ pub fn run() {
             set_rpc_endpoint,
             get_custom_rpc_endpoint,
             log_message,
+            build_bridge_deposit,
+            list_bridge_deposits,
+            discard_bridge_deposit,
+            refresh_bridge_deposits,
+            tx_statuses,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { toast } from 'vue-sonner'
 import { useRouter } from 'vue-router'
-import { Send, FileDown, Key } from 'lucide-vue-next'
+import { Send, FileDown, Key, ArrowRightLeft } from 'lucide-vue-next'
 import { useNeptuneWallet } from '@/composables'
 
 const router = useRouter()
@@ -9,6 +9,10 @@ const { saveKeystoreAs } = useNeptuneWallet()
 
 const handleSend = () => {
   router.push('/wallet/send')
+}
+
+const handleBridge = () => {
+  router.push('/wallet/bridge')
 }
 
 const handleBackupFile = async () => {
@@ -28,10 +32,15 @@ const handleBackupSeed = () => {
 </script>
 
 <template>
-  <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
     <Button size="lg" class="w-full gap-2" @click="handleSend">
       <Send class="size-4" />
       Send
+    </Button>
+
+    <Button size="lg" class="w-full gap-2" @click="handleBridge">
+      <ArrowRightLeft class="size-4" />
+      Bridge to Leviathan
     </Button>
 
     <Button size="lg" variant="outline" class="w-full gap-2" @click="handleBackupFile">

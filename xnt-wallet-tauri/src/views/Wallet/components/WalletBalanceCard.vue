@@ -17,7 +17,7 @@ const props = withDefaults(defineProps<Props>(), {
   loading: false,
 })
 
-const { formatAmount, formatHash } = useFormat()
+const { formatAmount, formatHash, formatXnt } = useFormat()
 const neptuneStore = useNeptuneStore()
 const tickerStore = useTickerStore()
 const isCopied = ref(false)
@@ -30,6 +30,8 @@ const usdValue = computed(() => {
   const balance = Number(props.availableBalance) || 0
   return balance * price
 })
+
+const change24h = computed(() => tickerStore.getXntChange24h)
 
 const selectedType = computed({
   get: () => neptuneStore.getAddressType,
@@ -85,12 +87,15 @@ let intervalId: number | null = null
 onMounted(() => {
   const lastFetchTime = localStorage.getItem('xntPriceLastFetchTime')
   const cachedPrice = localStorage.getItem('xntPrice')
+  // Caches from before the 24h change was stored lack it; refetch so the line is complete.
+  const cachedChange = Number(localStorage.getItem('xntPriceChange24h') || NaN)
   const currentTime = Date.now()
 
-  if (lastFetchTime && cachedPrice) {
+  if (lastFetchTime && cachedPrice && Number.isFinite(cachedChange)) {
     const timeSinceLastFetch = currentTime - Number(lastFetchTime)
     if (timeSinceLastFetch < POLLING_INTERVAL_XNT_PRICE) {
       tickerStore.setXntPrice(Number(cachedPrice))
+      tickerStore.setXntChange24h(cachedChange)
       const remainingTime = POLLING_INTERVAL_XNT_PRICE - timeSinceLastFetch
       setTimeout(() => {
         fetchAndSetInterval()
@@ -135,16 +140,28 @@ onUnmounted(() => {
         <div v-else class="space-y-1">
           <div class="flex items-baseline gap-2">
             <span class="text-4xl font-bold text-foreground">
-              {{ formatAmount(+availableBalance) }}
+              {{ formatXnt(availableBalance) }}
             </span>
             <span class="text-xl font-medium text-muted-foreground">XNT</span>
             <span v-if="usdValue" class="text-lg font-medium text-muted-foreground">
               = ${{ formatAmount(usdValue, 2) }}
             </span>
           </div>
+          <div v-if="tickerStore.getXntPrice" class="flex items-center gap-2 text-sm">
+            <span class="text-muted-foreground">1 XNT =</span>
+            <span class="font-medium text-foreground"
+              >${{ formatAmount(tickerStore.getXntPrice, 4) }}</span
+            >
+            <span
+              v-if="change24h !== null"
+              :class="change24h >= 0 ? 'text-green-600' : 'text-red-600'"
+            >
+              {{ change24h >= 0 ? '+' : '' }}{{ change24h.toFixed(2) }}% 24h
+            </span>
+          </div>
           <div v-if="pendingBalance" class="flex items-center gap-2 text-sm">
             <span class="text-muted-foreground">Pending:</span>
-            <span class="font-medium text-foreground">{{ formatAmount(+pendingBalance) }} XNT</span>
+            <span class="font-medium text-foreground">{{ formatXnt(pendingBalance) }} XNT</span>
           </div>
         </div>
       </div>

@@ -32,11 +32,17 @@ export const routes: RouteRecordRaw[] = [
       { path: '/wallet/backup-seed', name: 'backup-seed', component: Pages.BackupSeedPage },
       { path: '/utxo', name: 'utxo', component: Pages.UTXOPage },
       { path: '/wallet/merge', name: 'merge-utxos', component: Pages.MergeUtxosPage },
+      { path: '/wallet/bridge', name: 'bridge-deposit', component: Pages.BridgeDepositPage },
       { path: '/network', name: 'network', component: Pages.NetworkPage },
       {
         path: '/transaction-history',
         name: 'transaction-history',
         component: Pages.TransactionHistoryPage,
+      },
+      {
+        path: '/transaction-history/bridge/:commitment',
+        name: 'bridge-deposit-detail',
+        component: Pages.BridgeDepositDetailPage,
       },
     ],
   },

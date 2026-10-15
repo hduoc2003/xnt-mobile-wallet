@@ -1,5 +1,6 @@
 fn main() {
     tauri_build::build();
+    export_default_rpc_url();
     
     // Configure Android NDK environment for CMake builds
     if let Ok(target) = std::env::var("TARGET") {
@@ -52,4 +53,51 @@ fn main() {
             }
         }
     }
+}
+
+/// Bakes `VITE_APP_API` into the binary as the default RPC endpoint, read like Vite does. The mode
+/// follows the cargo profile (release = production), which `tauri build` and `tauri dev` match.
+fn export_default_rpc_url() {
+    const KEY: &str = "VITE_APP_API";
+    let mode = match std::env::var("PROFILE").as_deref() {
+        Ok("release") => "production",
+        _ => "development",
+    };
+    println!("cargo:rerun-if-env-changed={KEY}");
+    let mut from_files = None;
+    for file in [".env".to_string(), ".env.local".to_string(), format!(".env.{mode}"), format!(".env.{mode}.local")] {
+        let path = format!("../{file}");
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => panic!("Failed to read {path}: {e}"),
+        };
+        println!("cargo:rerun-if-changed={path}");
+        if let Some(value) = text.lines().filter_map(|line| env_value(line, KEY)).last() {
+            from_files = Some(value);
+        }
+    }
+    let url = std::env::var(KEY)
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .or(from_files)
+        .unwrap_or_else(|| panic!("{KEY} is not set: copy .env.example to .env"));
+    println!("cargo:rustc-env=XNT_DEFAULT_RPC_URL={url}");
+}
+
+/// Value of `key` on a dotenv line (`[export ]KEY=value`, optionally quoted or with a trailing
+/// ` # comment`).
+fn env_value(line: &str, key: &str) -> Option<String> {
+    let line = line.trim();
+    let line = line.strip_prefix("export ").unwrap_or(line);
+    let (name, value) = line.split_once('=')?;
+    if name.trim() != key {
+        return None;
+    }
+    let value = value.trim();
+    let value = match value.chars().next() {
+        Some(quote @ ('"' | '\'')) => value[1..].split(quote).next().unwrap_or(""),
+        _ => value.split(" #").next().unwrap_or("").trim(),
+    };
+    (!value.is_empty()).then(|| value.to_string())
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onActivated } from 'vue'
 import { toast } from 'vue-sonner'
 import { Wallet } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
@@ -15,6 +15,8 @@ const { getUtxos, getBalance, checkKeystore } = useNeptuneWallet()
 const availableBalance = ref('0')
 const pendingBalance = ref('0')
 const loading = ref(false)
+// After the first load, refreshes keep showing the last balance instead of a spinner.
+const loadedOnce = ref(false)
 
 const loadWalletData = async () => {
   try {
@@ -45,10 +47,11 @@ const loadWalletData = async () => {
     toast.error(errorMsg)
   } finally {
     loading.value = false
+    loadedOnce.value = true
   }
 }
 
-onMounted(() => {
+onActivated(() => {
   loadWalletData()
 })
 </script>
@@ -71,7 +74,7 @@ onMounted(() => {
       <WalletBalanceCard
         :available-balance="availableBalance"
         :pending-balance="pendingBalance"
-        :loading="loading"
+        :loading="loading && !loadedOnce"
       />
 
       <!-- Action Buttons -->

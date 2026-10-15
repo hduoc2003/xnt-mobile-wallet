@@ -1,4 +1,5 @@
 import { useWindowSize } from '@vueuse/core'
+import { formatXnt } from '@/utils/helpers/amount'
 
 export const useFormat = () => {
   const { width } = useWindowSize()
@@ -31,6 +32,7 @@ export const useFormat = () => {
   }
 
   return {
+    formatXnt,
     formatHash,
     formatAddress,
     formatAmount,

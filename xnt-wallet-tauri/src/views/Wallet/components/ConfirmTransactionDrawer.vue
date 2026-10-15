@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CopyButton } from '@/components/commons'
 import { computed } from 'vue'
 import { useFormat } from '@/composables'
 
@@ -27,7 +28,7 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
-const { formatHash } = useFormat()
+const { formatHash, formatXnt } = useFormat()
 
 const isOpen = computed({
   get: () => props.open,
@@ -63,6 +64,7 @@ const handleCancel = () => {
               class="break-all rounded-lg border border-border bg-muted/50 p-4 font-mono text-sm"
             >
               {{ formatHash(props.recipientAddress) }}
+              <CopyButton :value="props.recipientAddress" label="Address" />
             </div>
           </div>
 
@@ -71,13 +73,13 @@ const handleCancel = () => {
             <div class="space-y-3">
               <Label class="text-sm font-medium text-muted-foreground">Amount</Label>
               <div class="rounded-lg border border-border bg-muted/50 p-4 font-semibold text-lg">
-                {{ props.amount }} XNT
+                {{ formatXnt(props.amount) }} XNT
               </div>
             </div>
             <div class="space-y-3">
               <Label class="text-sm font-medium text-muted-foreground">Priority Fee</Label>
               <div class="rounded-lg border border-border bg-muted/50 p-4 font-semibold text-lg">
-                {{ props.fee }} XNT
+                {{ formatXnt(props.fee) }} XNT
               </div>
             </div>
           </div>

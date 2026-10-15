@@ -4,6 +4,15 @@ import { Database, Wallet, History, Network } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 
+// Tab views stay mounted when switching tabs and refresh in the background on return.
+const CACHED_VIEWS = [
+  'WalletView',
+  'UTXOView',
+  'TransactionHistoryView',
+  'NetworkView',
+  'BridgeDepositView',
+]
+
 const route = useRoute()
 const router = useRouter()
 
@@ -73,7 +82,11 @@ const isActiveRoute = (routePath: string) => {
       class="flex-1 overflow-y-auto pb-16"
       :style="{ paddingTop: `calc(4.5rem + env(safe-area-inset-top, 0px))` }"
     >
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <keep-alive :include="CACHED_VIEWS">
+          <component :is="Component" />
+        </keep-alive>
+      </router-view>
     </main>
 
     <!-- Bottom Navigation Bar -->

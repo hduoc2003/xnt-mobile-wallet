@@ -1,4 +1,9 @@
-import type { PayloadBuildTransaction } from '@/types'
+import type {
+  BridgeDepositRecord,
+  HistoryStatus,
+  PayloadBuildBridgeDeposit,
+  PayloadBuildTransaction,
+} from '@/types'
 import { safeInvoke } from './safeInvoke'
 
 /** How the caught error is turned into the `error` field of a failure result. */
@@ -102,6 +107,23 @@ export const walletApi = {
 
   buildTransaction: (payload: PayloadBuildTransaction): Promise<any> =>
     call('build_transaction', { payload }, 'Failed to build transaction', { errorFrom: 'rich' }),
+
+  buildBridgeDeposit: (payload: PayloadBuildBridgeDeposit): Promise<any> =>
+    call('build_bridge_deposit', { payload }, 'Failed to build bridge deposit', {
+      errorFrom: 'rich',
+    }),
+
+  listBridgeDeposits: (): Promise<BridgeDepositRecord[]> =>
+    safeInvoke<BridgeDepositRecord[]>('list_bridge_deposits'),
+
+  discardBridgeDeposit: (commitment: string): Promise<BridgeDepositRecord[]> =>
+    safeInvoke<BridgeDepositRecord[]>('discard_bridge_deposit', { commitment }),
+
+  refreshBridgeDeposits: (): Promise<BridgeDepositRecord[]> =>
+    safeInvoke<BridgeDepositRecord[]>('refresh_bridge_deposits'),
+
+  txStatuses: (commitments: string[]): Promise<HistoryStatus[]> =>
+    safeInvoke<HistoryStatus[]>('tx_statuses', { commitments }),
 
   getMinBlockHeight: (fileName: string): Promise<any> =>
     call('get_min_block_height', { fileName }, 'Failed to get min block height'),

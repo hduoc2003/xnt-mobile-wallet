@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onActivated, onDeactivated, onMounted } from 'vue'
 import { AlertCircle, RefreshCw } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useNeptuneStore } from '@/stores'
@@ -48,6 +48,7 @@ const handleRefresh = () => {
 }
 
 const startPolling = () => {
+  stopPolling()
   pollingInterval = window.setInterval(async () => {
     if (!loading.value) await loadNetworkData()
   }, POLLING_INTERVAL)
@@ -60,15 +61,14 @@ const stopPolling = () => {
   }
 }
 
-onMounted(async () => {
-  await loadRpcEndpoint()
-  await loadNetworkData()
+onMounted(loadRpcEndpoint)
+
+onActivated(() => {
   startPolling()
+  void loadNetworkData()
 })
 
-onUnmounted(() => {
-  stopPolling()
-})
+onDeactivated(stopPolling)
 </script>
 
 <template>

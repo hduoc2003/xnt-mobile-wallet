@@ -45,6 +45,8 @@ export default defineConfig(async () => ({
       allow: ['..'],
     },
   },
+  // TAURI_ENV_PLATFORM lets the app tell phones from desktops.
+  envPrefix: ['VITE_', 'TAURI_ENV_'],
   base: './',
   resolve: {
     alias: {

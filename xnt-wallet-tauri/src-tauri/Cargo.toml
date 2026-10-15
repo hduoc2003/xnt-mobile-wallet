@@ -23,15 +23,14 @@ tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# Core xnt-core dependency (formerly neptune-core/neptune-cash)
-# Path is relative to this Cargo.toml (src-tauri), up to workspace root then into xnt-core crate
-neptune-privacy = { path = "../../xnt-core/xnt-core" }
+# Leviathan fork of xnt-core (V1 consensus + bridge)
+neptune-privacy = { git = "https://git.softly.com/leviathan/xnt-core", rev = "4cb2ad5bde0cecc725a4dbf43ce1d2e357d55a29" }
 
 # Utilities
 hex = "0.4"
 bincode = "1.3"
 anyhow = "1.0"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync"] }
 reqwest = { version = "0.11", features = ["json", "rustls-tls-webpki-roots"] }
 num-traits = "0.2"
 rand = "0.9"
@@ -86,3 +85,6 @@ overflow-checks = false
 [patch.crates-io]
 leveldb-sys = { path = "./patches/leveldb-sys-2.0.9" }
 
+
+[dev-dependencies]
+tokio = { version = "1", features = ["net", "io-util"] }

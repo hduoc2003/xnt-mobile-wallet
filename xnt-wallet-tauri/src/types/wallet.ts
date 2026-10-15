@@ -43,3 +43,47 @@ export interface Utxo {
   keyType?: string
   isPending?: boolean
 }
+
+export interface PayloadBuildBridgeDeposit {
+  inputAdditionRecords: string[]
+  /** Miden address (`mtst1...`, optional `miden:` prefix) or 30-hex account id. */
+  midenAddress: string
+  amount: string
+  fee: string
+  spendingKeyHex: string
+  spendingKeyHexes: string[]
+}
+
+export interface RelayerDepositStatus {
+  minted: boolean
+  status: 'minted' | 'submitted' | 'refused' | 'waiting'
+  reason: 'invalid' | 'below_mint_fee' | 'no_snapshot' | null
+  mintFee: number | null
+  /** WXNT in the depositor's note, once minted. */
+  mintedWxnt: number | null
+  mintableUpTo: number | null
+  paused: boolean
+  /** Leviathan mint tx / WXNT note. */
+  mintTxId: string | null
+  mintNoteId: string | null
+}
+
+export type BridgeDepositStatus =
+  | { state: 'submitted'; misses: number }
+  | { state: 'confirmed'; blockHeight: number | null }
+  | { state: 'minted'; blockHeight: number | null }
+  | { state: 'dropped' }
+
+export interface BridgeDepositRecord {
+  utxoCommitment: string
+  txId: string
+  /** Recipient as entered; null for deposits recorded before it was stored. */
+  midenAddress: string | null
+  amount: string
+  fee: string | null
+  outputCommitments: string[]
+  createdMs: number
+  status: BridgeDepositStatus
+  relayer: RelayerDepositStatus | null
+  relayerError: string | null
+}

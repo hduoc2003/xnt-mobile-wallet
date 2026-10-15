@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { CopyButton, ExplorerLink } from '@/components/commons'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { ArrowLeft, GitMerge } from 'lucide-vue-next'
 import { useNeptuneWallet, useFormat, useTransaction } from '@/composables'
 import { useNeptuneStore } from '@/stores'
+import { DEFAULT_FEE } from '@/utils'
 import ConfirmTransactionDrawer from './components/ConfirmTransactionDrawer.vue'
 import ProofGenerationModal from './components/ProofGenerationModal.vue'
 
@@ -14,14 +16,14 @@ const router = useRouter()
 const store = useNeptuneStore()
 const { getUtxos, buildTransaction, broadcastSignedTransaction } = useNeptuneWallet()
 const { addTransaction } = useTransaction()
-const { formatAmount } = useFormat()
+const { formatXnt } = useFormat()
 
 const MAX_SELECT = 5
 const loading = ref(false)
 const sendLoading = ref(false)
 const showConfirmModal = ref(false)
 const showProofModal = ref(false)
-const fee = ref('')
+const fee = ref(DEFAULT_FEE)
 const allUtxos = ref<Utxo[]>([])
 const selectedUtxos = ref<Utxo[]>([])
 const now = Date.now()
@@ -191,6 +193,8 @@ const handleConfirmMerge = async () => {
 
     addTransaction({
       id: firstDigest,
+      txId: txResult.txId,
+      outputCommitments: outputUtxoDigests,
       toAddress: address,
       amount: parseFloat(netStr),
       fee: feeNum,
@@ -267,9 +271,13 @@ onMounted(async () => {
         <CardContent class="pt-4 space-y-2">
           <div class="flex flex-wrap gap-3 text-sm">
             <Badge variant="outline">{{ selectedUtxos.length }} / {{ MAX_SELECT }} selected</Badge>
-            <Badge variant="outline">Total: {{ formatAmount(totalSelected, 8) }} XNT</Badge>
-            <Badge :variant="isFeeValid && netAmount > 0 ? 'outline' : 'default'">
-              After fee: {{ isFeeValid ? formatAmount(netAmount, 8) : '—' }} XNT
+            <Badge variant="outline">Total: {{ formatXnt(totalSelected) }} XNT</Badge>
+            <Badge
+              :variant="
+                !selectedUtxos.length || (isFeeValid && netAmount > 0) ? 'outline' : 'default'
+              "
+            >
+              After fee: {{ selectedUtxos.length && isFeeValid ? formatXnt(netAmount) : '-' }} XNT
             </Badge>
             <Badge v-if="selectedUtxos.length > 1" variant="secondary" class="text-xs">
               Mixed keys supported
@@ -326,6 +334,10 @@ onMounted(async () => {
                 <div class="flex items-center gap-2 flex-wrap">
                   <code class="break-all font-mono text-xs text-foreground">
                     {{ (utxo as any).utxoDigest }}
+                    <template v-if="utxo.utxoDigest">
+                      <CopyButton :value="utxo.utxoDigest" label="UTXO digest" />
+                      <ExplorerLink :path="`/utxo/${utxo.utxoDigest}`" />
+                    </template>
                   </code>
                   <Badge variant="secondary" class="text-xs">{{ utxo.keyType || 'dCTIDH' }}</Badge>
                   <Badge v-if="isUtxoTimelocked(utxo)" variant="destructive" class="text-xs">
@@ -334,7 +346,7 @@ onMounted(async () => {
                 </div>
                 <div class="flex gap-4 text-xs text-muted-foreground">
                   <span class="font-mono font-semibold text-primary">
-                    {{ formatAmount(+utxo.amount, 4) }} XNT
+                    {{ formatXnt(utxo.amount) }} XNT
                   </span>
                   <span>Block {{ utxo.blockHeight }}</span>
                   <span v-if="isUtxoTimelocked(utxo) && utxo.releaseDateMs">

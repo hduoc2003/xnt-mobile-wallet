@@ -3,23 +3,10 @@ use neptune_privacy::api::tx_initiation::builder::transaction_builder::Transacti
 use neptune_privacy::api::tx_initiation::builder::tx_output_list_builder::OutputFormat;
 use neptune_privacy::application::config::network::Network;
 use neptune_privacy::prelude::twenty_first::prelude::Digest;
-use neptune_privacy::protocol::consensus::Hash;
 use neptune_privacy::protocol::consensus::transaction::primitive_witness::PrimitiveWitness;
 use neptune_privacy::protocol::consensus::transaction::transaction_proof::TransactionProof;
-use neptune_privacy::protocol::consensus::transaction::validity::collect_lock_scripts::{
-    CollectLockScripts, CollectLockScriptsWitness,
-};
-use neptune_privacy::protocol::consensus::transaction::validity::collect_type_scripts_v2::{
-    CollectTypeScriptsV2, CollectTypeScriptsV2Witness,
-};
-use neptune_privacy::protocol::consensus::transaction::validity::kernel_to_outputs::{
-    KernelToOutputs, KernelToOutputsWitness,
-};
-use neptune_privacy::protocol::consensus::transaction::validity::neptune_proof::Proof as NeptuneProof;
+use neptune_privacy::protocol::consensus::block::block_height::BlockHeight;
 use neptune_privacy::protocol::consensus::transaction::validity::proof_collection::ProofCollection;
-use neptune_privacy::protocol::consensus::transaction::validity::removal_records_integrity::{
-    RemovalRecordsIntegrity, RemovalRecordsIntegrityWitness,
-};
 use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
 use neptune_privacy::protocol::proof_abstractions::timestamp::Timestamp;
 use neptune_privacy::state::wallet::address::SpendingKey;
@@ -30,11 +17,8 @@ use neptune_privacy::state::wallet::unlocked_utxo::UnlockedUtxo;
 use neptune_privacy::state::wallet::utxo_notification::UtxoNotificationMedium;
 use neptune_privacy::util_types::mutator_set::ms_membership_proof::MsMembershipProof;
 use neptune_privacy::util_types::mutator_set::removal_record::absolute_index_set::AbsoluteIndexSet;
-use neptune_privacy::util_types::mutator_set::removal_record::chunk::Chunk;
-use neptune_privacy::util_types::mutator_set::removal_record::chunk_dictionary::ChunkDictionary;
 use neptune_privacy::prelude::twenty_first::prelude::Tip5;
 use neptune_privacy::util_types::mutator_set::mutator_set_accumulator::MutatorSetAccumulator;
-use neptune_privacy::prelude::twenty_first::util_types::mmr::mmr_membership_proof::MmrMembershipProof;
 use num_traits::identities::Zero;
 use num_traits::ops::checked::CheckedSub;
 use rand::Rng;
@@ -42,15 +26,12 @@ use reqwest::Client;
 use tauri::AppHandle;
 use std::str::FromStr;
 use log::error;
-use neptune_privacy::prelude::triton_vm::prelude::{Program, Claim, NonDeterminism, PublicInput};
-use neptune_privacy::prelude::triton_vm::stark::Stark;
-use neptune_privacy::prelude::triton_vm::vm::VM;
-use neptune_privacy::protocol::proof_abstractions::mast_hash::MastHash;
-use neptune_privacy::protocol::proof_abstractions::tasm::program::ConsensusProgram;
-use neptune_privacy::protocol::proof_abstractions::SecretWitness;
+use neptune_privacy::application::json_rpc::core::model::wallet::mutator_set::RpcMsMembershipSnapshot;
 use crate::rpc_config;
 
 use crate::rpc_client;
+use crate::utxo_cache;
+use crate::utxo_scanning;
 
 pub(crate) async fn generate_membership_proof_client_side(
     incoming_utxo: &IncomingUtxo,
@@ -88,125 +69,24 @@ pub(crate) async fn generate_membership_proof_client_side(
         serde_json::json!([absolute_index_set_json]),
     ).await?;
     
-    let snapshot = restore_result.get("snapshot")
+    let snapshot = restore_result
+        .get("snapshot")
+        .cloned()
         .ok_or_else(|| "Missing snapshot in response".to_string())?;
-    
-    let membership_proofs = snapshot.get("membershipProofs")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "Missing membershipProofs array".to_string())?;
-    
-    if membership_proofs.is_empty() {
-        return Err("No membership proof returned".to_string());
-    }
-    
-    let rpc_proof = &membership_proofs[0];
-    
-    
-    let aocl_auth_paths_value = rpc_proof.get("aoclAuthPaths")
-        .ok_or_else(|| {
-            log::error!("[BuildTx] rpc_proof structure: {}", serde_json::to_string_pretty(rpc_proof).unwrap_or_default());
-            "Missing aoclAuthPaths".to_string()
-        })?;
-    
-    let aocl_auth_paths_map = if let Some(arr) = aocl_auth_paths_value.as_array() {
-        if arr.is_empty() {
-            return Err("Empty aoclAuthPaths array".to_string());
-        }
-        arr[0].as_object()
-            .ok_or_else(|| "aoclAuthPaths array element is not an object".to_string())?
-    } else {
-        aocl_auth_paths_value.as_object()
-            .ok_or_else(|| "aoclAuthPaths is neither array nor object".to_string())?
-    };
-    
-    let aocl_leaf_index_str = aocl_leaf_index.to_string();
-    let aocl_auth_path_array = aocl_auth_paths_map.get(&aocl_leaf_index_str)
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| format!("Missing AOCL auth path for leaf index {}", aocl_leaf_index))?;
-    
-    let mut auth_path_digests = Vec::new();
-    for digest_hex in aocl_auth_path_array {
-        let digest_str = digest_hex.as_str()
-            .ok_or_else(|| "Invalid digest format".to_string())?;
-        let digest_bytes = hex::decode(digest_str.trim_start_matches("0x"))
-            .map_err(|e| format!("Invalid digest hex: {}", e))?;
-        let digest: Digest = bincode::deserialize(&digest_bytes)
-            .map_err(|e| format!("Failed to deserialize digest: {}", e))?;
-        auth_path_digests.push(digest);
-    }
-    
-    let auth_path_aocl = MmrMembershipProof::new(auth_path_digests);
-    
-    let target_chunks_value = rpc_proof.get("targetChunks")
-        .ok_or_else(|| "Missing targetChunks".to_string())?;
-    
-    let target_chunks_map = if let Some(arr) = target_chunks_value.as_array() {
-        if arr.is_empty() {
-            return Err("Empty targetChunks array".to_string());
-        }
-        arr[0].as_object()
-            .ok_or_else(|| "targetChunks array element is not an object".to_string())?
-    } else {
-        target_chunks_value.as_object()
-            .ok_or_else(|| "targetChunks is neither array nor object".to_string())?
-    };
-    
-    let mut target_chunks = ChunkDictionary::default();
-    
-    for (chunk_index_str, chunk_tuple) in target_chunks_map {
-        let chunk_index = chunk_index_str.parse::<u64>()
-            .map_err(|e| format!("Invalid chunk index: {}", e))?;
-        
-        // chunk_tuple is (RpcMmrMembershipProof, Vec<u32>), serializes as array [auth_path, relative_indices]
-        let chunk_tuple_array = chunk_tuple.as_array()
-            .ok_or_else(|| format!("Invalid chunk tuple format for chunk {}", chunk_index))?;
-        
-        if chunk_tuple_array.len() != 2 {
-            return Err(format!("Invalid chunk tuple length for chunk {}", chunk_index));
-        }
-        
-        // Extract auth path (first element)
-        let auth_path_array = chunk_tuple_array[0]
-            .as_array()
-            .ok_or_else(|| format!("Missing auth path for chunk {}", chunk_index))?;
-        
-        let mut chunk_auth_path_digests = Vec::new();
-        for digest_hex in auth_path_array {
-            let digest_str = digest_hex.as_str()
-                .ok_or_else(|| "Invalid digest format".to_string())?;
-            let digest_bytes = hex::decode(digest_str.trim_start_matches("0x"))
-                .map_err(|e| format!("Invalid digest hex: {}", e))?;
-            let digest: Digest = bincode::deserialize(&digest_bytes)
-                .map_err(|e| format!("Failed to deserialize digest: {}", e))?;
-            chunk_auth_path_digests.push(digest);
-        }
-        
-        let chunk_auth_path = MmrMembershipProof::new(chunk_auth_path_digests);
-        
-        // Extract relative_indices (second element)
-        let relative_indices_array = chunk_tuple_array[1]
-            .as_array()
-            .ok_or_else(|| format!("Missing relative_indices for chunk {}", chunk_index))?;
-        
-        let mut relative_indices = Vec::new();
-        for idx in relative_indices_array {
-            let idx_val = idx.as_u64()
-                .ok_or_else(|| "Invalid relative index".to_string())?;
-            relative_indices.push(idx_val as u32);
-        }
-        
-        let chunk = Chunk { relative_indices };
-        
-        target_chunks.insert(chunk_index, (chunk_auth_path, chunk));
-    }
-    
-    Ok(MsMembershipProof {
-        sender_randomness: incoming_utxo.sender_randomness,
-        receiver_preimage: incoming_utxo.receiver_preimage,
-        auth_path_aocl,
-        aocl_leaf_index,
-        target_chunks,
-    })
+    let snapshot: RpcMsMembershipSnapshot = serde_json::from_value(snapshot)
+        .map_err(|e| format!("Invalid membership proof snapshot: {}", e))?;
+    let rpc_proof = snapshot
+        .membership_proofs
+        .into_iter()
+        .next()
+        .ok_or_else(|| "No membership proof returned".to_string())?;
+    rpc_proof
+        .extract_ms_membership_proof(
+            aocl_leaf_index,
+            incoming_utxo.sender_randomness,
+            incoming_utxo.receiver_preimage,
+        )
+        .ok_or_else(|| format!("Missing AOCL auth path for leaf index {}", aocl_leaf_index))
 }
 
 pub async fn build_transaction(app: AppHandle, payload: serde_json::Value) -> Result<String, String> {
@@ -217,15 +97,58 @@ pub async fn build_transaction(app: AppHandle, payload: serde_json::Value) -> Re
     result
 }
 
-async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) -> Result<String, String> {
-    let rpc_url = rpc_config::get_custom_rpc_endpoint(app)
-        .or_else(|| {
-            std::env::var("VITE_APP_API")
-                .ok()
-                .filter(|v| !v.trim().is_empty())
-        })
-        .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string());
-    
+/// Whether a failed mempool double-spend check may be skipped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MempoolCheck {
+    BestEffort,
+    Required,
+}
+
+/// Inputs per transaction; bounds proving time and memory on phones.
+pub(crate) const MAX_TX_INPUTS: usize = 5;
+
+/// Spendable, unspent inputs named by `inputAdditionRecords`, with the key that unlocks each.
+pub(crate) struct ValidatedInputs {
+    pub utxos: Vec<utxo_cache::CachedUtxo>,
+    pub keys: Vec<SpendingKey>,
+    /// Primary spending key from `spendingKeyHex`; change goes to its address.
+    pub primary_key: SpendingKey,
+    pub total: NativeCurrencyAmount,
+}
+
+pub(crate) fn http_client() -> Result<Client, String> {
+    Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))
+}
+
+pub(crate) async fn fetch_network(client: &Client, rpc_url: &str) -> Result<Network, String> {
+    let network_result = rpc_client::call_json_rpc(client, rpc_url, "node_network", serde_json::json!([])).await?;
+    let network_str = network_result.get("network")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Missing network in response".to_string())?;
+    Network::from_str(network_str)
+        .map_err(|e| format!("Failed to parse network '{}': {}", network_str, e))
+}
+
+fn parse_spending_key(hex_str: &str) -> Result<SpendingKey, String> {
+    let bytes = hex::decode(hex_str.trim_start_matches("0x"))
+        .map_err(|e| format!("Invalid spending key hex: {}", e))?;
+    let key: SpendingKey = bincode::deserialize(&bytes)
+        .map_err(|e| format!("Failed to deserialize spending key: {}", e))?;
+    if matches!(key, SpendingKey::Symmetric(_)) {
+        return Err("Symmetric spending keys not supported".to_string());
+    }
+    Ok(key)
+}
+
+pub(crate) async fn validate_inputs(
+    client: &Client,
+    rpc_url: &str,
+    payload: &serde_json::Value,
+    mempool_check: MempoolCheck,
+) -> Result<ValidatedInputs, String> {
     let spending_key_hex = payload["spendingKeyHex"]
         .as_str()
         .ok_or_else(|| "Missing spendingKeyHex in payload".to_string())?;
@@ -238,9 +161,139 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         .collect();
 
     // Enforce a hard limit on the number of UTXOs per transaction
-    if input_addition_records.len() > 5 {
-        return Err("Too many UTXOs selected for a single transaction. Maximum allowed is 5.".to_string());
+    if input_addition_records.len() > MAX_TX_INPUTS {
+        return Err(format!("Too many UTXOs selected for a single transaction. Maximum allowed is {MAX_TX_INPUTS}."));
     }
+
+    let spending_key = parse_spending_key(spending_key_hex)?;
+
+    // Optional per-input spending keys (for mixed-key transactions, e.g. merging
+    // Generation + dCTIDH UTXOs).  Each element corresponds positionally to the
+    // matching entry in inputAdditionRecords.
+    let per_input_key_hexes: Option<Vec<String>> = payload["spendingKeyHexes"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect());
+
+    let key_type_label = match &spending_key {
+        SpendingKey::Generation(_) => "Generation",
+        SpendingKey::dCTIDH(_)    => "dCTIDH",
+        SpendingKey::Symmetric(_) => "Symmetric",
+    };
+    log::info!(
+        "[BuildTx] Validating inputs | key_type={} | per_input_keys={} | inputs={}",
+        key_type_label,
+        per_input_key_hexes.as_ref().map(|v| v.len()).unwrap_or(0),
+        input_addition_records.len(),
+    );
+    // Get UTXOs from cache instead of calling server
+    let matched_utxos = utxo_cache::get_utxos_by_addition_records(&input_addition_records).await;
+    
+    if matched_utxos.len() != input_addition_records.len() {
+        return Err(format!(
+            "Not all UTXOs found in cache. Found {}/{} UTXOs. Please scan UTXOs first.",
+            matched_utxos.len(),
+            input_addition_records.len()
+        ));
+    }
+    
+    // Validate UTXOs using archival_getSpentStatus RPC before building transaction
+    let validated_utxos = utxo_scanning::validate_utxos_with_rpc(client, rpc_url, &matched_utxos).await
+        .map_err(|e| format!("Failed to validate UTXOs: {}. Some UTXOs may have been spent.", e))?;
+
+    if validated_utxos.len() != matched_utxos.len() {
+        return Err(format!(
+            "Some UTXOs have been spent. Validated {}/{} UTXOs. Please refresh and try again.",
+            validated_utxos.len(),
+            matched_utxos.len()
+        ));
+    }
+
+    // Additionally filter out UTXOs that are currently referenced as inputs in
+    // pending mempool transactions.  archival_getSpentStatus only covers confirmed
+    // blocks, so without this check a UTXO that is already in an unconfirmed tx
+    // could be selected again, causing a double-spend attempt.
+    let validated_utxos = match utxo_scanning::filter_utxos_spent_in_mempool(client, rpc_url, &validated_utxos).await {
+        Ok(filtered) => {
+            if filtered.len() != validated_utxos.len() {
+                return Err(format!(
+                    "{} of your selected UTXOs are already referenced in a pending mempool transaction. \
+                     Wait for that transaction to confirm or be dropped, then rescan and try again.",
+                    validated_utxos.len() - filtered.len()
+                ));
+            }
+            filtered
+        }
+        Err(e) if mempool_check == MempoolCheck::Required => {
+            return Err(format!("Could not check the mempool for double spends: {}", e));
+        }
+        Err(e) => {
+            // If we cannot reach the mempool endpoint, log a warning but do not
+            // block the transaction – the node will reject any actual double-spend.
+            log::warn!("[BuildTx] Mempool UTXO filter failed (proceeding anyway): {}", e);
+            validated_utxos
+        }
+    };
+    
+    let mut total_input_amount = NativeCurrencyAmount::zero();
+    for utxo in &matched_utxos {
+        total_input_amount = total_input_amount + utxo.utxo.utxo.get_native_currency_amount();
+    }
+
+    // Build per-input spending keys: use spendingKeyHexes if provided (mixed-key
+    // transaction), otherwise repeat the primary spending_key for every input.
+    let per_input_keys: Vec<SpendingKey> = match per_input_key_hexes {
+        Some(key_hexes) => {
+            if key_hexes.len() != validated_utxos.len() {
+                return Err(format!(
+                    "spendingKeyHexes count ({}) must match inputAdditionRecords count ({})",
+                    key_hexes.len(),
+                    validated_utxos.len()
+                ));
+            }
+            key_hexes
+                .iter()
+                .map(|hex_str| parse_spending_key(hex_str))
+                .collect::<Result<Vec<_>, String>>()?
+        }
+        None => vec![spending_key.clone(); validated_utxos.len()],
+    };
+
+    Ok(ValidatedInputs {
+        utxos: validated_utxos,
+        keys: per_input_keys,
+        primary_key: spending_key,
+        total: total_input_amount,
+    })
+}
+
+/// Generates membership proofs client-side and unlocks each input with its own key.
+pub(crate) async fn unlock_inputs(
+    client: &Client,
+    rpc_url: &str,
+    inputs: &ValidatedInputs,
+    mutator_set_accumulator: &MutatorSetAccumulator,
+) -> Result<Vec<TxInput>, String> {
+    let mut tx_inputs = Vec::new();
+    for (incoming_utxo, input_key) in inputs.utxos.iter().zip(inputs.keys.iter()) {
+        let lsaw = input_key.lock_script_and_witness();
+        let msmp = generate_membership_proof_client_side(
+            &incoming_utxo.utxo,
+            mutator_set_accumulator,
+            rpc_url,
+            client,
+        ).await?;
+
+        tx_inputs.push(TxInput::from(UnlockedUtxo::unlock(
+            incoming_utxo.utxo.utxo.clone(),
+            lsaw,
+            msmp,
+        )));
+    }
+    Ok(tx_inputs)
+}
+
+async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) -> Result<String, String> {
+    let rpc_url = rpc_config::resolve_rpc_url(app).await?;
     
     let _min_block_height = payload["minBlockHeight"].as_i64().unwrap_or(0);
     
@@ -288,100 +341,17 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         .as_str()
         .ok_or_else(|| "Missing fee in payload".to_string())?;
     
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-    let network_result = rpc_client::call_json_rpc(&client, &rpc_url, "node_network", serde_json::json!([])).await?;
-    let network_str = network_result.get("network")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing network in response".to_string())?;
-    let network = Network::from_str(network_str)
-        .map_err(|e| format!("Failed to parse network '{}': {}", network_str, e))?;
-    
-    // Parse spending key
-    let spending_key_bytes = hex::decode(spending_key_hex.trim_start_matches("0x"))
-        .map_err(|e| format!("Invalid spending key hex: {}", e))?;
-
-    let spending_key: SpendingKey = bincode::deserialize(&spending_key_bytes)
-        .map_err(|e| format!("Failed to deserialize spending key: {}", e))?;
-
-    if matches!(spending_key, SpendingKey::Symmetric(_)) {
-        return Err("Symmetric spending keys not supported".to_string());
-    }
-
-    // Optional per-input spending keys (for mixed-key transactions, e.g. merging
-    // Generation + dCTIDH UTXOs).  Each element corresponds positionally to the
-    // matching entry in inputAdditionRecords.
-    let per_input_key_hexes: Option<Vec<String>> = payload["spendingKeyHexes"]
-        .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect());
-
-    let key_type_label = match &spending_key {
-        SpendingKey::Generation(_) => "Generation",
-        SpendingKey::dCTIDH(_)    => "dCTIDH",
-        SpendingKey::Symmetric(_) => "Symmetric",
-    };
+    let client = http_client()?;
+    let network = fetch_network(&client, &rpc_url).await?;
+    let inputs = validate_inputs(&client, &rpc_url, &payload, MempoolCheck::BestEffort).await?;
+    let spending_key = inputs.primary_key.clone();
+    let total_input_amount = inputs.total;
     log::info!(
-        "[BuildTx] Building transaction | key_type={} | per_input_keys={} | inputs={} | outputs={} | fee={}",
-        key_type_label,
-        per_input_key_hexes.as_ref().map(|v| v.len()).unwrap_or(0),
-        input_addition_records.len(),
+        "[BuildTx] Building transaction | inputs={} | outputs={} | fee={}",
+        inputs.utxos.len(),
         output_addresses.len(),
         fee,
     );
-    // Get UTXOs from cache instead of calling server
-    use crate::utxo_cache;
-    let matched_utxos = utxo_cache::get_utxos_by_addition_records(&input_addition_records).await;
-    
-    if matched_utxos.len() != input_addition_records.len() {
-        return Err(format!(
-            "Not all UTXOs found in cache. Found {}/{} UTXOs. Please scan UTXOs first.",
-            matched_utxos.len(),
-            input_addition_records.len()
-        ));
-    }
-    
-    // Validate UTXOs using archival_getSpentStatus RPC before building transaction
-    use crate::utxo_scanning;
-    let validated_utxos = utxo_scanning::validate_utxos_with_rpc(&client, &rpc_url, &matched_utxos).await
-        .map_err(|e| format!("Failed to validate UTXOs: {}. Some UTXOs may have been spent.", e))?;
-
-    if validated_utxos.len() != matched_utxos.len() {
-        return Err(format!(
-            "Some UTXOs have been spent. Validated {}/{} UTXOs. Please refresh and try again.",
-            validated_utxos.len(),
-            matched_utxos.len()
-        ));
-    }
-
-    // Additionally filter out UTXOs that are currently referenced as inputs in
-    // pending mempool transactions.  archival_getSpentStatus only covers confirmed
-    // blocks, so without this check a UTXO that is already in an unconfirmed tx
-    // could be selected again, causing a double-spend attempt.
-    let validated_utxos = match utxo_scanning::filter_utxos_spent_in_mempool(&client, &rpc_url, &validated_utxos).await {
-        Ok(filtered) => {
-            if filtered.len() != validated_utxos.len() {
-                return Err(format!(
-                    "{} of your selected UTXOs are already referenced in a pending mempool transaction. \
-                     Wait for that transaction to confirm or be dropped, then rescan and try again.",
-                    validated_utxos.len() - filtered.len()
-                ));
-            }
-            filtered
-        }
-        Err(e) => {
-            // If we cannot reach the mempool endpoint, log a warning but do not
-            // block the transaction – the node will reject any actual double-spend.
-            log::warn!("[BuildTx] Mempool UTXO filter failed (proceeding anyway): {}", e);
-            validated_utxos
-        }
-    };
-    
-    let mut total_input_amount = NativeCurrencyAmount::zero();
-    for utxo in &matched_utxos {
-        total_input_amount = total_input_amount + utxo.utxo.utxo.get_native_currency_amount();
-    }
     
     let fee_amount = NativeCurrencyAmount::coins_from_str(fee)
         .map_err(|e| format!("Invalid fee: {}", e))?;
@@ -417,52 +387,7 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
     }
     
     let mutator_set_accumulator = rpc_client::get_archival_mutator_set(&client, &rpc_url).await?;
-    
-    // Build per-input spending keys: use spendingKeyHexes if provided (mixed-key
-    // transaction), otherwise repeat the primary spending_key for every input.
-    let per_input_keys: Vec<SpendingKey> = match per_input_key_hexes {
-        Some(key_hexes) => {
-            if key_hexes.len() != validated_utxos.len() {
-                return Err(format!(
-                    "spendingKeyHexes count ({}) must match inputAdditionRecords count ({})",
-                    key_hexes.len(),
-                    validated_utxos.len()
-                ));
-            }
-            key_hexes
-                .iter()
-                .map(|hex_str| {
-                    let bytes = hex::decode(hex_str.trim_start_matches("0x"))
-                        .map_err(|e| format!("Invalid spending key hex: {}", e))?;
-                    let key: SpendingKey = bincode::deserialize(&bytes)
-                        .map_err(|e| format!("Failed to deserialize spending key: {}", e))?;
-                    if matches!(key, SpendingKey::Symmetric(_)) {
-                        return Err("Symmetric spending keys not supported".to_string());
-                    }
-                    Ok(key)
-                })
-                .collect::<Result<Vec<_>, String>>()?
-        }
-        None => vec![spending_key.clone(); validated_utxos.len()],
-    };
-
-    // Generate membership proofs client-side; unlock each input with its own key.
-    let mut tx_inputs = Vec::new();
-    for (incoming_utxo, input_key) in validated_utxos.iter().zip(per_input_keys.iter()) {
-        let lsaw = input_key.lock_script_and_witness();
-        let msmp = generate_membership_proof_client_side(
-            &incoming_utxo.utxo,
-            &mutator_set_accumulator,
-            &rpc_url,
-            &client,
-        ).await?;
-
-        tx_inputs.push(TxInput::from(UnlockedUtxo::unlock(
-            incoming_utxo.utxo.utxo.clone(),
-            lsaw,
-            msmp,
-        )));
-    }
+    let tx_inputs = unlock_inputs(&client, &rpc_url, &inputs, &mutator_set_accumulator).await?;
     
     let my_address: ReceivingAddress = spending_key.clone().to_address();
     let tx_outputs: Vec<TxOutput> = validated_outputs
@@ -502,9 +427,11 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
     );
     
     let primitive_witness: PrimitiveWitness = tx_details.primitive_witness();
-    let proof_collection = produce_proof_collection_in_process(&primitive_witness, None)
-        .await
-        .map_err(|e| format!("Failed to generate proof collection: {}", e))?;
+    let block_height = rpc_client::get_chain_height(&client, &rpc_url).await?;
+    let proof_collection =
+        ProofCollection::produce_in_process(&primitive_witness, network, BlockHeight::from(block_height))
+            .await
+            .map_err(|e| format!("Failed to generate proof collection: {}", e))?;
     
     let proof = TransactionProof::ProofCollection(proof_collection);
     let transaction = TransactionBuilder::new()
@@ -520,6 +447,8 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         .map(|addition_record| addition_record.canonical_commitment.to_hex())
         .collect();
     
+    let tx_id = transaction.txid().to_string();
+
     // Convert Transaction to RpcTransaction for JSON-RPC
     use neptune_privacy::application::json_rpc::core::model::wallet::transaction::RpcTransaction;
     let rpc_transaction: RpcTransaction = transaction.into();
@@ -532,175 +461,7 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         "success": true,
         "transaction": transaction_json,
         "outputUtxoDigests": output_utxo_digests,
+        "txId": tx_id,
     })
     .to_string())
 }
-
-async fn prove_in_process(
-    program: Program,
-    claim: Claim,
-    nondeterminism: NonDeterminism,
-    max_log2_padded_height: Option<u8>,
-) -> std::result::Result<NeptuneProof, String> {
-    let claim_input = claim.input.clone();
-    let program_clone = program.clone();
-    let nondeterminism_clone = nondeterminism.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        VM::trace_execution(program_clone, claim_input.into(), nondeterminism_clone)
-    })
-    .await
-    .map_err(|e| format!("VM execution task failed: {}", e))?;
-    
-    let (aet, public_output) = result.map_err(|e| format!("VM execution failed: {}", e))?;
-    
-    if public_output != claim.output {
-        return Err("VM output does not match claim output".to_string());
-    }
-    
-    let log2_padded_height = aet.padded_height().ilog2() as u8;
-    if let Some(max) = max_log2_padded_height {
-        if log2_padded_height > max {
-            return Err(format!(
-                "Proof complexity limit exceeded: padded height 2^{} exceeds limit 2^{}",
-                log2_padded_height, max
-            ));
-        }
-    }
-
-    let stark = Stark::default();
-    let proof = stark
-        .prove(&claim, &aet)
-        .map_err(|e| format!("Proof generation failed: {}", e))?;
-    Ok(NeptuneProof::from(proof))
-}
-
-async fn produce_proof_collection_in_process(
-    primitive_witness: &PrimitiveWitness,
-    max_log2_padded_height: Option<u8>,
-) -> std::result::Result<ProofCollection, String> {
-    // Extract witnesses
-    let removal_records_integrity_witness = RemovalRecordsIntegrityWitness::from(primitive_witness);
-    let collect_lock_scripts_witness = CollectLockScriptsWitness::from(primitive_witness);
-    let kernel_to_outputs_witness = KernelToOutputsWitness::from(primitive_witness);
-    let collect_type_scripts_witness = CollectTypeScriptsV2Witness::from(primitive_witness);
-    
-    let txk_mast_hash = primitive_witness.kernel.mast_hash();
-    let txk_mast_hash_as_input = PublicInput::new(txk_mast_hash.reversed().values().to_vec());
-    let salted_inputs_hash = Hash::hash(&primitive_witness.input_utxos);
-    let salted_outputs_hash = Hash::hash(&primitive_witness.output_utxos);
-    
-    // Prove RemovalRecordsIntegrity
-    let removal_records_integrity = prove_in_process(
-        RemovalRecordsIntegrity.program(),
-        removal_records_integrity_witness.claim(),
-        removal_records_integrity_witness.nondeterminism(),
-        max_log2_padded_height,
-    )
-    .await?;
-    
-    // Prove CollectLockScripts
-    let collect_lock_scripts = prove_in_process(
-        CollectLockScripts.program(),
-        collect_lock_scripts_witness.claim(),
-        collect_lock_scripts_witness.nondeterminism(),
-        max_log2_padded_height,
-    )
-    .await?;
-    
-    // Prove KernelToOutputs
-    let kernel_to_outputs = prove_in_process(
-        KernelToOutputs.program(),
-        kernel_to_outputs_witness.claim(),
-        kernel_to_outputs_witness.nondeterminism(),
-        max_log2_padded_height,
-    )
-    .await?;
-    
-    // Prove CollectTypeScriptsV2
-    let collect_type_scripts = prove_in_process(
-        CollectTypeScriptsV2.program(),
-        collect_type_scripts_witness.claim(),
-        collect_type_scripts_witness.nondeterminism(),
-        max_log2_padded_height,
-    )
-    .await?;
-    
-    // Prove lock scripts
-    let mut lock_scripts_halt = Vec::new();
-    for lock_script_and_witness in &primitive_witness.lock_scripts_and_witnesses {
-        let claim = Claim::new(lock_script_and_witness.program.hash())
-            .with_input(txk_mast_hash_as_input.individual_tokens.clone());
-        let nondeterminism = lock_script_and_witness.nondeterminism();
-        let program = lock_script_and_witness.program.clone();
-        let proof =
-            prove_in_process(program, claim, nondeterminism, max_log2_padded_height).await?;
-        lock_scripts_halt.push(proof);
-    }
-    
-    // Prove type scripts (V2: remap legacy TimeLock → TimeLockV2)
-    use neptune_privacy::protocol::consensus::type_scripts::time_lock::TimeLock;
-    use neptune_privacy::protocol::consensus::type_scripts::time_lock_v2::TimeLockV2;
-    use neptune_privacy::protocol::consensus::type_scripts::known_type_scripts::match_type_script_and_generate_witness_v2;
-    let old_timelock_hash = TimeLock.hash();
-    let new_timelock_hash = TimeLockV2.hash();
-    // Collect deduplicated remapped hashes (mirrors CollectTypeScriptsV2 output)
-    let mut remapped_hashes: Vec<Digest> = vec![];
-    for tsaw in &primitive_witness.type_scripts_and_witnesses {
-        let h = tsaw.program.hash();
-        let remapped = if h == old_timelock_hash { new_timelock_hash } else { h };
-        if !remapped_hashes.contains(&remapped) {
-            remapped_hashes.push(remapped);
-        }
-    }
-    let mut type_scripts_halt = Vec::new();
-    for type_script_hash in &remapped_hashes {
-        let v2_tsaw = match_type_script_and_generate_witness_v2(
-            *type_script_hash,
-            primitive_witness.kernel.clone(),
-            primitive_witness.input_utxos.clone(),
-            primitive_witness.output_utxos.clone(),
-        )
-        .ok_or_else(|| format!("Unknown type script hash: {}", type_script_hash.to_hex()))?;
-        let public_input: Vec<_> = [txk_mast_hash, salted_inputs_hash, salted_outputs_hash]
-            .into_iter()
-            .flat_map(|d| d.reversed().values())
-            .collect();
-        let claim = Claim::new(*type_script_hash).with_input(public_input);
-        let proof = prove_in_process(
-            v2_tsaw.program.clone(),
-            claim,
-            v2_tsaw.nondeterminism(),
-            max_log2_padded_height,
-        )
-        .await?;
-        type_scripts_halt.push(proof);
-    }
-
-    let lock_script_hashes = primitive_witness
-        .lock_scripts_and_witnesses
-        .iter()
-        .map(|lsaw| lsaw.program.hash())
-        .collect();
-    let type_script_hashes = remapped_hashes;
-    
-    let merge_bit_mast_path = primitive_witness.kernel.mast_path(
-        neptune_privacy::protocol::consensus::transaction::transaction_kernel::TransactionKernelField::MergeBit,
-    );
-
-    Ok(ProofCollection {
-        removal_records_integrity,
-        collect_lock_scripts,
-        lock_scripts_halt,
-        kernel_to_outputs,
-        collect_type_scripts,
-        type_scripts_halt,
-        lock_script_hashes,
-        type_script_hashes,
-        kernel_mast_hash: txk_mast_hash,
-        salted_inputs_hash,
-        salted_outputs_hash,
-        merge_bit_mast_path,
-    })
-}
-
-

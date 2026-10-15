@@ -339,20 +339,10 @@ pub async fn scan_utxos_client_side(
                 v.clone()
             } else {
                 rpc_config::get_custom_rpc_endpoint(app)
-                    .or_else(|| {
-                        std::env::var("VITE_APP_API")
-                            .ok()
-                            .filter(|v| !v.trim().is_empty())
-                    })
                     .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string())
             }
         } else {
             rpc_config::get_custom_rpc_endpoint(app)
-                .or_else(|| {
-                    std::env::var("VITE_APP_API")
-                        .ok()
-                        .filter(|v| !v.trim().is_empty())
-                })
                 .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string())
         }
     };
@@ -757,11 +747,6 @@ pub async fn get_cached_utxos(app: &AppHandle) -> Result<String, String> {
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
     let rpc_url = rpc_config::get_custom_rpc_endpoint(app)
-        .or_else(|| {
-            std::env::var("VITE_APP_API")
-                .ok()
-                .filter(|v| !v.trim().is_empty())
-        })
         .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string());
 
     let cached_utxos = utxo_cache::get_all_utxos().await;

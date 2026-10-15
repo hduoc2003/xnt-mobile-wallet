@@ -9,6 +9,7 @@ import type {
 } from '@/types'
 import {
   DEFAULT_MIN_BLOCK_HEIGHT,
+  RPC_URL,
   normalizeUtxo,
   selectSpendableUtxos,
   toFiniteNumber,
@@ -412,7 +413,7 @@ export function useNeptuneWallet() {
       }
 
       const customRpc = await (window as any).walletApi.getCustomRpcEndpoint?.()
-      const rpcUrl = customRpc || import.meta.env.VITE_APP_API
+      const rpcUrl = customRpc || RPC_URL
       if (!rpcUrl) {
         throw new Error('RPC endpoint is not configured')
       }
@@ -503,7 +504,7 @@ export function useNeptuneWallet() {
 
       let pendingBalance = '0'
       const customRpc = await (window as any).walletApi.getCustomRpcEndpoint?.()
-      const rpcUrl = customRpc || import.meta.env.VITE_APP_API
+      const rpcUrl = customRpc || RPC_URL
       if (rpcUrl) {
         let pendingTotal = 0
         const keysToCheck = [store.getSpendingKey, store.getGenerationSpendingKey].filter(Boolean)

@@ -210,3 +210,74 @@ pub async fn get_mempool_removal_hashes(
 
     Ok(spent_hashes)
 }
+
+/// Digest of the canonical block that created the output, searching the node's
+/// default depth back from the tip.
+pub async fn find_utxo_origin(
+    client: &Client,
+    rpc_url: &str,
+    commitment: &str,
+) -> Result<Option<String>, String> {
+    let result = call_json_rpc(
+        client,
+        rpc_url,
+        "archival_findUtxoOrigin",
+        serde_json::json!([commitment]),
+    )
+    .await?;
+    match result.get("block") {
+        Some(Value::Null) => Ok(None),
+        Some(Value::String(digest)) => Ok(Some(digest.clone())),
+        other => Err(format!("archival_findUtxoOrigin: unexpected block field {other:?}")),
+    }
+}
+
+pub async fn get_block_height(client: &Client, rpc_url: &str, digest: &str) -> Result<u64, String> {
+    let result = call_json_rpc(
+        client,
+        rpc_url,
+        "archival_getBlockHeader",
+        serde_json::json!([digest]),
+    )
+    .await?;
+    result
+        .pointer("/header/height")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| format!("archival_getBlockHeader: no height for block {digest}"))
+}
+
+/// Canonical commitments (hex) of every output of every mempool transaction. Survives the
+/// node rewriting a transaction (merge, mutator-set update), unlike its tx id.
+pub async fn get_mempool_output_commitments(
+    client: &Client,
+    rpc_url: &str,
+) -> Result<std::collections::HashSet<String>, String> {
+    let mut commitments = std::collections::HashSet::new();
+    for tx_id in get_mempool_transactions(client, rpc_url).await? {
+        // `None`: the transaction left the mempool between the two calls.
+        if let Some(kernel) = get_mempool_transaction_kernel(client, rpc_url, &tx_id).await? {
+            commitments.extend(kernel.outputs.iter().map(|o| o.canonical_commitment.to_hex()));
+        }
+    }
+    Ok(commitments)
+}
+
+pub async fn get_chain_height(client: &Client, rpc_url: &str) -> Result<u64, String> {
+    let result = call_json_rpc(client, rpc_url, "chain_height", serde_json::json!([])).await?;
+    result
+        .get("height")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| format!("chain_height: no height in {result}"))
+}
+
+/// Height of the canonical block that created the output; `None` past the node's search depth.
+pub async fn output_block_height(
+    client: &Client,
+    rpc_url: &str,
+    commitment: &str,
+) -> Result<Option<u64>, String> {
+    match find_utxo_origin(client, rpc_url, commitment).await? {
+        Some(digest) => Ok(Some(get_block_height(client, rpc_url, &digest).await?)),
+        None => Ok(None),
+    }
+}
