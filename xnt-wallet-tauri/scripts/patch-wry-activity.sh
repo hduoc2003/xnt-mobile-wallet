@@ -19,11 +19,13 @@ if grep -q "libc++_shared" "$WRY_ACTIVITY_FILE"; then
     cp "$WRY_ACTIVITY_FILE" "${WRY_ACTIVITY_FILE}.bak"
     
     # Remove the libc++_shared loading code
-    sed -i '' '/Load C++ runtime library first/,/throw e/d' "$WRY_ACTIVITY_FILE"
-    sed -i '' '/System.loadLibrary("c++_shared")/d' "$WRY_ACTIVITY_FILE"
+    sed -i.sedtmp '/Load C++ runtime library first/,/throw e/d' "$WRY_ACTIVITY_FILE"
+    sed -i.sedtmp '/System.loadLibrary("c++_shared")/d' "$WRY_ACTIVITY_FILE"
     
     # Clean up any extra blank lines
-    sed -i '' '/^[[:space:]]*$/N;/^\n$/d' "$WRY_ACTIVITY_FILE"
+    sed -i.sedtmp '/^[[:space:]]*$/N;/^\n$/d' "$WRY_ACTIVITY_FILE"
+    # A suffix on -i is the form both GNU and BSD sed accept.
+    rm -f "$WRY_ACTIVITY_FILE.sedtmp"
     
     echo "✓ Successfully removed libc++_shared loading code"
 else
