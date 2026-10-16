@@ -51,6 +51,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: xnt-wallet-tauri/src-tauri
+          key: desktop
           # Keeps compiled deps when a late step fails, so the retry skips xnt-core.
           cache-on-failure: true
 
