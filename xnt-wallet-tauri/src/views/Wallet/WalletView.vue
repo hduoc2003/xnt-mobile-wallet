@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onActivated } from 'vue'
+import { ref, onActivated, onDeactivated, onUnmounted } from 'vue'
 import { toast } from 'vue-sonner'
 import { Wallet } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
@@ -7,6 +7,7 @@ import { useNeptuneStore } from '@/stores'
 import WalletBalanceCard from './components/WalletBalanceCard.vue'
 import WalletActions from './components/WalletActions.vue'
 import { useNeptuneWallet } from '@/composables'
+import { POLLING_INTERVAL } from '@/utils'
 
 const router = useRouter()
 const neptuneStore = useNeptuneStore()
@@ -51,9 +52,34 @@ const loadWalletData = async () => {
   }
 }
 
+// Pending amounts only clear on a reload, so keep reloading while the tab is shown and any remain.
+let pollTimer: ReturnType<typeof setTimeout> | undefined
+let active = false
+
+const stopPolling = () => {
+  clearTimeout(pollTimer)
+  pollTimer = undefined
+}
+
+const refresh = async () => {
+  // The in-flight load schedules the next poll itself.
+  if (loading.value) return
+  await loadWalletData()
+  stopPolling()
+  if (active && Number(pendingBalance.value) > 0) pollTimer = setTimeout(refresh, POLLING_INTERVAL)
+}
+
 onActivated(() => {
-  loadWalletData()
+  active = true
+  void refresh()
 })
+
+onDeactivated(() => {
+  active = false
+  stopPolling()
+})
+
+onUnmounted(stopPolling)
 </script>
 
 <template>
