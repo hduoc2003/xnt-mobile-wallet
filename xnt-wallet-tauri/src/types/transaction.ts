@@ -26,4 +26,6 @@ export interface ReceivedEntry {
   blockHeight: number
   /** ISO time of the block that created the output. */
   time: string
+  /** Leviathan burn serial when a bridge settlement paid this output. */
+  bridgeSerial?: string
 }

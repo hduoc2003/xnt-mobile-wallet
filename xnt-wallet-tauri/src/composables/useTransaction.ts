@@ -91,8 +91,9 @@ export const useTransaction = () => {
 
   /**
    * Appends newly scanned UTXOs to the received log; spent ones stay listed. Outputs of our
-   * own sends and deposits (change) are skipped. A failed block-time lookup skips that UTXO
-   * until the next sync and is reported in `errors`.
+   * own sends and deposits (change) are skipped. Bridge payouts get their Leviathan burn serial.
+   * A failed block-time or burn lookup skips that UTXO until the next sync and is reported in
+   * `errors`.
    */
   const syncReceived = async (utxos: NormalizedUtxo[], ownOutputs: Set<string>) => {
     const received = loadReceived()
@@ -112,7 +113,16 @@ export const useTransaction = () => {
       try {
         const time = times.get(utxo.blockHeight) ?? (await blockTime(utxo.blockHeight))
         times.set(utxo.blockHeight, time)
-        received.push({ commitment, amount: utxo.amount, blockHeight: utxo.blockHeight, time })
+        const bridgeSerial: string | null = await (window as any).walletApi.bridgeBurnSerial(
+          commitment,
+        )
+        received.push({
+          commitment,
+          amount: utxo.amount,
+          blockHeight: utxo.blockHeight,
+          time,
+          ...(bridgeSerial === null ? {} : { bridgeSerial }),
+        })
         known.add(commitment)
       } catch (error: unknown) {
         errors.push(error instanceof Error ? error.message : String(error))

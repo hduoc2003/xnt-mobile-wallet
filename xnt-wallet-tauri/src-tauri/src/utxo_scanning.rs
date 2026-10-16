@@ -2,6 +2,9 @@ use neptune_privacy::prelude::triton_vm::prelude::Tip5;
 use neptune_privacy::state::wallet::address::SpendingKey;
 use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
 use neptune_privacy::prelude::twenty_first::tip5::digest::Digest;
+use neptune_privacy::application::json_rpc::core::model::common::RpcNativeCurrencyAmount;
+use neptune_privacy::application::json_rpc::core::model::message::RpcIndexedUtxo;
+use neptune_privacy::protocol::consensus::transaction::utxo::Utxo;
 use num_traits::Zero;
 use reqwest::Client;
 use std::collections::HashSet;
@@ -32,6 +35,7 @@ struct KeyContext {
     label: String,
     receiver_id_hash_hex: String,
     receiver_preimage: Digest,
+    lock_script_hash: Digest,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -73,6 +77,10 @@ pub struct UtxoInfo {
     pub release_date_ms: Option<u64>,
     pub key_type: String,
     pub is_pending: bool,
+}
+
+fn settlement_payout_utxo(lock_script_hash: Digest, amount_nau: RpcNativeCurrencyAmount) -> Utxo {
+    Utxo::new_native_currency(lock_script_hash, NativeCurrencyAmount::from(amount_nau))
 }
 
 /// Builds a [`UtxoInfo`] view from a cached UTXO.
@@ -379,7 +387,14 @@ pub async fn scan_utxos_client_side(
         let receiver_id_hash = Tip5::hash_varlen(&[receiver_id]);
         let receiver_id_hash_hex = receiver_id_hash.to_hex();
         let receiver_preimage = sk.privacy_preimage();
-        key_contexts.push(KeyContext { spending_key: sk, label, receiver_id_hash_hex, receiver_preimage });
+        let lock_script_hash = sk.clone().to_address().lock_script_hash();
+        key_contexts.push(KeyContext {
+            spending_key: sk,
+            label,
+            receiver_id_hash_hex,
+            receiver_preimage,
+            lock_script_hash,
+        });
     }
 
     if key_contexts.is_empty() {
@@ -520,42 +535,30 @@ pub async fn scan_utxos_client_side(
             use neptune_privacy::state::wallet::incoming_utxo::IncomingUtxo;
 
             for indexed_utxo in &indexed_utxos {
-                let block_height = indexed_utxo.get("blockHeight")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-
-                let ciphertext_bfes: Vec<u64> = match indexed_utxo.get("ciphertext") {
-                    Some(serde_json::Value::Array(arr)) => {
-                        arr.iter()
-                            .filter_map(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
-                            .collect()
-                    }
-                    _ => Vec::new(),
-                };
-
-                let ciphertext_bytes: Vec<u8> = ciphertext_bfes
-                    .iter()
-                    .flat_map(|&v| v.to_le_bytes())
-                    .collect();
-
-                let ciphertext: Vec<BFieldElement> = ciphertext_bytes
-                    .chunks(8)
-                    .map(|chunk| {
-                        let mut arr = [0u8; 8];
-                        arr[..chunk.len()].copy_from_slice(chunk);
-                        BFieldElement::new(u64::from_le_bytes(arr))
-                    })
-                    .collect();
-
-                let (utxo, sender_randomness, _payment_id) = match key_ctx.spending_key.decrypt(&ciphertext) {
-                    Ok(result) => {
+                let indexed: RpcIndexedUtxo = serde_json::from_value(indexed_utxo.clone())
+                    .map_err(|e| format!("Unreadable indexed UTXO from the node: {e}"))?;
+                let (block_height, utxo, sender_randomness, is_public) = match indexed {
+                    RpcIndexedUtxo::Encrypted { block_height, ciphertext, .. } => {
+                        let Ok((utxo, sender_randomness, _payment_id)) = key_ctx.spending_key.decrypt(&ciphertext) else {
+                            continue;
+                        };
                         log::debug!(
                             "[Scan] Decrypted announcement at block={} | key_type={}",
                             block_height, key_ctx.label
                         );
-                        result
+                        (u64::from(block_height), utxo, sender_randomness, false)
                     }
-                    Err(_) => continue,
+                    // Bridge settlement payouts carry no ciphertext; the node indexes them in the clear.
+                    RpcIndexedUtxo::Public { block_height, lock_script_hash, amount_nau, sender_randomness, .. } => {
+                        if lock_script_hash != key_ctx.lock_script_hash {
+                            log::warn!(
+                                "[Scan] Bridge payout at block={} is not locked to key_type={}; skipping",
+                                block_height, key_ctx.label
+                            );
+                            continue;
+                        }
+                        (u64::from(block_height), settlement_payout_utxo(lock_script_hash, amount_nau), sender_randomness, true)
+                    }
                 };
 
                 let incoming_utxo = IncomingUtxo {
@@ -565,6 +568,19 @@ pub async fn scan_utxos_client_side(
                     is_guesser_fee: false,
                     payment_id: BFieldElement::new(0),
                 };
+
+                // Built from node-supplied fields rather than decrypted, so it must exist on chain.
+                if is_public {
+                    let commitment = incoming_utxo.addition_record().canonical_commitment.to_hex();
+                    let indices = rpc_client::get_aocl_leaf_indices(&client, &rpc_url, &[commitment]).await?;
+                    if !matches!(indices.as_slice(), [Some(_)]) {
+                        log::warn!(
+                            "[Scan] Bridge payout at block={} has no matching output on chain; skipping",
+                            block_height
+                        );
+                        continue;
+                    }
+                }
 
                 let temp_cached_utxo = utxo_cache::CachedUtxo {
                     utxo: incoming_utxo.clone(),
@@ -912,3 +928,28 @@ pub async fn get_pending_balance_from_mempool(
     }).map_err(|e| format!("Failed to serialize response: {}", e))?)
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use neptune_privacy::protocol::consensus::bridge::aggregated_announcement::AggregatedAnnouncementData;
+    use neptune_privacy::util_types::mutator_set::commit;
+
+    #[test]
+    fn settlement_payout_matches_its_onchain_output() {
+        let indexed: RpcIndexedUtxo = serde_json::from_str(include_str!("../test_data/block_252_payout.json")).unwrap();
+        let RpcIndexedUtxo::Public { lock_script_hash, amount_nau, sender_randomness, .. } = indexed else {
+            panic!("expected a public entry");
+        };
+        let utxo = settlement_payout_utxo(lock_script_hash, amount_nau);
+        let kernel: serde_json::Value =
+            serde_json::from_str(include_str!("../test_data/block_252_tx_kernel.json")).unwrap();
+        let kernel = rpc_client::kernel_from_result(&kernel).unwrap().unwrap();
+        let burn = &AggregatedAnnouncementData::find_in_announcements(&kernel.announcements)
+            .unwrap()
+            .burns[0];
+        let commitment =
+            commit(Tip5::hash(&utxo), sender_randomness, burn.privacy_digest).canonical_commitment;
+        assert!(kernel.outputs.iter().any(|o| o.canonical_commitment == commitment));
+    }
+}

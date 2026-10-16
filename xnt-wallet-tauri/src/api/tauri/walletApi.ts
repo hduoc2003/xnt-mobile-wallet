@@ -125,6 +125,10 @@ export const walletApi = {
   txStatuses: (commitments: string[]): Promise<HistoryStatus[]> =>
     safeInvoke<HistoryStatus[]>('tx_statuses', { commitments }),
 
+  /** Serial of the Leviathan burn that paid a cached UTXO, or null if no bridge settlement did. */
+  bridgeBurnSerial: (commitment: string): Promise<string | null> =>
+    safeInvoke<string | null>('bridge_burn_serial', { commitment }),
+
   getMinBlockHeight: (fileName: string): Promise<any> =>
     call('get_min_block_height', { fileName }, 'Failed to get min block height'),
 

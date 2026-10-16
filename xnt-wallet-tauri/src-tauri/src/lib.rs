@@ -8,6 +8,7 @@ use android_logger;
 use libc;
 
 mod bridge_deposit;
+mod bridge_payout;
 mod bridge_status;
 mod keys;
 mod keystore;
@@ -211,6 +212,11 @@ async fn tx_statuses(
 }
 
 #[tauri::command]
+async fn bridge_burn_serial(app: tauri::AppHandle, commitment: String) -> Result<Option<String>, String> {
+    bridge_payout::burn_serial(&app, &commitment).await
+}
+
+#[tauri::command]
 fn log_message(level: String, message: String) -> Result<(), String> {
     let lvl = match level.to_lowercase().as_str() {
         "trace" => Level::Trace,
@@ -301,6 +307,7 @@ pub fn run() {
             discard_bridge_deposit,
             refresh_bridge_deposits,
             tx_statuses,
+            bridge_burn_serial,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

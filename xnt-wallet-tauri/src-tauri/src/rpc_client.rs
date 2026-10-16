@@ -184,6 +184,32 @@ pub async fn get_mempool_transaction_kernel(
     Ok(Some(kernel))
 }
 
+/// Kernel of the transaction mined in the block at `height`; `None` above the tip.
+pub async fn get_block_transaction_kernel(
+    client: &Client,
+    rpc_url: &str,
+    height: u64,
+) -> Result<Option<TransactionKernel>, String> {
+    let result = call_json_rpc(
+        client,
+        rpc_url,
+        "archival_getBlockTransactionKernel",
+        serde_json::json!([height]),
+    )
+    .await?;
+    kernel_from_result(&result)
+}
+
+pub(crate) fn kernel_from_result(result: &Value) -> Result<Option<TransactionKernel>, String> {
+    if result["kernel"].is_null() {
+        return Ok(None);
+    }
+    let rpc_kernel: neptune_privacy::application::json_rpc::core::model::block::transaction_kernel::RpcTransactionKernel =
+        serde_json::from_value(result["kernel"].clone())
+            .map_err(|e| format!("Failed to deserialize block transaction kernel: {}", e))?;
+    Ok(Some(rpc_kernel.into()))
+}
+
 /// Returns the set of AbsoluteIndexSet hashes (hex) for every removal record across
 /// all pending transactions in the mempool.  These correspond to UTXOs that are
 /// currently being spent but not yet confirmed on-chain.

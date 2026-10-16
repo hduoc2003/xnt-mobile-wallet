@@ -15,7 +15,7 @@ import {
   normalizeUtxo,
 } from '@/utils'
 
-type Kind = 'sent' | 'received' | 'bridge'
+type Kind = 'sent' | 'received' | 'bridge' | 'bridgeIn'
 type Tone = 'pending' | 'confirmed' | 'dropped' | 'neutral'
 
 interface HistoryRow {
@@ -36,12 +36,15 @@ interface HistoryRow {
   blockHeight?: number
   /** Leviathan mint tx, once the relayer submitted the mint. */
   mintTxId?: string
+  /** Leviathan burn that a bridge settlement paid out. */
+  burnSerial?: string
 }
 
 const KIND_LABEL: Record<Kind, string> = {
   sent: 'Sent',
   received: 'Received',
   bridge: 'Bridge to Leviathan',
+  bridgeIn: 'Bridge from Leviathan',
 }
 
 const router = useRouter()
@@ -100,7 +103,8 @@ const rows = computed<HistoryRow[]>(() => {
   const incoming: HistoryRow[] = received.value.map((r) => ({
     key: `received-${r.commitment}`,
     commitment: r.commitment,
-    kind: 'received',
+    kind: r.bridgeSerial === undefined ? 'received' : 'bridgeIn',
+    burnSerial: r.bridgeSerial,
     amount: Number(r.amount),
     timeMs: new Date(r.time).getTime(),
     status: `Confirmed in block ${r.blockHeight}`,
@@ -242,7 +246,10 @@ const shortId = (hex: string) => `${hex.slice(0, 10)}…${hex.slice(-6)}`
             <div class="flex items-start gap-3">
               <div class="mt-1 rounded-full bg-primary/10 p-2">
                 <ArrowUpRight v-if="row.kind === 'sent'" class="size-4 text-primary" />
-                <ArrowDownLeft v-else-if="row.kind === 'received'" class="size-4 text-primary" />
+                <ArrowDownLeft
+                  v-else-if="row.kind === 'received' || row.kind === 'bridgeIn'"
+                  class="size-4 text-primary"
+                />
                 <ArrowRightLeft v-else class="size-4 text-primary" />
               </div>
               <div class="space-y-1">
@@ -284,6 +291,14 @@ const shortId = (hex: string) => `${hex.slice(0, 10)}…${hex.slice(-6)}`
                   tx {{ shortId(row.txId) }}
                   <CopyButton :value="row.txId" label="Tx id" />
                   <ExplorerLink :path="`/tx?id=${row.txId}`" />
+                </p>
+                <p
+                  v-if="row.burnSerial"
+                  class="font-mono text-[10px] text-muted-foreground"
+                  :title="row.burnSerial"
+                >
+                  burn {{ shortId(row.burnSerial) }}
+                  <CopyButton :value="row.burnSerial" label="Burn serial" />
                 </p>
                 <p
                   v-if="row.mintTxId"
