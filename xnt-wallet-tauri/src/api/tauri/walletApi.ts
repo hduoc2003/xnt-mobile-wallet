@@ -1,10 +1,16 @@
 import type {
+  AccountEntry,
+  AccountKeys,
   BridgeDepositRecord,
   ChainCheck,
+  ImportSource,
+  Registry,
+  SeedEntry,
   HistoryStatus,
   PayloadBuildBridgeDeposit,
   PayloadBuildTransaction,
 } from '@/types'
+import type { AccountKeysRef } from '@/stores/accountsStore'
 import { safeInvoke } from './safeInvoke'
 
 /** How the caught error is turned into the `error` field of a failure result. */
@@ -87,12 +93,6 @@ export const walletApi = {
     }
   },
 
-  decryptKeystore: (fileName: string, password: string): Promise<any> =>
-    call('decrypt_keystore', { fileName, password }, 'Failed to decrypt keystore'),
-
-  saveKeystoreAs: (fileName: string): Promise<any> =>
-    call('save_keystore_as', { fileName }, 'Failed to save keystore'),
-
   updateMinBlockHeight: (keystoreFileName: string, blockHeight: number | null): Promise<any> => {
     const fileName = keystoreFileName || 'default'
     if (blockHeight === null || blockHeight === undefined) return Promise.resolve({ success: true })
@@ -132,6 +132,52 @@ export const walletApi = {
 
   checkChain: (): Promise<ChainCheck> => safeInvoke<ChainCheck>('check_chain'),
 
+  deriveAccountKeys: (seedPhrase: string[], index: number, network: string): Promise<AccountKeys> =>
+    safeInvoke<AccountKeys>('derive_account_keys', { seedPhrase, index, network }),
+
+  accountsLoad: (): Promise<Registry> => safeInvoke<Registry>('accounts_load'),
+
+  accountsAdd: (seedId: string, index: number): Promise<AccountEntry> =>
+    safeInvoke<AccountEntry>('accounts_add', { seedId, index }),
+
+  accountsRename: (id: string, name: string | null): Promise<Registry> =>
+    safeInvoke<Registry>('accounts_rename', { id, name }),
+
+  accountsSetHidden: (id: string, hidden: boolean): Promise<Registry> =>
+    safeInvoke<Registry>('accounts_set_hidden', { id, hidden }),
+
+  accountsSetActive: (id: string): Promise<Registry> =>
+    safeInvoke<Registry>('accounts_set_active', { id }),
+
+  accountsMarkBackedUp: (seedId: string): Promise<Registry> =>
+    safeInvoke<Registry>('accounts_mark_backed_up', { seedId }),
+
+  /** On an error the registry may already be saved without the seed: reload it. */
+  accountsRemoveSeed: (seedId: string): Promise<Registry> =>
+    safeInvoke<Registry>('accounts_remove_seed', { seedId }),
+
+  /** Opens a save dialog for that seed's keystore file; resolves to `{ success, filePath }`. */
+  accountsSaveKeystoreAs: (seedId: string): Promise<any> =>
+    call('accounts_save_keystore_as', { seedId }, 'Failed to save keystore', {
+      errorFrom: 'message',
+    }),
+
+  forgetAccounts: (accounts: AccountKeysRef[]): Promise<void> =>
+    safeInvoke<void>('forget_accounts', { accounts }),
+
+  accountsResetMain: (keystoreFile: string): Promise<Registry> =>
+    safeInvoke<Registry>('accounts_reset_main', { keystoreFile }),
+
+  accountsImport: (source: ImportSource, walletPassword: string): Promise<SeedEntry> =>
+    safeInvoke<SeedEntry>('accounts_import', { source, walletPassword }),
+
+  accountsDiscover: (seedId: string, walletPassword: string): Promise<AccountEntry[]> =>
+    safeInvoke<AccountEntry[]>('accounts_discover', { seedId, walletPassword }),
+
+  /** Reads a seed's words without touching wallet state. */
+  accountsSeedPhrase: (seedId: string, walletPassword: string): Promise<string[]> =>
+    safeInvoke<string[]>('accounts_seed_phrase', { seedId, walletPassword }),
+
   getMinBlockHeight: (fileName: string): Promise<any> =>
     call('get_min_block_height', { fileName }, 'Failed to get min block height'),
 
@@ -157,8 +203,9 @@ export const walletApi = {
   getKeystorePath: (): Promise<any> =>
     call('get_keystore_path', undefined, 'Failed to get keystore path'),
 
-  getCachedUtxosLocal: (): Promise<any> =>
-    call('get_cached_utxos_local', undefined, 'Failed to get cached UTXOs local', {
+  /** With `accounts`, only their UTXOs, tagged; without, every cached UTXO untagged. */
+  getCachedUtxosLocal: (accounts?: AccountKeysRef[]): Promise<any> =>
+    call('get_cached_utxos_local', { accounts }, 'Failed to get cached UTXOs local', {
       errorFrom: 'message',
     }),
 
@@ -184,9 +231,6 @@ export const walletApi = {
 
   scanUtxosClientSide: (request: any): Promise<any> =>
     call('scan_utxos_client_side', { request }, 'Failed to scan UTXOs', { errorFrom: 'rich' }),
-
-  getCachedUtxos: (): Promise<any> =>
-    call('get_cached_utxos', undefined, 'Failed to get cached UTXOs', { errorFrom: 'message' }),
 
   clearUtxoCache: (): Promise<any> =>
     call('clear_utxo_cache', undefined, 'Failed to clear UTXO cache', { errorFrom: 'message' }),

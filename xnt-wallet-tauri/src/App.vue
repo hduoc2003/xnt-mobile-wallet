@@ -18,6 +18,7 @@ let shouldRedirect = false
 let visibilityChangeHandler: (() => void) | null = null
 let nativePickerActive = false
 let focusInHandler: ((e: FocusEvent) => void) | null = null
+let filePickHandler: ((e: MouseEvent) => void) | null = null
 
 // Phones lock when the app goes to the background; desktops after a quiet spell instead,
 // since any click on another window would otherwise lock them.
@@ -46,7 +47,7 @@ const lockIfIdleTooLong = () => {
 
 const handleAppBlur = () => {
   if (router.currentRoute.value.name === 'auth') return
-  // If a native date/time picker was just opened, skip logout regardless of duration
+  // If a native date/time/file picker was just opened, skip logout regardless of duration
   if (nativePickerActive) return
   clearWallet()
   shouldRedirect = true
@@ -96,6 +97,19 @@ onMounted(async () => {
     }
     document.addEventListener('focusin', focusInHandler)
 
+    // Only until a file is chosen or the picker cancelled, so a later backgrounding still locks.
+    filePickHandler = (e: MouseEvent) => {
+      const target = e.target
+      if (!(target instanceof HTMLInputElement) || target.type !== 'file') return
+      nativePickerActive = true
+      const done = () => {
+        nativePickerActive = false
+      }
+      target.addEventListener('change', done, { once: true })
+      target.addEventListener('cancel', done, { once: true })
+    }
+    document.addEventListener('click', filePickHandler, true)
+
     // Page Visibility API
     visibilityChangeHandler = () => {
       if (document.hidden) {
@@ -119,6 +133,10 @@ onUnmounted(() => {
   unlistenBlur = null
 
   if (typeof document !== 'undefined') {
+    if (filePickHandler) {
+      document.removeEventListener('click', filePickHandler, true)
+      filePickHandler = null
+    }
     if (focusInHandler) {
       document.removeEventListener('focusin', focusInHandler)
       focusInHandler = null

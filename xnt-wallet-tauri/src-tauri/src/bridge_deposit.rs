@@ -27,6 +27,7 @@ pub(crate) struct DepositRequest {
     pub amount: NativeCurrencyAmount,
     pub fee: NativeCurrencyAmount,
     pub low_memory_proving: bool,
+    pub wallet_account: String,
 }
 
 /// Checks everything that needs no node, so bad input fails before any proving.
@@ -50,6 +51,11 @@ pub(crate) fn parse_deposit_request(
     let low_memory_proving = payload["lowMemoryProving"]
         .as_bool()
         .ok_or("Missing lowMemoryProving in payload")?;
+    let wallet_account = payload["walletAccount"]
+        .as_str()
+        .filter(|id| !id.is_empty())
+        .ok_or("Missing walletAccount in payload")?
+        .to_string();
     let input_count = payload["inputAdditionRecords"]
         .as_array()
         .ok_or("Missing inputAdditionRecords in payload")?
@@ -71,6 +77,7 @@ pub(crate) fn parse_deposit_request(
         amount,
         fee,
         low_memory_proving,
+        wallet_account,
     })
 }
 
@@ -162,6 +169,7 @@ async fn build(app: &AppHandle, payload: &Value) -> Result<String, String> {
             status: DepositStatus::Submitted { misses: 0 },
             relayer: None,
             relayer_error: None,
+            wallet_account: request.wallet_account.clone(),
         },
     )
     .await?;
@@ -194,7 +202,23 @@ mod tests {
             "amount": amount,
             "fee": "0.01",
             "lowMemoryProving": true,
+            "walletAccount": "main:1",
         })
+    }
+
+    #[test]
+    fn deposit_request_requires_wallet_account() {
+        let network = Network::Testnet(0);
+        let request = parse_deposit_request(&payload(ADDRESS, "1", 1), network).unwrap();
+        assert_eq!(request.wallet_account, "main:1");
+        for missing in [json!(null), json!("")] {
+            let mut body = payload(ADDRESS, "1", 1);
+            body["walletAccount"] = missing;
+            assert_eq!(
+                parse_deposit_request(&body, network).unwrap_err(),
+                "Missing walletAccount in payload"
+            );
+        }
     }
 
     #[test]

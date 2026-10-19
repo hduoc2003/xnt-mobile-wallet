@@ -10,6 +10,8 @@ export interface NormalizedUtxo {
   releaseDateMs: number | null
   keyType: string
   isPending: boolean
+  /** Set when the scan was asked per account. */
+  accountId?: string
 }
 
 /**
@@ -27,5 +29,6 @@ export function normalizeUtxo(u: any): NormalizedUtxo {
     releaseDateMs: u.release_date_ms ?? u.releaseDateMs ?? null,
     keyType: u.key_type || u.keyType || '',
     isPending: !!(u.is_pending ?? u.isPending),
+    ...(u.account_id || u.accountId ? { accountId: u.account_id || u.accountId } : {}),
   }
 }

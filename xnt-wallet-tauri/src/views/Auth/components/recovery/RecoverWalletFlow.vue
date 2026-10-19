@@ -4,8 +4,8 @@ import { ChevronLeft, KeyRound, Shield } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import RecoverSeedInput from './RecoverSeedInput.vue'
 import { PasswordCreationForm } from '@/components'
-import { useNeptuneWallet, useTransaction } from '@/composables'
-import { useAuthStore } from '@/stores'
+import { useAccounts, useNeptuneWallet, useTransaction } from '@/composables'
+import { MAIN_SEED, useAuthStore } from '@/stores'
 
 const emit = defineEmits<{
   cancel: []
@@ -13,6 +13,7 @@ const emit = defineEmits<{
 }>()
 
 const { recoverWalletFromSeed, createKeystore } = useNeptuneWallet()
+const { discoverAccounts } = useAccounts()
 const { clearTransactions } = useTransaction()
 
 const authStore = useAuthStore()
@@ -66,6 +67,14 @@ const handlePasswordSubmit = async (submittedPassword: string) => {
 
     if (!keystoreFileName) {
       throw new Error('Failed to create keystore')
+    }
+
+    try {
+      await discoverAccounts(MAIN_SEED, password.value)
+    } catch (err) {
+      toast.error('Could not look for more accounts of this seed', {
+        description: err instanceof Error ? err.message : String(err),
+      })
     }
 
     clearTransactions()

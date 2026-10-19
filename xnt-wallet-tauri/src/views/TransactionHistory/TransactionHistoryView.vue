@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, onActivated } from 'vue'
+import { computed, ref, onActivated, onDeactivated, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { CopyButton, ExplorerLink } from '@/components/commons'
 import { History, ArrowUpRight, ArrowDownLeft, ArrowRightLeft } from 'lucide-vue-next'
 import { useBridgeDeposit, useFormat, useTransaction } from '@/composables'
-import { useTransactionStore } from '@/stores'
+import { readSent } from '@/composables/useTransaction'
+import { useAccountsStore, useTransactionStore } from '@/stores'
 import type { BridgeDepositRecord, ReceivedEntry, TransactionDetail } from '@/types'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import {
@@ -58,6 +59,7 @@ const {
   refresh: refreshDeposits,
 } = useBridgeDeposit()
 const transactionStore = useTransactionStore()
+const accountsStore = useAccountsStore()
 const received = ref<ReceivedEntry[]>([])
 const loading = ref(true)
 const errors = ref<string[]>([])
@@ -131,26 +133,33 @@ const rows = computed<HistoryRow[]>(() => {
 
 const describe = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
-const syncReceivedFromScan = async () => {
-  const cached = await (window as any).walletApi.getCachedUtxosLocal()
+/** Everything comes from one account, read before any await, so a switch can't mix two. */
+const syncReceivedFromScan = async (current: number) => {
+  const activeId = accountsStore.requireActiveId()
+  const sent = readSent(activeId)
+  const cached = await (window as any).walletApi.getCachedUtxosLocal(
+    accountsStore.keyRefs.filter((r) => r.accountId === activeId),
+  )
   if (!cached?.success || !Array.isArray(cached.utxos)) {
     throw new Error(`Could not read scanned UTXOs: ${cached?.error ?? 'no data'}`)
   }
   // From the local records file, so a node or relayer outage can't hide our deposit change.
-  const depositRecords: BridgeDepositRecord[] = await (window as any).walletApi.listBridgeDeposits()
+  const depositRecords: BridgeDepositRecord[] = (
+    await (window as any).walletApi.listBridgeDeposits()
+  ).filter((d: BridgeDepositRecord) => d.walletAccount === activeId)
   const ownOutputs = new Set<string>([
-    ...transactionStore.getTransactions.flatMap((tx) => [tx.id, ...(tx.outputCommitments ?? [])]),
+    ...sent.flatMap((tx) => [tx.id, ...(tx.outputCommitments ?? [])]),
     ...depositRecords.flatMap((d) => [d.utxoCommitment, ...d.outputCommitments]),
   ])
-  const synced = await syncReceived(cached.utxos.map(normalizeUtxo), ownOutputs)
-  received.value = synced.received
+  const synced = await syncReceived(cached.utxos.map(normalizeUtxo), ownOutputs, activeId)
+  if (current === activation) received.value = synced.received
   if (synced.errors.length) throw new Error(synced.errors.join('; '))
 }
 
 // Quick tab switches overlap activations; only the latest one reports errors.
 let activation = 0
 
-onActivated(async () => {
+const reload = async () => {
   const current = ++activation
   errors.value = []
   // Local data first so every row renders at once; statuses refresh in the background.
@@ -165,7 +174,7 @@ onActivated(async () => {
   const results = await Promise.allSettled([
     refreshDeposits(),
     refreshTransactionStatuses(),
-    syncReceivedFromScan(),
+    syncReceivedFromScan(current),
   ])
   if (current !== activation) return
   errors.value = [
@@ -174,7 +183,23 @@ onActivated(async () => {
       .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
       .map((r) => describe(r.reason)),
   ]
+}
+
+// Hidden or locked: the next activation reloads.
+let shown = false
+onActivated(() => {
+  shown = true
+  void reload()
 })
+onDeactivated(() => {
+  shown = false
+})
+watch(
+  () => accountsStore.activeId,
+  (id) => {
+    if (shown && id !== undefined) void reload()
+  },
+)
 
 const toneClass = (tone: Tone) => {
   switch (tone) {

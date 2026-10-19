@@ -53,6 +53,8 @@ export interface PayloadBuildBridgeDeposit {
   spendingKeyHex: string
   spendingKeyHexes: string[]
   lowMemoryProving: boolean
+  /** The wallet account spending, captured with its UTXOs. */
+  walletAccount: string
 }
 
 export interface RelayerDepositStatus {
@@ -87,6 +89,7 @@ export interface BridgeDepositRecord {
   status: BridgeDepositStatus
   relayer: RelayerDepositStatus | null
   relayerError: string | null
+  walletAccount: string
 }
 
 export type ChainCheck =
@@ -94,3 +97,41 @@ export type ChainCheck =
   | { state: 'firstRecord' }
   | { state: 'reset'; previous: { network: string; block1Digest: string } }
   | { state: 'reorg'; height: number }
+
+export type SeedSource = 'created' | 'phrase' | 'backupFile' | 'nodeWalletDat'
+
+export interface SeedEntry {
+  id: string
+  keystoreFile: string
+  source: SeedSource
+  backedUp: boolean
+}
+
+export interface AccountEntry {
+  id: string
+  seedId: string
+  index: number
+  /** null shows the default "Account N". */
+  name: string | null
+  hidden: boolean
+}
+
+export interface Registry {
+  seeds: SeedEntry[]
+  accounts: AccountEntry[]
+  active: string
+}
+
+/** File sources carry the file's text: Android's picker gives `content://` URIs, not paths. */
+export type ImportSource =
+  | { kind: 'phrase'; words: string[] }
+  | { kind: 'backupFile'; content: string; filePassword: string }
+  | { kind: 'nodeWalletDat'; content: string }
+
+export interface AccountKeys {
+  index: number
+  generationKeyHex: string
+  dctidhKeyHex: string
+  generationAddress: string
+  dctidhAddress: string
+}

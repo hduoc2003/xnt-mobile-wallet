@@ -3,6 +3,7 @@ import { onMounted, onUnmounted } from 'vue'
 import { Database, Wallet, History, Settings } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
+import { AccountSwitcher } from '@/components/commons/account-switcher'
 
 // Tab views stay mounted when switching tabs and refresh in the background on return.
 const CACHED_VIEWS = [
@@ -65,13 +66,13 @@ const isActiveRoute = (routePath: string) => {
     <!-- Header -->
     <header class="safe-area-top fixed top-0 left-0 right-0 z-50 border-b border-border bg-card">
       <div class="flex h-14 items-center justify-between px-4">
-        <div class="flex items-center gap-3">
+        <div class="flex min-w-0 flex-1 items-center gap-3">
           <img
             src="@/assets/imgs/neptune_logo.jpg"
             alt="XNT"
-            class="h-8 w-8 rounded-lg object-cover"
+            class="h-8 w-8 shrink-0 rounded-lg object-cover"
           />
-          <span class="text-lg font-semibold text-foreground">XNT Wallet</span>
+          <AccountSwitcher />
         </div>
         <ThemeToggle />
       </div>

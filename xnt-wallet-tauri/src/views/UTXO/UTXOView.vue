@@ -53,7 +53,9 @@ const handleRefresh = async () => {
     await forceRescanUtxos()
     toast.success('Full rescan completed')
   } catch (error) {
-    toast.error('Failed to force rescan UTXOs')
+    toast.error('Failed to force rescan UTXOs', {
+      description: error instanceof Error ? error.message : String(error),
+    })
   } finally {
     loading.value = false
   }

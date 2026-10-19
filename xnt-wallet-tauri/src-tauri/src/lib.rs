@@ -7,6 +7,8 @@ use android_logger;
 #[cfg(target_os = "android")]
 use libc;
 
+mod account_import;
+mod accounts;
 mod bridge_deposit;
 mod bridge_payout;
 mod bridge_status;
@@ -35,6 +37,19 @@ fn generate_keys_from_seed(
     keys::generate_keys_from_seed(seed_phrase, network, key_type)
 }
 
+/// Off the main thread: dCTIDH derivation is slow on phones.
+#[tauri::command]
+async fn derive_account_keys(
+    seed_phrase: Vec<String>,
+    index: u64,
+    network: String,
+) -> Result<keys::AccountKeys, String> {
+    let network = keys::parse_network(&network)?;
+    tokio::task::spawn_blocking(move || keys::derive_account_keys(&seed_phrase, index, network))
+        .await
+        .map_err(|e| format!("Key derivation task failed: {e}"))?
+}
+
 #[tauri::command]
 async fn create_keystore(
     app: tauri::AppHandle,
@@ -42,23 +57,6 @@ async fn create_keystore(
     password: String,
 ) -> Result<String, String> {
     keystore::create_keystore(app, seed, password).await
-}
-
-#[tauri::command]
-async fn decrypt_keystore(
-    app: tauri::AppHandle,
-    fileName: String,
-    password: String,
-) -> Result<String, String> {
-    keystore::decrypt_keystore(app, fileName, password).await
-}
-
-#[tauri::command]
-async fn save_keystore_as(
-    app: tauri::AppHandle,
-    fileName: String,
-) -> Result<String, String> {
-    keystore::save_keystore_as(app, fileName).await
 }
 
 #[tauri::command]
@@ -131,13 +129,10 @@ async fn scan_utxos_client_side(app: tauri::AppHandle, request: serde_json::Valu
 }
 
 #[tauri::command]
-async fn get_cached_utxos(app: tauri::AppHandle) -> Result<String, String> {
-    utxo_scanning::get_cached_utxos(&app).await
-}
-
-#[tauri::command]
-async fn get_cached_utxos_local() -> Result<String, String> {
-    utxo_scanning::get_cached_utxos_local().await
+async fn get_cached_utxos_local(
+    accounts: Option<Vec<utxo_scanning::AccountKeysRef>>,
+) -> Result<String, String> {
+    utxo_scanning::get_cached_utxos_local(accounts).await
 }
 
 #[tauri::command]
@@ -150,7 +145,7 @@ async fn get_pending_balance(app: tauri::AppHandle, request: serde_json::Value) 
 
 #[tauri::command]
 async fn clear_utxo_cache() -> Result<(), String> {
-    utxo_cache::clear_cache().await;
+    utxo_scanning::clear_cache_locked().await;
     Ok(())
 }
 
@@ -225,6 +220,144 @@ async fn check_chain(app: tauri::AppHandle) -> Result<chain_fingerprint::ChainCh
 }
 
 #[tauri::command]
+async fn accounts_load(app: tauri::AppHandle) -> Result<accounts::Registry, String> {
+    accounts::load_at(&accounts::data_dir(&app)?).await
+}
+
+#[tauri::command]
+async fn accounts_add(
+    app: tauri::AppHandle,
+    seed_id: String,
+    index: u64,
+) -> Result<accounts::AccountEntry, String> {
+    accounts::update_at(&accounts::data_dir(&app)?, |r| r.add(&seed_id, index)).await
+}
+
+#[tauri::command]
+async fn accounts_rename(
+    app: tauri::AppHandle,
+    id: String,
+    name: Option<String>,
+) -> Result<accounts::Registry, String> {
+    accounts::update_at(&accounts::data_dir(&app)?, |r| {
+        r.rename(&id, name)?;
+        Ok(r.clone())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn accounts_set_hidden(
+    app: tauri::AppHandle,
+    id: String,
+    hidden: bool,
+) -> Result<accounts::Registry, String> {
+    accounts::update_at(&accounts::data_dir(&app)?, |r| {
+        r.set_hidden(&id, hidden)?;
+        Ok(r.clone())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn accounts_set_active(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<accounts::Registry, String> {
+    accounts::update_at(&accounts::data_dir(&app)?, |r| {
+        r.set_active(&id)?;
+        Ok(r.clone())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn accounts_mark_backed_up(
+    app: tauri::AppHandle,
+    seed_id: String,
+) -> Result<accounts::Registry, String> {
+    accounts::update_at(&accounts::data_dir(&app)?, |r| {
+        r.mark_backed_up(&seed_id)?;
+        Ok(r.clone())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn accounts_remove_seed(
+    app: tauri::AppHandle,
+    seed_id: String,
+) -> Result<accounts::Registry, String> {
+    accounts::remove_seed_at(&accounts::data_dir(&app)?, &seed_id).await
+}
+
+#[tauri::command]
+async fn accounts_import(
+    app: tauri::AppHandle,
+    source: account_import::ImportSource,
+    wallet_password: String,
+) -> Result<accounts::SeedEntry, String> {
+    account_import::import_at(&accounts::data_dir(&app)?, source, wallet_password).await
+}
+
+#[tauri::command]
+async fn accounts_discover(
+    app: tauri::AppHandle,
+    seed_id: String,
+    wallet_password: String,
+) -> Result<Vec<accounts::AccountEntry>, String> {
+    let rpc_url = rpc_config::resolve_rpc_url(&app).await?;
+    accounts::discover_at(
+        &accounts::data_dir(&app)?,
+        &transaction::http_client()?,
+        &rpc_url,
+        &seed_id,
+        wallet_password,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn accounts_seed_phrase(
+    app: tauri::AppHandle,
+    seed_id: String,
+    wallet_password: String,
+) -> Result<Vec<String>, String> {
+    accounts::seed_phrase_at(&accounts::data_dir(&app)?, &seed_id, wallet_password).await
+}
+
+#[tauri::command]
+async fn accounts_save_keystore_as(app: tauri::AppHandle, seed_id: String) -> Result<String, String> {
+    let data_dir = accounts::data_dir(&app)?;
+    let registry = accounts::load_at(&data_dir).await?;
+    let seed = registry
+        .seeds
+        .iter()
+        .find(|s| s.id == seed_id)
+        .ok_or_else(|| format!("Unknown seed {seed_id}"))?;
+    let path = accounts::keystore_path(&data_dir, seed)?;
+    keystore::save_keystore_file_as(&app, &path, &seed.keystore_file).await
+}
+
+#[tauri::command]
+async fn forget_accounts(
+    app: tauri::AppHandle,
+    accounts: Vec<utxo_scanning::AccountKeysRef>,
+) -> Result<(), String> {
+    let ids: Vec<String> = accounts.iter().map(|a| a.account_id.clone()).collect();
+    utxo_scanning::forget_accounts_utxos(accounts).await?;
+    bridge_status::remove_for_accounts(&app, &ids).await
+}
+
+#[tauri::command]
+async fn accounts_reset_main(
+    app: tauri::AppHandle,
+    keystore_file: String,
+) -> Result<accounts::Registry, String> {
+    accounts::reset_for_main_at(&accounts::data_dir(&app)?, keystore_file).await
+}
+
+#[tauri::command]
 fn log_message(level: String, message: String) -> Result<(), String> {
     let lvl = match level.to_lowercase().as_str() {
         "trace" => Level::Trace,
@@ -289,9 +422,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             generate_seed,
             generate_keys_from_seed,
+            derive_account_keys,
             create_keystore,
-            decrypt_keystore,
-            save_keystore_as,
             check_keystore,
             get_min_block_height,
             save_min_block_height,
@@ -301,7 +433,6 @@ pub fn run() {
             get_keystore_path,
             build_transaction,
             scan_utxos_client_side,
-            get_cached_utxos,
             get_cached_utxos_local,
             clear_utxo_cache,
             get_pending_balance,
@@ -317,6 +448,19 @@ pub fn run() {
             tx_statuses,
             bridge_burn_serial,
             check_chain,
+            accounts_load,
+            accounts_add,
+            accounts_rename,
+            accounts_set_hidden,
+            accounts_set_active,
+            accounts_mark_backed_up,
+            accounts_remove_seed,
+            accounts_reset_main,
+            forget_accounts,
+            accounts_import,
+            accounts_discover,
+            accounts_seed_phrase,
+            accounts_save_keystore_as,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

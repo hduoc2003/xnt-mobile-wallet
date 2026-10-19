@@ -29,19 +29,29 @@ const handleGoToRecover = () => {
 }
 
 const handleSubmitPassword = async (password: string) => {
+  let historyError: string | undefined
   try {
     isLoading.value = true
-    await decryptKeystore(password)
-    loadTransactionsFromStorage()
-    router.push({ name: 'wallet' })
-  } catch (err: any) {
-    const message = 'Failed to unlock wallet'
+    ;({ historyError } = await decryptKeystore(password))
+  } catch (err: unknown) {
     toast.error('Unlock Failed', {
-      description: message,
+      description: err instanceof Error ? err.message : String(err),
     })
-  } finally {
     isLoading.value = false
+    return
   }
+  if (historyError !== undefined) {
+    toast.error('Could not move the History to Account 1', { description: historyError })
+  }
+  try {
+    loadTransactionsFromStorage()
+  } catch (err: unknown) {
+    toast.error('Could not read History', {
+      description: err instanceof Error ? err.message : String(err),
+    })
+  }
+  isLoading.value = false
+  router.push({ name: 'wallet' })
 }
 </script>
 

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { CopyButton, ExplorerLink } from '@/components/commons'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { ArrowLeft, GitMerge } from 'lucide-vue-next'
 import { useNeptuneWallet, useFormat, useTransaction } from '@/composables'
-import { useNeptuneStore } from '@/stores'
+import { useAccountsStore, useNeptuneStore } from '@/stores'
 import { DEFAULT_FEE } from '@/utils'
 import ConfirmTransactionDrawer from './components/ConfirmTransactionDrawer.vue'
 import ProofGenerationModal from './components/ProofGenerationModal.vue'
@@ -14,6 +14,7 @@ import type { Utxo } from '@/types'
 
 const router = useRouter()
 const store = useNeptuneStore()
+const accountsStore = useAccountsStore()
 const { getUtxos, buildTransaction, broadcastSignedTransaction } = useNeptuneWallet()
 const { addTransaction } = useTransaction()
 const { formatXnt } = useFormat()
@@ -137,6 +138,8 @@ const handleConfirmMerge = async () => {
     sendLoading.value = true
     showConfirmModal.value = false
     showProofModal.value = true
+    // The view reloads and clears its selection on a switch, so the UTXOs are this account's.
+    const accountId = accountsStore.requireActiveId()
 
     const feeNum = parseFloat(fee.value)
     if (isNaN(feeNum)) {
@@ -191,15 +194,24 @@ const handleConfirmMerge = async () => {
       return
     }
 
-    addTransaction({
-      id: firstDigest,
-      txId: txResult.txId,
-      outputCommitments: outputUtxoDigests,
-      toAddress: address,
-      amount: parseFloat(netStr),
-      fee: feeNum,
-      time: new Date().toISOString(),
-    })
+    try {
+      addTransaction(
+        {
+          id: firstDigest,
+          txId: txResult.txId,
+          outputCommitments: outputUtxoDigests,
+          toAddress: address,
+          amount: parseFloat(netStr),
+          fee: feeNum,
+          time: new Date().toISOString(),
+        },
+        accountId,
+      )
+    } catch (error) {
+      toast.error('Sent, but it could not be saved to History', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
 
     toast.success('UTXOs merged successfully!')
     router.push('/')
@@ -212,7 +224,7 @@ const handleConfirmMerge = async () => {
   }
 }
 
-onMounted(async () => {
+const loadUtxos = async () => {
   try {
     loading.value = true
     const result = await getUtxos()
@@ -221,11 +233,24 @@ onMounted(async () => {
       (u: any) => !(u.isPending ?? u.is_pending),
     )
   } catch (error) {
+    allUtxos.value = []
     toast.error('Failed to load UTXOs')
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(loadUtxos)
+
+// Another account's UTXOs can't be merged with this one's keys.
+watch(
+  () => accountsStore.activeId,
+  () => {
+    selectedUtxos.value = []
+    allUtxos.value = []
+    void loadUtxos()
+  },
+)
 </script>
 
 <template>

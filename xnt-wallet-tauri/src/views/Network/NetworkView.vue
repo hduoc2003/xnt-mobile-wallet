@@ -6,6 +6,7 @@ import { useNeptuneStore } from '@/stores'
 import { useNeptuneWallet, useRpc } from '@/composables'
 import NetworkStatusHeader from './components/NetworkStatusHeader.vue'
 import NetworkInfoCard from './components/NetworkInfoCard.vue'
+import AccountsCard from './components/AccountsCard.vue'
 import RpcEndpointCard from './components/RpcEndpointCard.vue'
 import TransactionSettingsCard from './components/TransactionSettingsCard.vue'
 import InfoCard from './components/InfoCard.vue'
@@ -110,6 +111,8 @@ onDeactivated(stopPolling)
         <!-- Network Data -->
         <NetworkInfoCard :network="network" :block-height="blockHeight" :last-update="lastUpdate" />
       </template>
+
+      <AccountsCard />
 
       <RpcEndpointCard @endpoint-updated="loadNetworkData" />
 

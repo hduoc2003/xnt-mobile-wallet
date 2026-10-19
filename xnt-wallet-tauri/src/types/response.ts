@@ -12,7 +12,8 @@ export interface UtxosResult {
 
 export interface BalanceResult {
   balance: string
-  pendingBalance: string
+  /** Absent when the mempool could not be read. */
+  pendingBalance?: string
   totalBalance?: string
 }
 

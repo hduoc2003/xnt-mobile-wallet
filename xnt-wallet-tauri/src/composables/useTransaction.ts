@@ -1,7 +1,8 @@
 import type { HistoryStatus, ReceivedEntry, TransactionDetail } from '@/types'
-import { useTransactionStore } from '@/stores'
+import { useAccountsStore, useTransactionStore } from '@/stores'
 import { callJsonRpc } from '@/api/neptuneApi'
 import type { NormalizedUtxo } from '@/utils'
+import { historyKey } from './useAccounts'
 
 const TX_STORAGE_KEY = 'xnt_tx_history'
 const RECEIVED_STORAGE_KEY = 'xnt_received_history'
@@ -10,57 +11,61 @@ const RECEIVED_STORAGE_KEY = 'xnt_received_history'
 const isResolved = (status: TransactionDetail['status']) =>
   typeof status === 'object' && status.state === 'confirmed'
 
+/** An account's sends; corrupt storage is an error, never an empty list to write over. */
+export const readSent = (accountId: string): TransactionDetail[] => {
+  const key = historyKey(TX_STORAGE_KEY, accountId)
+  const raw = window.localStorage.getItem(key)
+  if (!raw) return []
+  const parsed: unknown = JSON.parse(raw)
+  if (!Array.isArray(parsed)) throw new Error(`History in ${key} is corrupt`)
+  return parsed
+}
+
+/** Each account keeps its own History; the store shows the active account's. */
 export const useTransaction = () => {
   const transactionStore = useTransactionStore()
+  const accountsStore = useAccountsStore()
 
+  const receivedKey = () => historyKey(RECEIVED_STORAGE_KEY, accountsStore.requireActiveId())
+
+  /** Shows the active account's sends; the list is replaced even when it has none. */
   const loadTransactionsFromStorage = (): TransactionDetail[] => {
     if (typeof window === 'undefined') return []
-    try {
-      const raw = window.localStorage.getItem(TX_STORAGE_KEY)
-      if (!raw) return []
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) {
-        transactionStore.setTransactions(parsed)
-        return parsed
-      }
-      return []
-    } catch {
-      return []
-    }
+    transactionStore.setTransactions([])
+    const sent = readSent(accountsStore.requireActiveId())
+    transactionStore.setTransactions(sent)
+    return sent
   }
 
-  const addTransaction = (transactions: TransactionDetail) => {
+  /** `accountId` is the account that sent, captured with its UTXOs. Throws if storage fails. */
+  const addTransaction = (transaction: TransactionDetail, accountId: string) => {
     if (typeof window === 'undefined') return
-    try {
-      transactionStore.addTransaction(transactions)
-      window.localStorage.setItem(TX_STORAGE_KEY, JSON.stringify(transactionStore.getTransactions))
-    } catch {
-      // Ignore storage errors
-    }
+    const sent = [transaction, ...readSent(accountId)]
+    window.localStorage.setItem(historyKey(TX_STORAGE_KEY, accountId), JSON.stringify(sent))
+    if (accountId === accountsStore.activeId) transactionStore.setTransactions(sent)
   }
 
+  /** Forgets every account's History (a new wallet replaced the old one). */
   const clearTransactions = () => {
     if (typeof window === 'undefined') return
-    try {
-      transactionStore.clearTransactions()
-      window.localStorage.removeItem(TX_STORAGE_KEY)
-      window.localStorage.removeItem(RECEIVED_STORAGE_KEY)
-    } catch {
-      // Ignore storage errors
+    transactionStore.clearTransactions()
+    const storage = window.localStorage
+    const keys = Array.from({ length: storage.length }, (_, i) => storage.key(i))
+    for (const key of keys) {
+      if (
+        key !== null &&
+        [TX_STORAGE_KEY, RECEIVED_STORAGE_KEY].some(
+          (base) => key === base || key.startsWith(`${base}:`),
+        )
+      ) {
+        storage.removeItem(key)
+      }
     }
   }
 
-  const persistTransactions = () => {
-    try {
-      window.localStorage.setItem(TX_STORAGE_KEY, JSON.stringify(transactionStore.getTransactions))
-    } catch {
-      // Ignore storage errors
-    }
-  }
-
-  /** Asks our node for every sent tx whose status isn't final yet. */
   const refreshTransactionStatuses = async () => {
-    const unresolved = transactionStore.getTransactions.filter((tx) => !isResolved(tx.status))
+    const accountId = accountsStore.requireActiveId()
+    const unresolved = readSent(accountId).filter((tx) => !isResolved(tx.status))
     if (!unresolved.length) return
     const statuses: HistoryStatus[] = await (window as any).walletApi.txStatuses(
       unresolved.map((tx) => tx.id),
@@ -68,12 +73,17 @@ export const useTransaction = () => {
     if (statuses.length !== unresolved.length) {
       throw new Error(`Node returned ${statuses.length} statuses for ${unresolved.length} sends`)
     }
-    unresolved.forEach((tx, i) => transactionStore.updateTransactionStatus(tx.id, statuses[i]))
-    persistTransactions()
+    const byId = new Map(unresolved.map((tx, i) => [tx.id, statuses[i]]))
+    const sent = readSent(accountId).map((tx) => {
+      const status = byId.get(tx.id)
+      return status === undefined ? tx : { ...tx, status }
+    })
+    window.localStorage.setItem(historyKey(TX_STORAGE_KEY, accountId), JSON.stringify(sent))
+    if (accountId === accountsStore.activeId) transactionStore.setTransactions(sent)
   }
 
-  const loadReceived = (): ReceivedEntry[] => {
-    const raw = window.localStorage.getItem(RECEIVED_STORAGE_KEY)
+  const loadReceived = (key = receivedKey()): ReceivedEntry[] => {
+    const raw = window.localStorage.getItem(key)
     if (!raw) return []
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) throw new Error('Received history in local storage is corrupt')
@@ -95,8 +105,13 @@ export const useTransaction = () => {
    * A failed block-time or burn lookup skips that UTXO until the next sync and is reported in
    * `errors`.
    */
-  const syncReceived = async (utxos: NormalizedUtxo[], ownOutputs: Set<string>) => {
-    const received = loadReceived()
+  const syncReceived = async (
+    utxos: NormalizedUtxo[],
+    ownOutputs: Set<string>,
+    accountId: string,
+  ) => {
+    const key = historyKey(RECEIVED_STORAGE_KEY, accountId)
+    const received = loadReceived(key)
     const known = new Set(received.map((r) => r.commitment))
     const times = new Map<number, string>()
     const errors: string[] = []
@@ -128,7 +143,7 @@ export const useTransaction = () => {
         errors.push(error instanceof Error ? error.message : String(error))
       }
     }
-    window.localStorage.setItem(RECEIVED_STORAGE_KEY, JSON.stringify(received))
+    window.localStorage.setItem(key, JSON.stringify(received))
     return { received, errors }
   }
 

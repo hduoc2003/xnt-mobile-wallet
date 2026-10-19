@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Wallet, Copy, Check, X } from 'lucide-vue-next'
-import { useNeptuneStore, useTickerStore } from '@/stores'
+import { useAccountsStore, useNeptuneStore, useTickerStore } from '@/stores'
 import { toast } from 'vue-sonner'
 import { useFormat } from '@/composables'
 import { useTickers } from '@/composables/useTickers'
@@ -20,6 +20,10 @@ const props = withDefaults(defineProps<Props>(), {
 const { formatAmount, formatAddress, formatXnt } = useFormat()
 const neptuneStore = useNeptuneStore()
 const tickerStore = useTickerStore()
+const accountsStore = useAccountsStore()
+const accountName = computed(() =>
+  accountsStore.activeId === undefined ? '' : accountsStore.displayName(accountsStore.activeId),
+)
 const isCopied = ref(false)
 const showCopyModal = ref(false)
 
@@ -121,7 +125,7 @@ onUnmounted(() => {
     <CardHeader class="space-y-1 pb-4">
       <CardTitle class="flex items-center gap-2 text-sm font-medium text-muted-foreground">
         <Wallet class="size-4" />
-        Available Balance
+        <span class="truncate">{{ accountName }} · Available Balance</span>
       </CardTitle>
     </CardHeader>
     <CardContent class="space-y-6">

@@ -1,6 +1,6 @@
-import { ref, onActivated, onDeactivated, onUnmounted } from 'vue'
-import type { BridgeDepositRecord } from '@/types'
-import { useSettingsStore } from '@/stores'
+import { computed, ref, onActivated, onDeactivated, onUnmounted, watch } from 'vue'
+import type { BridgeDepositRecord, PayloadBuildBridgeDeposit } from '@/types'
+import { useAccountsStore, useSettingsStore } from '@/stores'
 import { BRIDGE_POLLING_INTERVAL, toAtomicUnits } from '@/utils'
 import { useNeptuneWallet } from './useNeptuneWallet'
 
@@ -25,7 +25,11 @@ const isPending = (record: BridgeDepositRecord) =>
 export const useBridgeDeposit = () => {
   const { getUtxos, selectUtxos, broadcastSignedTransaction } = useNeptuneWallet()
   const settingsStore = useSettingsStore()
-  const deposits = ref<BridgeDepositRecord[]>([])
+  const accountsStore = useAccountsStore()
+  const allDeposits = ref<BridgeDepositRecord[]>([])
+  const deposits = computed(() =>
+    allDeposits.value.filter((d) => d.walletAccount === accountsStore.activeId),
+  )
   const refreshError = ref<string>()
   let timer: ReturnType<typeof setTimeout> | undefined
   let disposed = false
@@ -48,7 +52,7 @@ export const useBridgeDeposit = () => {
   const apply = (seq: number, records: BridgeDepositRecord[]) => {
     if (seq < appliedSeq) return
     appliedSeq = seq
-    deposits.value = [...records].sort((a, b) => b.createdMs - a.createdMs)
+    allDeposits.value = [...records].sort((a, b) => b.createdMs - a.createdMs)
   }
 
   /** Saved records with their last known status; no network. */
@@ -73,11 +77,13 @@ export const useBridgeDeposit = () => {
   const submitDeposit = async (form: BridgeDepositForm) => {
     const utxosResult = await getUtxos()
     const utxos = utxosResult?.result?.utxos || utxosResult?.utxos || []
+    const walletAccount: string = utxosResult.accountId
     const selection = selectUtxos(
       utxos,
       Number(form.amount),
       Number(form.fee),
       settingsStore.maxInputsPerTx,
+      walletAccount,
     )
     if (selection.selectedUtxos.length === 0) {
       throw new Error(
@@ -91,7 +97,7 @@ export const useBridgeDeposit = () => {
       )
     }
 
-    const built = await walletApi().buildBridgeDeposit({
+    const payload: PayloadBuildBridgeDeposit = {
       inputAdditionRecords: selection.selectedUtxos.map(
         (utxo: any) => utxo.addition_record_hex || utxo.additionRecord || utxo.addition_record,
       ),
@@ -101,7 +107,9 @@ export const useBridgeDeposit = () => {
       spendingKeyHex: selection.spendingKeyHex,
       spendingKeyHexes: selection.spendingKeyHexes,
       lowMemoryProving: settingsStore.lowMemoryProving,
-    })
+      walletAccount,
+    }
+    const built = await walletApi().buildBridgeDeposit(payload)
     if (!built.success) throw new Error(describeError(built.error))
 
     // The backend recorded the deposit before returning; forget it if the node rejects it.
@@ -120,6 +128,8 @@ export const useBridgeDeposit = () => {
   onActivated(() => {
     active = true
   })
+  // Another account may have deposits that still need polling.
+  watch(() => accountsStore.activeId, schedule)
   onDeactivated(() => {
     active = false
     clearTimeout(timer)

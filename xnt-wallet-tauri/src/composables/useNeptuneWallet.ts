@@ -1,6 +1,8 @@
 import { toast } from 'vue-sonner'
-import { useNeptuneStore, useSettingsStore } from '@/stores'
+import { useAccountsStore, useNeptuneStore, useSettingsStore } from '@/stores'
 import * as API from '@/api/neptuneApi'
+import { walletApi } from '@/api/tauri/walletApi'
+import { currentEpoch, ensureOpen, useAccounts } from './useAccounts'
 import type {
   BalanceResult,
   GenerateSeedResult,
@@ -11,7 +13,6 @@ import type {
 import {
   CHAIN_RESET_MESSAGE,
   DEFAULT_MIN_BLOCK_HEIGHT,
-  RPC_URL,
   normalizeUtxo,
   selectSpendableUtxos,
   toFiniteNumber,
@@ -20,6 +21,8 @@ import {
 export function useNeptuneWallet() {
   const store = useNeptuneStore()
   const settingsStore = useSettingsStore()
+  const accountsStore = useAccountsStore()
+  const { unlockAll, lock } = useAccounts()
 
   const generateWallet = async (): Promise<GenerateSeedResult> => {
     try {
@@ -108,7 +111,7 @@ export function useNeptuneWallet() {
     return result.address || result.receiver_identifier || ''
   }
 
-  const decryptKeystore = async (password: string): Promise<{ seedPhrase: string[] }> => {
+  const decryptKeystore = async (password: string): Promise<{ historyError?: string }> => {
     try {
       let keystoreFileName = store.getKeystoreFileName
       if (!keystoreFileName) {
@@ -123,24 +126,18 @@ export function useNeptuneWallet() {
       store.clearWallet()
       store.setKeystoreFileName(keystoreFileName)
 
-      const result = await (window as any).walletApi.decryptKeystore(keystoreFileName, password)
-
-      const seedPhrase = result.phrase.trim().split(/\s+/)
-      const spendingKeyResult = await loadBothAddresses(seedPhrase)
-
-      store.setReceiverId(spendingKeyResult.receiver_identifier)
-      store.setSpendingKey(spendingKeyResult.spending_key_hex)
-
-      const addressResult =
-        (spendingKeyResult as any).address || spendingKeyResult.receiver_identifier
-      store.setAddress(addressResult)
+      const { historyError } = await unlockAll(password)
+      // The registry names the main keystore; it may differ from the newest file.
+      keystoreFileName = store.getKeystoreFileName ?? keystoreFileName
 
       try {
-        const cached = await (window as any).walletApi.getCachedUtxosLocal?.()
-        const cachedResult = typeof cached === 'string' ? JSON.parse(cached) : cached
+        const cachedResult = await walletApi.getCachedUtxosLocal(accountsStore.keyRefs)
         if (cachedResult?.success && Array.isArray(cachedResult.utxos)) {
-          const cachedUtxos = (cachedResult.utxos || []).map(normalizeUtxo)
-          store.setUtxos(cachedUtxos)
+          accountsStore.setAccountUtxos(
+            accountsStore.keyRefs.map((r) => r.accountId),
+            cachedResult.utxos.map(normalizeUtxo),
+          )
+          store.setUtxos(accountsStore.utxosOf(accountsStore.requireActiveId()))
           if (Number.isFinite(cachedResult.last_scanned_block)) {
             const h = toFiniteNumber(cachedResult.last_scanned_block)
             if (h > 0) store.setMinBlockHeight(h)
@@ -176,7 +173,7 @@ export function useNeptuneWallet() {
         store.setMinBlockHeight(0)
       }
 
-      return { seedPhrase }
+      return historyError === undefined ? {} : { historyError }
     } catch (err: any) {
       if (
         err instanceof Error &&
@@ -229,32 +226,12 @@ export function useNeptuneWallet() {
       store.setMinBlockHeight(finalMinBlockHeight)
       await (window as any).walletApi.updateMinBlockHeight(result.fileName, finalMinBlockHeight)
 
-      const seedPhrase = seed.trim().split(/\s+/)
-      const spendingKeyResult = await loadBothAddresses(seedPhrase)
-
-      store.setReceiverId(spendingKeyResult.receiver_identifier)
-      store.setSpendingKey(spendingKeyResult.spending_key_hex)
-
-      const addressResult =
-        (spendingKeyResult as any).address || spendingKeyResult.receiver_identifier
-      store.setAddress(addressResult)
+      await walletApi.accountsResetMain(result.fileName)
+      await unlockAll(password)
 
       return result.fileName
     } catch (err: any) {
       await (window as any).logger?.error('Error creating keystore:', err.message)
-      throw err
-    }
-  }
-
-  const saveKeystoreAs = async (): Promise<void> => {
-    try {
-      const keystoreFileName = store.getKeystoreFileName
-      if (!keystoreFileName) throw new Error('No file to save')
-
-      const result = await (window as any).walletApi.saveKeystoreAs(keystoreFileName)
-      if (!result.filePath) throw new Error('User canceled')
-    } catch (err: any) {
-      await (window as any).logger?.error('Error saving keystore: ', err.message)
       throw err
     }
   }
@@ -347,13 +324,20 @@ export function useNeptuneWallet() {
         await checkKeystore()
       }
 
+      // A lock meanwhile (and a new wallet after it) must not receive this scan's results.
+      const mine = currentEpoch()
+      const accountRefs = accountsStore.keyRefs
+      const accountIds = accountRefs.map((r) => r.accountId)
+      const showActive = () =>
+        store.setUtxos(accountsStore.utxosOf(accountsStore.requireActiveId()))
+
       //Load cached UTXOs from disk
       try {
-        const cached = await (window as any).walletApi.getCachedUtxosLocal?.()
-        const cachedResult = typeof cached === 'string' ? JSON.parse(cached) : cached
+        const cachedResult = await walletApi.getCachedUtxosLocal(accountRefs)
+        ensureOpen(mine)
         if (cachedResult?.success && Array.isArray(cachedResult.utxos)) {
-          const cachedUtxos = (cachedResult.utxos || []).map(normalizeUtxo)
-          store.setUtxos(cachedUtxos)
+          accountsStore.setAccountUtxos(accountIds, cachedResult.utxos.map(normalizeUtxo))
+          showActive()
           if (Number.isFinite(cachedResult.last_scanned_block)) {
             const h = toFiniteNumber(cachedResult.last_scanned_block)
             if (h > 0) store.setMinBlockHeight(h)
@@ -415,17 +399,14 @@ export function useNeptuneWallet() {
         startBlock = DEFAULT_MIN_BLOCK_HEIGHT
       }
 
-      const generationKey = store.getGenerationSpendingKey
-      const spendingKeysHex = [spendingKey, generationKey].filter((k): k is string => !!k)
-
       const scanRequest = {
-        spendingKeyHex: spendingKey,
-        spendingKeysHex,
+        accounts: accountRefs,
         startBlock: toFiniteNumber(startBlock),
         endBlock: currentHeight,
       }
 
       const scanResponse = await (window as any).walletApi.scanUtxosClientSide(scanRequest)
+      ensureOpen(mine)
       const scanResult = typeof scanResponse === 'string' ? JSON.parse(scanResponse) : scanResponse
 
       if (!scanResult.success) {
@@ -434,8 +415,10 @@ export function useNeptuneWallet() {
 
       if (scanResult.chain_reset === true) toast.info(CHAIN_RESET_MESSAGE)
 
-      const freshUtxos = (scanResult.utxos || []).map(normalizeUtxo)
-      store.setUtxos(freshUtxos)
+      accountsStore.setAccountUtxos(accountIds, (scanResult.utxos || []).map(normalizeUtxo))
+      showActive()
+      refreshAvailable()
+      const freshUtxos = store.getUtxos || []
 
       const lastScannedFromResponse = scanResult.last_scanned_block ?? null
 
@@ -457,12 +440,16 @@ export function useNeptuneWallet() {
         const keystoreFileName = store.getKeystoreFileName
         if (keystoreFileName) {
           await (window as any).walletApi.updateMinBlockHeight(keystoreFileName, lastScanned)
+          ensureOpen(mine)
         }
       }
 
+      // Read after the last await, so the UTXOs and the account belong together.
+      const accountId = accountsStore.requireActiveId()
       return {
+        accountId,
         result: {
-          utxos: freshUtxos,
+          utxos: accountsStore.utxosOf(accountId),
         },
       }
     } catch (err: any) {
@@ -471,69 +458,94 @@ export function useNeptuneWallet() {
     }
   }
 
+  /** Spendable (not pending, timelock released) and total amount of `utxos`. */
+  const sumUtxos = (utxos: any[], now: number) => {
+    let spendable = 0
+    let total = 0
+    for (const utxo of utxos) {
+      const amount = parseFloat(utxo.amount || '0')
+      if (isNaN(amount)) continue
+      total += amount
+      const isPending = !!((utxo as any).isPending ?? (utxo as any).is_pending)
+      if (isPending) continue
+      const isTimelocked = !!((utxo as any).isTimelocked ?? (utxo as any).is_timelocked)
+      if (!isTimelocked) {
+        spendable += amount
+      } else {
+        const releaseDateMs = (utxo as any).releaseDateMs ?? (utxo as any).release_date_ms ?? null
+        if (releaseDateMs !== null && releaseDateMs <= now) {
+          spendable += amount
+        }
+      }
+    }
+    return { spendable, total }
+  }
+
+  /** Available balances from the UTXOs just scanned; pending stays until `getBalance` asks the mempool. */
+  const refreshAvailable = () => {
+    const now = Date.now()
+    for (const { accountId } of accountsStore.keyRefs) {
+      const available = sumUtxos(accountsStore.utxosOf(accountId), now).spendable.toFixed(8)
+      accountsStore.setBalance(accountId, {
+        ...accountsStore.balances.get(accountId),
+        available,
+      })
+    }
+    store.setBalance(accountsStore.balances.get(accountsStore.requireActiveId())?.available ?? null)
+  }
+
+  /** Balances of every opened account; returns the active one's. */
   const getBalance = async (): Promise<BalanceResult> => {
     try {
-      const utxos = store.getUtxos || []
       const now = Date.now()
-
-      let spendableTotal = 0
-      let totalBalance = 0
-      for (const utxo of utxos) {
-        const amount = parseFloat(utxo.amount || '0')
-        if (isNaN(amount)) continue
-        totalBalance += amount
-        const isPending = !!((utxo as any).isPending ?? (utxo as any).is_pending)
-        if (isPending) continue
-        const isTimelocked = !!((utxo as any).isTimelocked ?? (utxo as any).is_timelocked)
-        if (!isTimelocked) {
-          spendableTotal += amount
-        } else {
-          const releaseDateMs = (utxo as any).releaseDateMs ?? (utxo as any).release_date_ms ?? null
-          if (releaseDateMs !== null && releaseDateMs <= now) {
-            spendableTotal += amount
-          }
+      const mine = currentEpoch()
+      // The accounts asked about; one added meanwhile gets its pending on the next call.
+      const refs = accountsStore.keyRefs
+      // Without a mempool answer pending is unknown, not 0.
+      let pendingByAccount: Map<string, string> | undefined
+      const pendingData = await walletApi.getPendingBalance({ accounts: refs })
+      ensureOpen(mine)
+      if (pendingData.success) {
+        pendingByAccount = new Map(
+          pendingData.by_account.map((p: { account_id: string; pending: string }) => [
+            p.account_id,
+            parseFloat(p.pending).toFixed(8),
+          ]),
+        )
+      } else {
+        await (window as any).logger?.warn('Pending balance unavailable:', pendingData.error)
+      }
+      const pendingOf = (id: string) => {
+        if (pendingByAccount === undefined || !refs.some((r) => r.accountId === id)) {
+          return undefined
         }
+        const pending = pendingByAccount.get(id)
+        if (pending === undefined) throw new Error(`No pending balance for account ${id}`)
+        return pending
+      }
+      for (const { accountId } of refs) {
+        const { spendable } = sumUtxos(accountsStore.utxosOf(accountId), now)
+        accountsStore.setBalance(accountId, {
+          available: spendable.toFixed(8),
+          pending: pendingOf(accountId),
+        })
       }
 
-      // Expose spendable balance (excludes active timelocks) as the primary balance
-      const balance = spendableTotal
-      const balanceStr = balance.toFixed(8)
+      const activeId = accountsStore.requireActiveId()
+      const { spendable, total } = sumUtxos(accountsStore.utxosOf(activeId), now)
+      const balanceStr = spendable.toFixed(8)
+      const pendingBalance = pendingOf(activeId)
       store.setBalance(balanceStr)
-
-      let pendingBalance = '0'
-      const customRpc = await (window as any).walletApi.getCustomRpcEndpoint?.()
-      const rpcUrl = customRpc || RPC_URL
-      if (rpcUrl) {
-        let pendingTotal = 0
-        const keysToCheck = [store.getSpendingKey, store.getGenerationSpendingKey].filter(Boolean)
-        for (const keyHex of keysToCheck) {
-          try {
-            const pendingResult = await (window as any).walletApi.getPendingBalance({
-              spendingKeyHex: keyHex,
-              rpcUrl: rpcUrl,
-            })
-            const pendingData =
-              typeof pendingResult === 'string' ? JSON.parse(pendingResult) : pendingResult
-            if (pendingData.success) {
-              pendingTotal += parseFloat(pendingData.pending_balance || '0') || 0
-            }
-          } catch {
-            /* ignore per-key errors */
-          }
-        }
-        pendingBalance = pendingTotal.toFixed(8)
-      }
-
-      store.setPendingBalance(pendingBalance)
+      store.setPendingBalance(pendingBalance ?? null)
       return {
         balance: balanceStr,
         pendingBalance: pendingBalance,
-        totalBalance: totalBalance.toFixed(8),
+        totalBalance: total.toFixed(8),
       }
     } catch (err: any) {
       await (window as any).logger?.error('Error getting balance:', err.message)
-      store.setBalance('0')
-      store.setPendingBalance('0')
+      store.setBalance(null)
+      store.setPendingBalance(null)
       throw err
     }
   }
@@ -614,20 +626,28 @@ export function useNeptuneWallet() {
     }
   }
 
-  const selectUtxos = (utxos: any[], neededAmount: number, fee: number, maxInputs: number) =>
-    selectSpendableUtxos(
+  /** Spends `accountId`'s UTXOs with that account's keys, whichever account is shown now. */
+  const selectUtxos = (
+    utxos: any[],
+    neededAmount: number,
+    fee: number,
+    maxInputs: number,
+    accountId: string,
+  ) => {
+    const keys = accountsStore.keys.get(accountId)
+    if (!keys) throw new Error(`Account ${accountId} is locked`)
+    return selectSpendableUtxos(
       utxos,
       neededAmount,
       fee,
-      {
-        genKey: store.getSpendingKey || '',
-        dctidhKey: store.getGenerationSpendingKey || '',
-      },
+      { genKey: keys.generationKeyHex, dctidhKey: keys.dctidhKeyHex },
       maxInputs,
     )
+  }
 
   const clearWallet = () => {
     store.clearWallet()
+    lock()
   }
 
   return {
@@ -647,7 +667,6 @@ export function useNeptuneWallet() {
     selectUtxos,
     decryptKeystore,
     createKeystore,
-    saveKeystoreAs,
     checkKeystore,
 
     clearWallet,

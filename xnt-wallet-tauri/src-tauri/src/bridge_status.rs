@@ -82,6 +82,13 @@ pub struct DepositRecord {
     pub relayer: Option<RelayerDepositStatus>,
     /// Why the last relayer check failed; cleared by the next successful one.
     pub relayer_error: Option<String>,
+    /// The wallet account that made the deposit; records from before accounts belong to Account 1.
+    #[serde(default = "account_1")]
+    pub wallet_account: String,
+}
+
+fn account_1() -> String {
+    crate::accounts::account_id(crate::accounts::MAIN_SEED, 0)
 }
 
 pub struct Observation {
@@ -168,6 +175,14 @@ pub async fn add(app: &AppHandle, record: DepositRecord) -> Result<(), String> {
         return Ok(());
     }
     records.push(record);
+    save_records_to(&path, &records).await
+}
+
+pub async fn remove_for_accounts(app: &AppHandle, account_ids: &[String]) -> Result<(), String> {
+    let _guard = RECORDS_FILE_LOCK.lock().await;
+    let path = records_path(app).await?;
+    let mut records = load_records_from(&path).await?;
+    records.retain(|r| !account_ids.contains(&r.wallet_account));
     save_records_to(&path, &records).await
 }
 
@@ -506,6 +521,16 @@ mod tests {
     }
 
     #[test]
+    fn legacy_record_belongs_to_account_1() {
+        let json = format!(
+            r#"{{"utxoCommitment":"{c}","txId":"{c}","accountId":[1,2],"amount":"1","createdMs":7,"status":{{"state":"submitted","misses":0}},"relayer":null,"relayerError":null}}"#,
+            c = "ab".repeat(40)
+        );
+        let record: DepositRecord = serde_json::from_str(&json).unwrap();
+        assert_eq!(record.wallet_account, "main:0");
+    }
+
+    #[test]
     fn status_wire_format_matches_frontend() {
         let json = serde_json::to_string(&DepositStatus::Confirmed {
             block_height: Some(3),
@@ -563,6 +588,7 @@ mod tests {
             },
             relayer: None,
             relayer_error: Some("down".to_string()),
+            wallet_account: "imp-5:2".to_string(),
         };
         save_records_to(&path, &[record.clone(), record.clone()])
             .await

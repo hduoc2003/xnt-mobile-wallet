@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { Key, ArrowLeft, Eye, EyeOff } from 'lucide-vue-next'
 import { SeedPhraseGrid } from '@/components/commons'
-import { useNeptuneWallet } from '@/composables'
+import { walletApi } from '@/api/tauri/walletApi'
+import { useAccountsStore } from '@/stores'
 
 const router = useRouter()
-const { decryptKeystore } = useNeptuneWallet()
+const accountsStore = useAccountsStore()
+/** The active account's seed; its other accounts share these words. */
+const seedId = accountsStore.findAccount(accountsStore.requireActiveId()).seedId
+const seedTitle = computed(() => accountsStore.seedTitle(seedId))
+const backedUp = ref(accountsStore.registry?.seeds.find((s) => s.id === seedId)?.backedUp === true)
 
 const verifyPassword = ref('')
 const showPassword = ref(false)
@@ -20,15 +25,30 @@ const handleVerifyPassword = async () => {
   try {
     verifyLoading.value = true
 
-    const result = await decryptKeystore(verifyPassword.value)
-    seedPhrase.value = result.seedPhrase
+    seedPhrase.value = await walletApi.accountsSeedPhrase(seedId, verifyPassword.value)
 
     seedRevealed.value = true
     toast.success('Seed phrase revealed')
   } catch (error) {
-    toast.error('Invalid password')
+    toast.error('Could not reveal the seed phrase', {
+      description: error instanceof Error ? error.message : String(error),
+    })
   } finally {
     verifyLoading.value = false
+  }
+}
+
+const onBackedUpChange = async (event: Event) => {
+  const box = event.target
+  if (!(box instanceof HTMLInputElement) || !box.checked) return
+  try {
+    accountsStore.setRegistry(await walletApi.accountsMarkBackedUp(seedId))
+    backedUp.value = true
+  } catch (error: unknown) {
+    box.checked = false
+    toast.error('Could not save the backup state', {
+      description: error instanceof Error ? error.message : String(error),
+    })
   }
 }
 </script>
@@ -43,6 +63,7 @@ const handleVerifyPassword = async () => {
         </Button>
         <div>
           <h1 class="text-2xl font-bold text-foreground">Backup Seed Phrase</h1>
+          <p class="text-sm text-muted-foreground">{{ seedTitle }}</p>
           <p v-if="!seedRevealed" class="text-sm text-muted-foreground">
             Verify password to view your seed phrase
           </p>
@@ -111,6 +132,16 @@ const handleVerifyPassword = async () => {
       <!-- Seed Phrase Card -->
       <div v-else>
         <SeedPhraseGrid ref="seedPhraseGridRef" :seed-phrase="seedPhrase" :require-reveal="false" />
+
+        <label class="mt-4 flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            :checked="backedUp"
+            :disabled="backedUp"
+            @change="onBackedUpChange"
+          />
+          I have written down these words
+        </label>
 
         <!-- Action Buttons -->
         <div class="flex gap-2 mt-4">

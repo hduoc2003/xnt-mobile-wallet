@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { CopyButton, ExplorerLink } from '@/components/commons'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { Send, ArrowLeft } from 'lucide-vue-next'
 import { useNeptuneWallet, useFormat, useTransaction } from '@/composables'
-import { useNeptuneStore, useSettingsStore } from '@/stores'
+import { useAccountsStore, useNeptuneStore, useSettingsStore } from '@/stores'
 import { DEFAULT_FEE, toAtomicUnits } from '@/utils'
 import ConfirmTransactionDrawer from './components/ConfirmTransactionDrawer.vue'
 import ProofGenerationModal from './components/ProofGenerationModal.vue'
@@ -13,6 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 const router = useRouter()
 const store = useNeptuneStore()
+const accountsStore = useAccountsStore()
 const {
   getBalance,
   getUtxos,
@@ -56,7 +57,7 @@ const loadBalance = async () => {
     loading.value = true
     const result = await getBalance()
     availableBalance.value = result?.balance ?? '0'
-    pendingBalance.value = result?.pendingBalance ?? '0'
+    pendingBalance.value = result?.pendingBalance ?? ''
   } catch (error) {
     toast.error('Failed to load balance')
   } finally {
@@ -171,6 +172,20 @@ const manualChange = computed(() => {
 // bech32m addresses are canonically lowercase; mobile keyboards can auto-capitalize
 // the recipient field, yielding a mixed-case string the parser rejects. Normalize here.
 const normalizedAddress = computed(() => outputAddress.value.trim().toLowerCase())
+
+const ownAccounts = computed(() =>
+  accountsStore.visibleAccounts.filter(
+    (a) => a.id !== accountsStore.activeId && accountsStore.keys.has(a.id),
+  ),
+)
+
+/** Fills the recipient with another own account's receiving (dCTIDH) address. */
+const pickOwnAccount = (event: Event) => {
+  if (!(event.target instanceof HTMLSelectElement)) return
+  const keys = accountsStore.keys.get(event.target.value)
+  if (keys) outputAddress.value = keys.dctidhAddress
+  event.target.value = ''
+}
 const isAddressValid = computed(() => normalizedAddress.value.length > 0)
 const isAmountValid = computed(() => {
   if (!outputAmount.value) return false
@@ -338,6 +353,7 @@ const handleConfirmSend = async () => {
     // Get UTXOs (rescan so cache is fresh)
     const utxosResult = await getUtxos()
     const utxos = utxosResult?.result?.utxos || utxosResult?.utxos || []
+    const accountId: string = utxosResult.accountId
 
     if (!utxos.length) {
       // Refresh balance to get pending; if pending > 0, user likely has a tx stuck in mempool
@@ -373,7 +389,7 @@ const handleConfirmSend = async () => {
       spendingKeyHexes = manualSpendingKeyHexes.value
       selectedTotal = manualSelectedTotal.value
     } else {
-      const sel = selectUtxos(utxos, outputAmountNum, feeAmount, maxInputs.value)
+      const sel = selectUtxos(utxos, outputAmountNum, feeAmount, maxInputs.value, accountId)
       chosenUtxos = sel.selectedUtxos
       spendingKeyHex = sel.spendingKeyHex
       spendingKeyHexes = sel.spendingKeyHexes
@@ -460,15 +476,24 @@ const handleConfirmSend = async () => {
     const amountNum = parseFloat(outputAmount.value)
     const feeNum = parseFloat(priorityFee.value)
 
-    addTransaction({
-      id: firstDigest,
-      txId: txResult.txId,
-      outputCommitments: outputUtxoDigests,
-      toAddress: normalizedAddress.value,
-      amount: Number.isFinite(amountNum) ? amountNum : 0,
-      fee: Number.isFinite(feeNum) ? feeNum : 0,
-      time: new Date().toISOString(),
-    })
+    try {
+      addTransaction(
+        {
+          id: firstDigest,
+          txId: txResult.txId,
+          outputCommitments: outputUtxoDigests,
+          toAddress: normalizedAddress.value,
+          amount: Number.isFinite(amountNum) ? amountNum : 0,
+          fee: Number.isFinite(feeNum) ? feeNum : 0,
+          time: new Date().toISOString(),
+        },
+        accountId,
+      )
+    } catch (error) {
+      toast.error('Sent, but it could not be saved to History', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
 
     toast.success('Transaction sent successfully!')
 
@@ -502,6 +527,18 @@ onMounted(async () => {
   await loadMaxSendable()
   await loadBalance()
 })
+
+// Another account's UTXOs can't be spent with this one's keys.
+watch(
+  () => accountsStore.activeId,
+  async () => {
+    manualSelected.value = []
+    loadedUtxos.value = []
+    allUtxos.value = []
+    await loadMaxSendable()
+    await loadBalance()
+  },
+)
 </script>
 
 <template>
@@ -542,6 +579,23 @@ onMounted(async () => {
             <Label for="recipient">
               Recipient Address <span class="text-destructive">*</span>
             </Label>
+            <select
+              v-if="ownAccounts.length > 0"
+              aria-label="To my account"
+              class="h-9 w-full appearance-none rounded-md border border-input bg-transparent px-3 text-sm text-foreground shadow-sm"
+              :disabled="sendLoading"
+              @change="pickOwnAccount"
+            >
+              <option value="" class="bg-background">To my account</option>
+              <option
+                v-for="account in ownAccounts"
+                :key="account.id"
+                :value="account.id"
+                class="bg-background"
+              >
+                {{ accountsStore.displayName(account.id) }}
+              </option>
+            </select>
             <Textarea
               id="recipient"
               v-model="outputAddress"
