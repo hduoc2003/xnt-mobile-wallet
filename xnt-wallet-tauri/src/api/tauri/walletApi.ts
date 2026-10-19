@@ -1,5 +1,6 @@
 import type {
   BridgeDepositRecord,
+  ChainCheck,
   HistoryStatus,
   PayloadBuildBridgeDeposit,
   PayloadBuildTransaction,
@@ -128,6 +129,8 @@ export const walletApi = {
   /** Serial of the Leviathan burn that paid a cached UTXO, or null if no bridge settlement did. */
   bridgeBurnSerial: (commitment: string): Promise<string | null> =>
     safeInvoke<string | null>('bridge_burn_serial', { commitment }),
+
+  checkChain: (): Promise<ChainCheck> => safeInvoke<ChainCheck>('check_chain'),
 
   getMinBlockHeight: (fileName: string): Promise<any> =>
     call('get_min_block_height', { fileName }, 'Failed to get min block height'),

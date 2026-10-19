@@ -1,3 +1,4 @@
+import { toast } from 'vue-sonner'
 import { useNeptuneStore, useSettingsStore } from '@/stores'
 import * as API from '@/api/neptuneApi'
 import type {
@@ -8,6 +9,7 @@ import type {
   WalletState,
 } from '@/types'
 import {
+  CHAIN_RESET_MESSAGE,
   DEFAULT_MIN_BLOCK_HEIGHT,
   RPC_URL,
   normalizeUtxo,
@@ -413,12 +415,6 @@ export function useNeptuneWallet() {
         startBlock = DEFAULT_MIN_BLOCK_HEIGHT
       }
 
-      const customRpc = await (window as any).walletApi.getCustomRpcEndpoint?.()
-      const rpcUrl = customRpc || RPC_URL
-      if (!rpcUrl) {
-        throw new Error('RPC endpoint is not configured')
-      }
-
       const generationKey = store.getGenerationSpendingKey
       const spendingKeysHex = [spendingKey, generationKey].filter((k): k is string => !!k)
 
@@ -427,7 +423,6 @@ export function useNeptuneWallet() {
         spendingKeysHex,
         startBlock: toFiniteNumber(startBlock),
         endBlock: currentHeight,
-        rpcUrl: rpcUrl,
       }
 
       const scanResponse = await (window as any).walletApi.scanUtxosClientSide(scanRequest)
@@ -436,6 +431,8 @@ export function useNeptuneWallet() {
       if (!scanResult.success) {
         throw new Error(scanResult.error || 'Scan failed')
       }
+
+      if (scanResult.chain_reset === true) toast.info(CHAIN_RESET_MESSAGE)
 
       const freshUtxos = (scanResult.utxos || []).map(normalizeUtxo)
       store.setUtxos(freshUtxos)

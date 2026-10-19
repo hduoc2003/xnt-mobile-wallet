@@ -3,7 +3,8 @@ import { ref, computed, watch } from 'vue'
 import { Settings, Check, X } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useNeptuneStore } from '@/stores'
-import { useRpc } from '@/composables'
+import { useNeptuneWallet, useRpc } from '@/composables'
+import type { ChainCheck } from '@/types'
 
 const emit = defineEmits<{
   endpointUpdated: []
@@ -11,6 +12,7 @@ const emit = defineEmits<{
 
 const store = useNeptuneStore()
 const { saveRpcEndpoint } = useRpc()
+const { getUtxos } = useNeptuneWallet()
 
 const rpcUrl = computed(() => store.getRpcUrl)
 const rpcEndpointInput = ref('')
@@ -54,6 +56,23 @@ const handleSaveRpcEndpoint = async () => {
 
     isEditingEndpoint.value = false
     emit('endpointUpdated')
+
+    // On another chain the scan rescans from 0 and shows the reset toast.
+    let check: ChainCheck
+    try {
+      check = await (window as any).walletApi.checkChain()
+    } catch (error: unknown) {
+      return toast.error('Endpoint saved, but the node could not be checked', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+    if (check.state === 'reset' || check.state === 'reorg') {
+      getUtxos().catch((error: unknown) =>
+        toast.error('Failed to re-sync the wallet', {
+          description: error instanceof Error ? error.message : String(error),
+        }),
+      )
+    }
 
     savingEndpoint.value = false
   } catch (error: unknown) {

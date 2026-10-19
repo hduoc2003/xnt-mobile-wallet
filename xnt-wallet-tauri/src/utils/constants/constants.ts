@@ -8,6 +8,7 @@ export const MIN_BRIDGE_AMOUNT = 1
 /** Prefilled fee for Send, Merge and Bridge; the user can change it. */
 export const DEFAULT_FEE = '0.1'
 export const DESKTOP_IDLE_LOCK_MS = 1000 * 60 * 15
+export const CHAIN_RESET_MESSAGE = 'Different chain than the cached data: wallet re-synced'
 export const IS_MOBILE =
   import.meta.env.TAURI_ENV_PLATFORM === 'android' || import.meta.env.TAURI_ENV_PLATFORM === 'ios'
 /** Upper bound for the max-inputs setting; proving memory grows with every input. */

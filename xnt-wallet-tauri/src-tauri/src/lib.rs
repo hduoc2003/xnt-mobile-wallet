@@ -10,6 +10,7 @@ use libc;
 mod bridge_deposit;
 mod bridge_payout;
 mod bridge_status;
+mod chain_fingerprint;
 mod keys;
 mod keystore;
 mod proxy;
@@ -217,6 +218,13 @@ async fn bridge_burn_serial(app: tauri::AppHandle, commitment: String) -> Result
 }
 
 #[tauri::command]
+async fn check_chain(app: tauri::AppHandle) -> Result<chain_fingerprint::ChainCheck, String> {
+    let rpc_url = rpc_config::resolve_rpc_url(&app).await?;
+    let (check, _) = chain_fingerprint::check(&transaction::http_client()?, &rpc_url).await?;
+    Ok(check)
+}
+
+#[tauri::command]
 fn log_message(level: String, message: String) -> Result<(), String> {
     let lvl = match level.to_lowercase().as_str() {
         "trace" => Level::Trace,
@@ -308,6 +316,7 @@ pub fn run() {
             refresh_bridge_deposits,
             tx_statuses,
             bridge_burn_serial,
+            check_chain,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -229,7 +229,7 @@ pub(crate) async fn validate_inputs(
     }
     
     // Validate UTXOs using archival_getSpentStatus RPC before building transaction
-    let validated_utxos = utxo_scanning::validate_utxos_with_rpc(client, rpc_url, &matched_utxos).await
+    let validated_utxos = utxo_scanning::validate_utxos_with_rpc(client, rpc_url, &matched_utxos, false).await
         .map_err(|e| format!("Failed to validate UTXOs: {}. Some UTXOs may have been spent.", e))?;
 
     if validated_utxos.len() != matched_utxos.len() {

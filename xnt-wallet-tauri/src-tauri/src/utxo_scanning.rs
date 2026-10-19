@@ -12,6 +12,7 @@ use tauri::{AppHandle, Emitter};
 use crate::rpc_config;
 use serde::{Deserialize, Serialize};
 
+use crate::chain_fingerprint;
 use crate::utxo_cache;
 use crate::rpc_client;
 
@@ -26,7 +27,6 @@ pub struct ScanUtxosRequest {
     pub spending_keys_hex: Vec<String>,
     pub start_block: u64,
     pub end_block: u64,
-    pub rpc_url: Option<String>,
 }
 
 /// Per-key context used during multi-key scanning.
@@ -43,6 +43,7 @@ pub struct ScanUtxosResponse {
     pub success: bool,
     pub utxos: Vec<UtxoInfo>,
     pub last_scanned_block: u64,
+    pub chain_reset: bool,
     pub error: Option<String>,
 }
 
@@ -186,10 +187,12 @@ pub async fn filter_utxos_spent_in_mempool(
     Ok(filtered)
 }
 
+/// `drop_unindexed`: on a confirmed chain a cached (mined) UTXO with no AOCL index is stale.
 pub async fn validate_utxos_with_rpc(
     client: &Client,
     rpc_url: &str,
     cached_utxos: &[utxo_cache::CachedUtxo],
+    drop_unindexed: bool,
 ) -> Result<Vec<utxo_cache::CachedUtxo>, String> {
     use neptune_privacy::util_types::mutator_set::removal_record::absolute_index_set::AbsoluteIndexSet;
     use neptune_privacy::util_types::mutator_set::commit;
@@ -235,9 +238,15 @@ pub async fn validate_utxos_with_rpc(
             absolute_index_set_hashes.push(abs_hash);
             utxo_to_hash_map.push(*utxo_idx);
         } else {
-            log::debug!("[Validate] UTXO #{} has no AOCL index — keeping as unspent", utxo_idx);
             no_aocl_indices.push(*utxo_idx);
         }
+    }
+    if drop_unindexed && !no_aocl_indices.is_empty() {
+        log::warn!(
+            "[Validate] Dropping {} cached UTXO(s) the node has no AOCL index for",
+            no_aocl_indices.len()
+        );
+        no_aocl_indices.clear();
     }
 
     if absolute_index_set_hashes.is_empty() {
@@ -245,7 +254,9 @@ pub async fn validate_utxos_with_rpc(
             .iter()
             .map(|&i| cached_utxos[i].clone())
             .collect();
-        log::warn!("[Validate] No AOCL indices found for any cached UTXO — keeping all {} as unvalidated", kept.len());
+        if !kept.is_empty() {
+            log::warn!("[Validate] No AOCL indices found for any cached UTXO - keeping all {} as unvalidated", kept.len());
+        }
         return Ok(kept);
     }
 
@@ -333,6 +344,12 @@ async fn fetch_batch_for_receiver(
     }
 }
 
+/// Blocks below the previous scan's end that each scan scans again, to pick up shallow reorgs.
+const RESCAN_OVERLAP: u64 = 10;
+
+/// Serializes scans so one from a just-replaced endpoint cannot interleave with the chain check.
+static SCAN_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 pub async fn scan_utxos_client_side(
     app: &AppHandle,
     request: ScanUtxosRequest,
@@ -341,19 +358,15 @@ pub async fn scan_utxos_client_side(
         .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-    let rpc_url = {
-        if let Some(ref v) = request.rpc_url {
-            if !v.trim().is_empty() {
-                v.clone()
-            } else {
-                rpc_config::get_custom_rpc_endpoint(app)
-                    .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string())
-            }
-        } else {
-            rpc_config::get_custom_rpc_endpoint(app)
-                .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string())
-        }
-    };
+    let _scan_guard = SCAN_LOCK.lock().await;
+    // Resolved under the lock so a request queued before an endpoint change scans the new one.
+    let rpc_url = rpc_config::resolve_rpc_url(app).await?;
+    let (chain_check, node_chain) = chain_fingerprint::check(&client, &rpc_url).await?;
+    let chain_reset = chain_check.needs_full_rescan();
+    let mut request = request;
+    if chain_reset {
+        request.start_block = 0;
+    }
 
     use neptune_privacy::prelude::twenty_first::prelude::Tip5;
 
@@ -422,7 +435,7 @@ pub async fn scan_utxos_client_side(
     if !force_rescan {
         let cached_utxos = utxo_cache::get_all_utxos().await;
         log::debug!("[Scan] Loaded {} cached UTXOs — validating with RPC", cached_utxos.len());
-        match validate_utxos_with_rpc(&client, &rpc_url, &cached_utxos).await {
+        match validate_utxos_with_rpc(&client, &rpc_url, &cached_utxos, true).await {
             Ok(validated) => {
                 log::info!("[Scan] Cache validation: {}/{} UTXOs still unspent", validated.len(), cached_utxos.len());
                 validated_cached_utxos = validated;
@@ -472,7 +485,7 @@ pub async fn scan_utxos_client_side(
     let mut current_block = if force_rescan {
         request.start_block
     } else {
-        std::cmp::max(request.start_block, persisted_last_scanned.saturating_sub(10))
+        std::cmp::max(request.start_block, persisted_last_scanned.saturating_sub(RESCAN_OVERLAP))
     };
     
     let total_blocks = request.end_block.saturating_sub(request.start_block) + 1;
@@ -486,6 +499,14 @@ pub async fn scan_utxos_client_side(
         status: "Starting scan...".to_string(),
     };
     let _ = app.emit("utxo-scan-progress", &initial_progress);
+
+    // Fetched before the batches so a reorg during the scan shows up as a mismatch next time.
+    let anchor = chain_fingerprint::scanned_tip(
+        &client,
+        &rpc_url,
+        request.end_block.saturating_sub(RESCAN_OVERLAP + 1),
+    )
+    .await?;
 
     while current_block <= request.end_block {
         let batch_start_time = std::time::Instant::now();
@@ -588,7 +609,7 @@ pub async fn scan_utxos_client_side(
                 };
 
                 let validated_utxos = match validate_utxos_with_rpc(
-                    &client, &rpc_url, &[temp_cached_utxo.clone()],
+                    &client, &rpc_url, &[temp_cached_utxo.clone()], false,
                 ).await {
                     Ok(validated) => validated,
                     Err(_) => continue,
@@ -730,7 +751,7 @@ pub async fn scan_utxos_client_side(
     };
     let _ = app.emit("utxo-scan-progress", &completion_progress);
     
-    utxo_cache::replace_cache_and_persist(incoming_utxos_for_persist.clone(), last_scanned).await;
+    utxo_cache::replace_cache_and_persist(incoming_utxos_for_persist.clone(), last_scanned).await?;
 
     // Mark UTXOs that are already referenced by a pending mempool transaction so
     // the frontend can exclude them from coin selection before proof generation.
@@ -746,10 +767,13 @@ pub async fn scan_utxos_client_side(
         }
     }
 
+    chain_fingerprint::record(node_chain, anchor)?;
+
     let response = ScanUtxosResponse {
         success: true,
         utxos: utxo_infos,
         last_scanned_block: last_scanned,
+        chain_reset,
         error: None,
     };
     
@@ -768,12 +792,12 @@ pub async fn get_cached_utxos(app: &AppHandle) -> Result<String, String> {
     let cached_utxos = utxo_cache::get_all_utxos().await;
     let last_scanned = utxo_cache::get_last_scanned_block().await;
 
-    let valid_utxos = match validate_utxos_with_rpc(&client, &rpc_url, &cached_utxos).await {
+    let valid_utxos = match validate_utxos_with_rpc(&client, &rpc_url, &cached_utxos, false).await {
         Ok(validated) => validated,
         Err(_) => cached_utxos
     };
 
-    utxo_cache::replace_cache_and_persist(valid_utxos.clone(), last_scanned).await;
+    utxo_cache::replace_cache_and_persist(valid_utxos.clone(), last_scanned).await?;
 
     let utxos: Vec<UtxoInfo> = valid_utxos
         .iter()

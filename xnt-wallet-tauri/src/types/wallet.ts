@@ -88,3 +88,9 @@ export interface BridgeDepositRecord {
   relayer: RelayerDepositStatus | null
   relayerError: string | null
 }
+
+export type ChainCheck =
+  | { state: 'same' }
+  | { state: 'firstRecord' }
+  | { state: 'reset'; previous: { network: string; block1Digest: string } }
+  | { state: 'reorg'; height: number }

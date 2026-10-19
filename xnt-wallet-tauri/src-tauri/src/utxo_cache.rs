@@ -133,7 +133,7 @@ pub async fn get_all_utxos() -> Vec<CachedUtxo> {
     cache_guard.values().cloned().collect()
 }
 
-pub async fn replace_cache_and_persist(utxos: Vec<CachedUtxo>, last_scanned_block: u64) {
+pub async fn replace_cache_and_persist(utxos: Vec<CachedUtxo>, last_scanned_block: u64) -> Result<(), String> {
     let unique_utxos = deduplicate_utxos(utxos);
     {
         let cache = get_cache();
@@ -151,9 +151,8 @@ pub async fn replace_cache_and_persist(utxos: Vec<CachedUtxo>, last_scanned_bloc
         *last = last_scanned_block;
     }
 
-    if let Err(e) = persist_cache_to_disk(unique_utxos, last_scanned_block) {
-        log::warn!("[UTXO Cache] Failed to persist cache to disk: {}", e);
-    }
+    persist_cache_to_disk(unique_utxos, last_scanned_block)
+        .map_err(|e| format!("Failed to persist the UTXO cache: {e}"))
 }
 
 pub async fn get_last_scanned_block() -> u64 {
@@ -206,6 +205,10 @@ fn cache_file_path() -> PathBuf {
             .unwrap_or_else(|_| PathBuf::from("."));
         base.join(".xnt-wallet").join("utxo_cache.bin")
     })
+}
+
+pub fn chain_file_path() -> PathBuf {
+    cache_file_path().with_file_name("chain.json")
 }
 
 fn ensure_cache_dir(path: &PathBuf) -> io::Result<()> {
