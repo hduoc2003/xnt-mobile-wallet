@@ -23,8 +23,8 @@ tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# Leviathan fork of xnt-core (V1 consensus + bridge)
-neptune-privacy = { git = "https://git.softly.com/leviathan/xnt-core", rev = "a7cc878629164dcc18221aa62b02e68ce9ce53d1" }
+# Leviathan fork of xnt-core (v0.3 + bridge)
+neptune-privacy = { git = "https://git.softly.com/leviathan/xnt-core", rev = "cbf41aaba4fb78349079bb332bceea4decb7e825", default-features = false }
 
 # Utilities
 hex = "0.4"
@@ -33,7 +33,7 @@ anyhow = "1.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync"] }
 reqwest = { version = "0.11", features = ["json", "rustls-tls-webpki-roots"] }
 num-traits = "0.2"
-rand = "0.9"
+rand = "0.10"
 itertools = "0.12"
 rayon = "1.9"
 chrono = { version = "0.4", features = ["serde"] }

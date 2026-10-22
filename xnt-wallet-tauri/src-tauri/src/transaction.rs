@@ -22,7 +22,7 @@ use neptune_privacy::prelude::triton_vm::config::{overwrite_lde_trace_caching_to
 use neptune_privacy::util_types::mutator_set::mutator_set_accumulator::MutatorSetAccumulator;
 use num_traits::identities::Zero;
 use num_traits::ops::checked::CheckedSub;
-use rand::Rng;
+use rand::RngExt;
 use reqwest::Client;
 use tauri::AppHandle;
 use std::str::FromStr;

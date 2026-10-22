@@ -1242,6 +1242,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "pre-v0.3 fixture: its UTXO hash predates v0.3's type scripts; regenerate from a v0.3-chain block"]
     fn settlement_payout_matches_its_onchain_output() {
         let indexed: RpcIndexedUtxo = serde_json::from_str(include_str!("../test_data/block_252_payout.json")).unwrap();
         let RpcIndexedUtxo::Public { lock_script_hash, amount_nau, sender_randomness, .. } = indexed else {

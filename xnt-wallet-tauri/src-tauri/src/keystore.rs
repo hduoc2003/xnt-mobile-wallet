@@ -6,7 +6,7 @@ use aes_gcm::{
 };
 use base64::{engine::general_purpose, Engine as _};
 use pbkdf2::pbkdf2_hmac_array;
-use rand::{rng, RngCore};
+use rand::{rng, Rng};
 use serde_json::json;
 use tauri::Manager;
 use sha2::Sha256;

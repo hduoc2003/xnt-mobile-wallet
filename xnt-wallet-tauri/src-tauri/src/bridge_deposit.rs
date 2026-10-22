@@ -7,7 +7,7 @@ use neptune_privacy::application::json_rpc::core::model::wallet::transaction::Rp
 use neptune_privacy::prelude::twenty_first::prelude::Digest;
 use neptune_privacy::protocol::consensus::block::block_height::BlockHeight;
 use neptune_privacy::protocol::consensus::bridge::deposit_announcement::{
-    parse_miden_address, MIN_BRIDGE_AMOUNT,
+    parse_leviathan_address, MIN_BRIDGE_AMOUNT,
 };
 use neptune_privacy::protocol::consensus::transaction::transaction_proof::TransactionProof;
 use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
@@ -38,7 +38,7 @@ pub(crate) fn parse_deposit_request(
     let address = payload["midenAddress"]
         .as_str()
         .ok_or("Missing midenAddress in payload")?;
-    let account_id = parse_miden_address(address, network)
+    let account_id = parse_leviathan_address(address, network)
         .map_err(|e| format!("Invalid Leviathan address: {e}"))?;
     let amount = parse_coins(payload, "amount")?;
     if amount < MIN_BRIDGE_AMOUNT {

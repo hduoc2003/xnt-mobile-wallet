@@ -2,7 +2,7 @@ use neptune_privacy::application::config::network::Network;
 use neptune_privacy::state::wallet::address::SpendingKey;
 use neptune_privacy::state::wallet::secret_key_material::SecretKeyMaterial;
 use neptune_privacy::state::wallet::wallet_entropy::WalletEntropy;
-use rand::Rng;
+use rand::RngExt;
 use serde::Serialize;
 use std::str::FromStr;
 
@@ -158,7 +158,7 @@ mod tests {
         serde_json::from_str(&json).unwrap()
     }
 
-    /// Output of the derivation before accounts existed, for `phrase()` on testnet.
+    /// Index 0 as derived before accounts existed, for `phrase()` on testnet (dCTIDH: v0.3 derivation).
     #[test]
     fn index_0_keeps_pre_account_keys() {
         use sha2::{Digest, Sha256};
@@ -173,8 +173,12 @@ mod tests {
         );
         let dctidh = legacy("dctidh");
         assert_eq!(dctidh["spending_key_hex"], "0x02000000c3fcd70be232631c2c08bed9b5e4cf59e5f617d9d88a2710a53baf1c5fa55affc5df9075f4065d87");
-        assert_eq!(dctidh["receiver_identifier"], "0xfdcc042ae89b7999");
-        assert_eq!(dctidh["address"], "xntctt1wkwxrzx2hp2ugxsynkd3k0mhmqrmheqhcnxerxauy69cscn3a8lgnusywnulpgtjxccnjurg5ky6whuqjlmqehh8tv998qrukgutxncy5829g");
+        assert_eq!(dctidh["receiver_identifier"], "0x07a0c5d2798b1b53");
+        let address_hash = Sha256::digest(dctidh["address"].as_str().unwrap().as_bytes());
+        assert_eq!(
+            hex::encode(address_hash),
+            "5137e96040cf430cba5a840cc0cf0d31248cc860cca6dbbc9efebde4a4c4ec75"
+        );
         assert_eq!(legacy("other"), dctidh);
     }
 
