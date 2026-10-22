@@ -444,14 +444,19 @@ pub async fn discover_at(
                 return Ok(true);
             }
             // dCTIDH derivation is slow on phones, so only when the Generation address is unused.
-            let dctidh = tokio::task::spawn_blocking(move || {
-                crate::utxo_scanning::receiver_id_hash_hex(&SpendingKey::dCTIDH(
-                    entropy.nth_dctidh_spending_key(index),
-                ))
+            let (dctidh, legacy) = tokio::task::spawn_blocking(move || {
+                let (key, legacy) = entropy.nth_dctidh_spending_key_with_legacy(index);
+                (
+                    crate::utxo_scanning::receiver_id_hash_hex(&SpendingKey::dCTIDH(key)),
+                    crate::utxo_scanning::receiver_id_hash_hex(&SpendingKey::dCTIDH(legacy)),
+                )
             })
             .await
             .map_err(|e| format!("Key derivation task failed: {e}"))?;
-            crate::utxo_scanning::has_activity(client, rpc_url, &dctidh, tip).await
+            if crate::utxo_scanning::has_activity(client, rpc_url, &dctidh, tip).await? {
+                return Ok(true);
+            }
+            crate::utxo_scanning::has_activity(client, rpc_url, &legacy, tip).await
         }
     })
     .await?;

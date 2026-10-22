@@ -57,6 +57,26 @@ export interface PayloadBuildBridgeDeposit {
   walletAccount: string
 }
 
+export interface PayloadBuildLegacyDctidhMigration {
+  dctidhKeyHex: string
+  lowMemoryProving: boolean
+}
+
+export interface LegacyDctidhMigration {
+  success: true
+  transaction: unknown
+  outputUtxoDigests: string[]
+  txId: string
+  toAddress: string
+  numInputs: number
+  amount: string
+  fee: string
+  /** Legacy UTXOs left for a later migration, `numDust` included. */
+  numWaiting: number
+  /** Legacy UTXOs worth less than their fee share; never moved. */
+  numDust: number
+}
+
 export interface RelayerDepositStatus {
   minted: boolean
   status: 'minted' | 'submitted' | 'refused' | 'waiting'

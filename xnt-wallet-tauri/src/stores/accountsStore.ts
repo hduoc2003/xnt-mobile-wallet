@@ -22,6 +22,8 @@ export const useAccountsStore = defineStore('accounts', () => {
   /** Seeds that did not open at unlock, with the reason. */
   const lockedSeeds = ref(new Map<string, string>())
   const utxosByAccount = ref(new Map<string, NormalizedUtxo[]>())
+  /** Kept apart so no send, merge or bridge can select them. */
+  const legacyDctidhUtxosByAccount = ref(new Map<string, NormalizedUtxo[]>())
   const balances = ref(new Map<string, AccountBalance>())
 
   const activeId = computed(() => registry.value?.active)
@@ -43,21 +45,29 @@ export const useAccountsStore = defineStore('accounts', () => {
   }
 
   const utxosOf = (id: string): NormalizedUtxo[] => utxosByAccount.value.get(id) ?? []
+  const legacyDctidhUtxosOf = (id: string): NormalizedUtxo[] =>
+    legacyDctidhUtxosByAccount.value.get(id) ?? []
 
   const setAccountUtxos = (accountIds: string[], utxos: NormalizedUtxo[]) => {
     const grouped = new Map<string, NormalizedUtxo[]>(accountIds.map((id) => [id, []]))
+    const legacy = new Map<string, NormalizedUtxo[]>(accountIds.map((id) => [id, []]))
     for (const utxo of utxos) {
-      const list = utxo.accountId === undefined ? undefined : grouped.get(utxo.accountId)
+      const list =
+        utxo.accountId === undefined
+          ? undefined
+          : (utxo.isLegacyDctidh ? legacy : grouped).get(utxo.accountId)
       if (!list) throw new Error(`UTXO ${utxo.utxoDigest} has no account from this request`)
       list.push(utxo)
     }
     grouped.forEach((list, id) => utxosByAccount.value.set(id, list))
+    legacy.forEach((list, id) => legacyDctidhUtxosByAccount.value.set(id, list))
   }
 
   const forgetAccounts = (ids: string[]) => {
     for (const id of ids) {
       keys.value.delete(id)
       utxosByAccount.value.delete(id)
+      legacyDctidhUtxosByAccount.value.delete(id)
       balances.value.delete(id)
     }
   }
@@ -111,6 +121,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     keys.value = new Map()
     lockedSeeds.value = new Map()
     utxosByAccount.value = new Map()
+    legacyDctidhUtxosByAccount.value = new Map()
     balances.value = new Map()
   }
 
@@ -127,6 +138,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     balances,
     requireActiveId,
     utxosOf,
+    legacyDctidhUtxosOf,
     setAccountUtxos,
     setBalance,
     forgetAccounts,

@@ -1,22 +1,13 @@
 import { computed, ref, onActivated, onDeactivated, onUnmounted, watch } from 'vue'
 import type { BridgeDepositRecord, PayloadBuildBridgeDeposit } from '@/types'
 import { useAccountsStore, useSettingsStore } from '@/stores'
-import { BRIDGE_POLLING_INTERVAL, toAtomicUnits } from '@/utils'
+import { BRIDGE_POLLING_INTERVAL, describeError, toAtomicUnits } from '@/utils'
 import { useNeptuneWallet } from './useNeptuneWallet'
 
 export interface BridgeDepositForm {
   leviathanAddress: string
   amount: string
   fee: string
-}
-
-/** Text of a JSON-RPC error object (`{ code, message, data? }`) or any other thrown value. */
-const describeError = (error: unknown): string => {
-  if (typeof error !== 'object' || error === null) return String(error)
-  const message = 'message' in error ? String(error.message) : JSON.stringify(error)
-  return 'data' in error && error.data !== undefined
-    ? `${message}: ${JSON.stringify(error.data)}`
-    : message
 }
 
 const isPending = (record: BridgeDepositRecord) =>

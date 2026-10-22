@@ -8,6 +8,7 @@ import type {
   SeedEntry,
   HistoryStatus,
   PayloadBuildBridgeDeposit,
+  PayloadBuildLegacyDctidhMigration,
   PayloadBuildTransaction,
 } from '@/types'
 import type { AccountKeysRef } from '@/stores/accountsStore'
@@ -113,6 +114,14 @@ export const walletApi = {
     call('build_bridge_deposit', { payload }, 'Failed to build bridge deposit', {
       errorFrom: 'rich',
     }),
+
+  buildLegacyDctidhMigration: (payload: PayloadBuildLegacyDctidhMigration): Promise<any> =>
+    call('build_legacy_dctidh_migration', { payload }, 'Failed to move legacy funds', {
+      errorFrom: 'rich',
+    }),
+
+  legacyDctidhDustThreshold: (): Promise<string> =>
+    safeInvoke<string>('legacy_dctidh_dust_threshold'),
 
   listBridgeDeposits: (): Promise<BridgeDepositRecord[]> =>
     safeInvoke<BridgeDepositRecord[]>('list_bridge_deposits'),

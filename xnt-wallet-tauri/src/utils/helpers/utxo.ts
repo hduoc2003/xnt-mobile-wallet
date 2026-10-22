@@ -10,6 +10,8 @@ export interface NormalizedUtxo {
   releaseDateMs: number | null
   keyType: string
   isPending: boolean
+  /** At a pre-v0.3 dCTIDH address: can only be moved by a migration, never spent. */
+  isLegacyDctidh: boolean
   /** Set when the scan was asked per account. */
   accountId?: string
 }
@@ -29,6 +31,7 @@ export function normalizeUtxo(u: any): NormalizedUtxo {
     releaseDateMs: u.release_date_ms ?? u.releaseDateMs ?? null,
     keyType: u.key_type || u.keyType || '',
     isPending: !!(u.is_pending ?? u.isPending),
+    isLegacyDctidh: !!(u.is_legacy_dctidh ?? u.isLegacyDctidh),
     ...(u.account_id || u.accountId ? { accountId: u.account_id || u.accountId } : {}),
   }
 }

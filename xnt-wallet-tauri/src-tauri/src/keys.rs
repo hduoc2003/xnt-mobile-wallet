@@ -182,6 +182,19 @@ mod tests {
         assert_eq!(legacy("other"), dctidh);
     }
 
+    /// Pre-v0.3 releases gave `phrase()`'s dCTIDH key receiver identifier 0xfdcc042ae89b7999.
+    #[test]
+    fn legacy_dctidh_key_keeps_the_pre_v0_3_receiver_identifier() {
+        let keys = derive_account_keys(&phrase(), 0, parse_network("testnet").unwrap()).unwrap();
+        let bytes = hex::decode(keys.dctidh_key_hex.trim_start_matches("0x")).unwrap();
+        let key: SpendingKey = bincode::deserialize(&bytes).unwrap();
+        let legacy = crate::legacy_dctidh::legacy_key(&key).unwrap();
+        assert_eq!(
+            format!("0x{:016x}", legacy.receiver_identifier().value()),
+            "0xfdcc042ae89b7999"
+        );
+    }
+
     #[test]
     fn index_0_matches_existing_derivation() {
         let keys = derive_account_keys(&phrase(), 0, parse_network("testnet").unwrap()).unwrap();

@@ -129,14 +129,18 @@ async fn build(app: &AppHandle, payload: &Value) -> Result<String, String> {
         network,
     )
     .map_err(|e| format!("Failed to build deposit: {e}"))?;
+    details
+        .tx_outputs
+        .validate_recipients()
+        .map_err(|e| format!("Invalid recipient: {e}"))?;
 
     let primitive_witness = details.primitive_witness();
     let kernel = primitive_witness.kernel.clone();
-    let block_height = rpc_client::get_chain_height(&client, &rpc_url).await?;
+    let tip_height = rpc_client::get_chain_height(&client, &rpc_url).await?;
     let proof_collection = transaction::prove(
         primitive_witness,
         network,
-        BlockHeight::from(block_height),
+        BlockHeight::from(tip_height),
         request.low_memory_proving,
     )
     .await?;

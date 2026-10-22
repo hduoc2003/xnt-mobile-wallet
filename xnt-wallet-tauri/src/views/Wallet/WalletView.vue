@@ -6,6 +6,7 @@ import { useRouter } from 'vue-router'
 import { useAccountsStore, useNeptuneStore } from '@/stores'
 import WalletBalanceCard from './components/WalletBalanceCard.vue'
 import WalletActions from './components/WalletActions.vue'
+import LegacyFundsCard from './components/LegacyFundsCard.vue'
 import { useNeptuneWallet } from '@/composables'
 import { POLLING_INTERVAL } from '@/utils'
 
@@ -110,6 +111,8 @@ watch(
         :pending-balance="pendingBalance"
         :loading="loading && !loadedOnce"
       />
+
+      <LegacyFundsCard @moved="refresh" />
 
       <!-- Action Buttons -->
       <WalletActions />

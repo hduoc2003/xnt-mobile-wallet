@@ -117,13 +117,15 @@ pub(crate) struct ValidatedInputs {
     pub total: NativeCurrencyAmount,
 }
 
-/// `low_memory` proves without caching the LDE trace; otherwise triton-vm decides from free memory.
+/// Proves for the block after `tip_height`. `low_memory` proves without caching the LDE trace;
+/// otherwise triton-vm decides from free memory.
 pub(crate) async fn prove(
     primitive_witness: PrimitiveWitness,
     network: Network,
-    block_height: BlockHeight,
+    tip_height: BlockHeight,
     low_memory: bool,
 ) -> Result<ProofCollection, String> {
+    let block_height = tip_height.next();
     if !low_memory {
         return ProofCollection::produce_in_process(&primitive_witness, network, block_height)
             .await
@@ -452,9 +454,13 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
         })
         .collect::<Result<Vec<_>, String>>()?;
     
+    let tx_outputs = TxOutputList::from(tx_outputs);
+    tx_outputs
+        .validate_recipients()
+        .map_err(|e| format!("Invalid recipient: {e}"))?;
     let tx_details = TransactionDetails::new_without_coinbase(
         TxInputList::from(tx_inputs),
-        TxOutputList::from(tx_outputs),
+        tx_outputs,
         fee_amount,
         Timestamp::now(),
         mutator_set_accumulator,
@@ -463,11 +469,11 @@ async fn build_transaction_inner(app: &AppHandle, payload: serde_json::Value) ->
     
     let primitive_witness: PrimitiveWitness = tx_details.primitive_witness();
     let kernel = primitive_witness.kernel.clone();
-    let block_height = rpc_client::get_chain_height(&client, &rpc_url).await?;
+    let tip_height = rpc_client::get_chain_height(&client, &rpc_url).await?;
     let proof_collection = prove(
         primitive_witness,
         network,
-        BlockHeight::from(block_height),
+        BlockHeight::from(tip_height),
         low_memory_proving,
     )
     .await?;

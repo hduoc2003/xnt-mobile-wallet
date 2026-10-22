@@ -15,6 +15,7 @@ mod bridge_status;
 mod chain_fingerprint;
 mod keys;
 mod keystore;
+mod legacy_dctidh;
 mod proxy;
 mod rpc_client;
 mod rpc_config;
@@ -179,6 +180,16 @@ async fn get_custom_rpc_endpoint(app: tauri::AppHandle) -> Result<Option<String>
 #[tauri::command]
 async fn build_bridge_deposit(app: tauri::AppHandle, payload: serde_json::Value) -> Result<String, String> {
     bridge_deposit::build_bridge_deposit(app, payload).await
+}
+
+#[tauri::command]
+fn legacy_dctidh_dust_threshold() -> String {
+    legacy_dctidh::dust_threshold().to_string()
+}
+
+#[tauri::command]
+async fn build_legacy_dctidh_migration(app: tauri::AppHandle, payload: serde_json::Value) -> Result<String, String> {
+    legacy_dctidh::build_migration(&app, payload).await
 }
 
 #[tauri::command]
@@ -442,6 +453,8 @@ pub fn run() {
             get_custom_rpc_endpoint,
             log_message,
             build_bridge_deposit,
+            build_legacy_dctidh_migration,
+            legacy_dctidh_dust_threshold,
             list_bridge_deposits,
             discard_bridge_deposit,
             refresh_bridge_deposits,

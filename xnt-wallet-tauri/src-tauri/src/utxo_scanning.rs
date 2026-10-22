@@ -5,6 +5,8 @@ use neptune_privacy::prelude::twenty_first::tip5::digest::Digest;
 use neptune_privacy::application::json_rpc::core::model::common::RpcNativeCurrencyAmount;
 use neptune_privacy::application::json_rpc::core::model::message::RpcIndexedUtxo;
 use neptune_privacy::protocol::consensus::transaction::utxo::Utxo;
+use neptune_privacy::application::config::network::Network;
+use std::str::FromStr;
 use num_traits::Zero;
 use reqwest::Client;
 use std::collections::HashSet;
@@ -56,6 +58,23 @@ struct KeyContext {
     receiver_id_hash_hex: String,
     receiver_preimage: Digest,
     account_id: Option<String>,
+    /// A pre-v0.3 dCTIDH key: finds funds that are moved, not spent, see [`crate::legacy_dctidh`].
+    legacy_dctidh: bool,
+}
+
+impl KeyContext {
+    /// Blocking: derives a key.
+    fn legacy_counterpart(&self) -> Option<KeyContext> {
+        let key = crate::legacy_dctidh::legacy_key(&self.spending_key)?;
+        Some(KeyContext {
+            label: "dCTIDH legacy".to_string(),
+            receiver_id_hash_hex: receiver_id_hash_hex(&key),
+            receiver_preimage: key.privacy_preimage(),
+            spending_key: key,
+            account_id: self.account_id.clone(),
+            legacy_dctidh: true,
+        })
+    }
 }
 
 pub fn receiver_id_hash_hex(key: &SpendingKey) -> String {
@@ -79,11 +98,13 @@ fn key_context(key_hex: &str, account_id: Option<&str>) -> Result<Option<KeyCont
         spending_key: sk,
         label,
         account_id: account_id.map(str::to_string),
+        legacy_dctidh: false,
     }))
 }
 
 /// Every key must parse and be able to receive, so no account is silently left out.
-async fn contexts_for(accounts: Vec<AccountKeysRef>) -> Result<Vec<KeyContext>, String> {
+/// `with_legacy_dctidh` adds each dCTIDH key's legacy-format counterpart.
+async fn contexts_for(accounts: Vec<AccountKeysRef>, with_legacy_dctidh: bool) -> Result<Vec<KeyContext>, String> {
     tokio::task::spawn_blocking(move || {
         let mut contexts = Vec::new();
         for account in &accounts {
@@ -91,7 +112,9 @@ async fn contexts_for(accounts: Vec<AccountKeysRef>) -> Result<Vec<KeyContext>, 
                 let context = key_context(key, Some(&account.account_id))
                     .map_err(|e| format!("Account {}: {e}", account.account_id))?
                     .ok_or_else(|| format!("Account {}: a key cannot receive", account.account_id))?;
+                let legacy = if with_legacy_dctidh { context.legacy_counterpart() } else { None };
                 contexts.push(context);
+                contexts.extend(legacy);
             }
         }
         Ok(contexts)
@@ -124,9 +147,9 @@ fn cached_infos(
         .iter()
         .filter_map(|utxo| {
             match contexts.iter().find(|c| c.receiver_preimage == utxo.utxo.receiver_preimage) {
-                Some(c) => Some(cached_utxo_to_info(utxo, c.label.clone(), c.account_id.clone())),
+                Some(c) => Some(cached_utxo_to_info(utxo, c.label.clone(), c.account_id.clone(), c.legacy_dctidh)),
                 None if tagged => None,
-                None => Some(cached_utxo_to_info(utxo, legacy_key_type.to_string(), None)),
+                None => Some(cached_utxo_to_info(utxo, legacy_key_type.to_string(), None, false)),
             }
         })
         .collect()
@@ -191,6 +214,8 @@ pub struct UtxoInfo {
     pub key_type: String,
     pub is_pending: bool,
     pub account_id: Option<String>,
+    /// At a pre-v0.3 dCTIDH lock: not spendable, only moved by a migration.
+    pub is_legacy_dctidh: bool,
 }
 
 fn settlement_payout_utxo(lock_script_hash: Digest, amount_nau: RpcNativeCurrencyAmount) -> Utxo {
@@ -202,6 +227,7 @@ fn cached_utxo_to_info(
     cached: &utxo_cache::CachedUtxo,
     key_type: String,
     account_id: Option<String>,
+    is_legacy_dctidh: bool,
 ) -> UtxoInfo {
     let utxo_ref = &cached.utxo.utxo;
     let amount = utxo_ref.get_native_currency_amount();
@@ -225,6 +251,7 @@ fn cached_utxo_to_info(
         key_type,
         is_pending: false,
         account_id,
+        is_legacy_dctidh,
     }
 }
 
@@ -484,7 +511,7 @@ pub async fn clear_cache_locked() {
 }
 
 pub async fn forget_accounts_utxos(accounts: Vec<AccountKeysRef>) -> Result<(), String> {
-    let contexts = contexts_for(accounts).await?;
+    let contexts = contexts_for(accounts, true).await?;
     let _scan_guard = SCAN_LOCK.lock().await;
     let kept: Vec<_> = utxo_cache::get_all_utxos()
         .await
@@ -513,6 +540,8 @@ pub async fn scan_utxos_client_side(
     let rpc_url = rpc_config::resolve_rpc_url(app).await?;
     let (chain_check, node_chain) = chain_fingerprint::check(&client, &rpc_url).await?;
     let chain_reset = chain_check.needs_full_rescan();
+    let network = Network::from_str(&node_chain.network)
+        .map_err(|e| format!("Unknown network '{}': {e}", node_chain.network))?;
     // Every cached UTXO goes: on another chain, or on the first check, whose cache chain is unknown.
     let chain_changed = matches!(chain_check, chain_fingerprint::ChainCheck::Reset { .. })
         || (chain_check == chain_fingerprint::ChainCheck::FirstRecord
@@ -527,7 +556,7 @@ pub async fn scan_utxos_client_side(
 
     let tagged = !request.accounts.is_empty();
     let key_contexts: Vec<KeyContext> = if tagged {
-        contexts_for(request.accounts.clone()).await?
+        contexts_for(request.accounts.clone(), true).await?
     } else {
         let keys_to_scan: Vec<String> = if !request.spending_keys_hex.is_empty() {
             request.spending_keys_hex.clone()
@@ -582,6 +611,17 @@ pub async fn scan_utxos_client_side(
         validated
     };
     
+    // Older caches may hold UTXOs the scan now refuses: another lock, or legacy past the cutoff.
+    let validated_cached_utxos: Vec<utxo_cache::CachedUtxo> = validated_cached_utxos
+        .into_iter()
+        .filter(|u| match key_contexts.iter().find(|c| c.receiver_preimage == u.utxo.receiver_preimage) {
+            Some(c) => {
+                u.utxo.utxo.lock_script_hash() == c.spending_key.lock_script_hash()
+                    && (!c.legacy_dctidh || crate::legacy_dctidh::recognized_at(network, u.block_height))
+            }
+            None => true,
+        })
+        .collect();
     let mut utxo_infos: Vec<UtxoInfo> =
         cached_infos(tagged, &key_contexts, &validated_cached_utxos, "dCTIDH");
     for info in &utxo_infos {
@@ -693,6 +733,15 @@ pub async fn scan_utxos_client_side(
                         let Ok((utxo, sender_randomness, _payment_id)) = key_ctx.spending_key.decrypt(&ciphertext) else {
                             continue;
                         };
+                        // Anyone can announce to a receiver id; only a UTXO this key unlocks is ours.
+                        if utxo.lock_script_hash() != key_ctx.spending_key.lock_script_hash() {
+                            log::warn!("[Scan] Announcement at block={block_height} is not locked to key_type={}; skipping", key_ctx.label);
+                            continue;
+                        }
+                        if key_ctx.legacy_dctidh && !crate::legacy_dctidh::recognized_at(network, u64::from(block_height)) {
+                            log::info!("[Scan] Skipping a legacy dCTIDH UTXO at block={block_height}: after the cutoff");
+                            continue;
+                        }
                         log::debug!(
                             "[Scan] Decrypted announcement at block={} | key_type={}",
                             block_height, key_ctx.label
@@ -701,6 +750,10 @@ pub async fn scan_utxos_client_side(
                     }
                     // Bridge settlement payouts carry no ciphertext; the node indexes them in the clear.
                     RpcIndexedUtxo::Public { block_height, lock_script_hash, amount_nau, sender_randomness, .. } => {
+                        // Payouts go to current addresses; a legacy key has none.
+                        if key_ctx.legacy_dctidh {
+                            continue;
+                        }
                         if lock_script_hash != key_ctx.spending_key.clone().to_address().lock_script_hash() {
                             log::warn!(
                                 "[Scan] Bridge payout at block={} is not locked to key_type={}; skipping",
@@ -798,6 +851,7 @@ pub async fn scan_utxos_client_side(
                         key_type: key_ctx.label.clone(),
                         is_pending: false,
                         account_id: key_ctx.account_id.clone(),
+                        is_legacy_dctidh: key_ctx.legacy_dctidh,
                     });
 
                     cached_utxos.push(utxo.clone());
@@ -925,7 +979,7 @@ pub async fn get_cached_utxos_local(accounts: Option<Vec<AccountKeysRef>>) -> Re
 
     let tagged = accounts.is_some();
     let contexts = match accounts {
-        Some(accounts) => contexts_for(accounts).await?,
+        Some(accounts) => contexts_for(accounts, true).await?,
         None => Vec::new(),
     };
     let utxos = cached_infos(tagged, &contexts, &cached_utxos, "");
@@ -1032,7 +1086,7 @@ pub async fn get_pending_balance_from_mempool(
         .unwrap_or_else(|| rpc_config::DEFAULT_RPC_URL.to_string());
 
     let contexts: Vec<KeyContext> = if !request.accounts.is_empty() {
-        contexts_for(request.accounts).await?
+        contexts_for(request.accounts, false).await?
     } else {
         match key_context(&request.spending_key_hex, None)? {
             Some(context) => vec![context],
@@ -1103,7 +1157,7 @@ mod tests {
     }
 
     async fn parse_accounts(accounts: &[AccountKeysRef]) -> Vec<KeyContext> {
-        contexts_for(accounts.to_vec()).await.unwrap()
+        contexts_for(accounts.to_vec(), false).await.unwrap()
     }
 
     fn coins(amount: &str) -> NativeCurrencyAmount {
@@ -1173,6 +1227,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn legacy_dctidh_utxos_are_tagged_and_marked() {
+        let contexts = contexts_for(vec![account("main:0", 0)], true).await.unwrap();
+        let labels: Vec<_> = contexts.iter().map(|c| (c.label.as_str(), c.legacy_dctidh)).collect();
+        assert_eq!(labels, [("Generation", false), ("dCTIDH", false), ("dCTIDH legacy", true)]);
+        let legacy = &contexts[2];
+        assert_ne!(legacy.receiver_preimage, contexts[1].receiver_preimage);
+        assert_ne!(legacy.receiver_id_hash_hex, contexts[1].receiver_id_hash_hex);
+
+        let cached = utxo_cache::CachedUtxo {
+            utxo: neptune_privacy::state::wallet::incoming_utxo::IncomingUtxo { receiver_preimage: legacy.receiver_preimage, ..cached_for(&contexts[1], "3").utxo },
+            block_height: 7,
+        };
+        let infos = cached_infos(true, &contexts, &[cached], "");
+        assert_eq!(infos.len(), 1);
+        assert!(infos[0].is_legacy_dctidh);
+        assert_eq!(infos[0].account_id.as_deref(), Some("main:0"));
+    }
+
+    #[tokio::test]
     async fn accounts_request_never_returns_unowned_utxos() {
         let contexts = parse_accounts(&[account("main:0", 0)]).await;
         let cached = [cached_for(&contexts[0], "1")];
@@ -1185,7 +1258,7 @@ mod tests {
             account_id: "main:3".into(),
             spending_keys_hex: vec!["0xzz".into()],
         };
-        let error = contexts_for(vec![account("main:0", 0), bad]).await.err().unwrap();
+        let error = contexts_for(vec![account("main:0", 0), bad], false).await.err().unwrap();
         assert!(error.starts_with("Account main:3"), "{error}");
     }
 

@@ -53,6 +53,7 @@ const baseUtxo: NormalizedUtxo = {
   releaseDateMs: null,
   keyType: 'Generation',
   isPending: false,
+  isLegacyDctidh: false,
 }
 
 const sentTx = (id: string): TransactionDetail => ({
@@ -183,6 +184,7 @@ describe('useAccounts', () => {
       releaseDateMs: null,
       keyType: 'Generation',
       isPending: false,
+      isLegacyDctidh: false,
       accountId,
     })
     useAccountsStore().setAccountUtxos(
@@ -227,6 +229,25 @@ describe('useAccounts', () => {
       available: '0.00000000',
       pending: '1.00000000',
     })
+  })
+
+  it('legacy dCTIDH UTXOs stay out of the spendable list and the balance', async () => {
+    await useAccounts().unlockAll('pw')
+    const store = useAccountsStore()
+    store.setAccountUtxos(
+      ['main:0', 'main:1'],
+      [
+        { ...baseUtxo, accountId: 'main:1', amount: '2' },
+        { ...baseUtxo, accountId: 'main:1', amount: '7', utxoDigest: 'b', isLegacyDctidh: true },
+      ],
+    )
+    expect(store.utxosOf('main:1').map((u) => u.amount)).toEqual(['2'])
+    expect(store.legacyDctidhUtxosOf('main:1').map((u) => u.amount)).toEqual(['7'])
+    expect(store.legacyDctidhUtxosOf('main:0')).toEqual([])
+    api.getPendingBalance.mockResolvedValue({ success: false, error: 'offline' })
+    expect((await useNeptuneWallet().getBalance()).balance).toBe('2.00000000')
+    store.forgetAccounts(['main:1'])
+    expect(store.legacyDctidhUtxosOf('main:1')).toEqual([])
   })
 
   it('History records a send under the account that made it, not the shown one', async () => {
