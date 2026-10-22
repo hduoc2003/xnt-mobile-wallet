@@ -68,8 +68,8 @@ pub struct DepositRecord {
     pub tx_id: String,
     pub account_id: [u64; 2],
     /// Recipient as the user entered it; absent in records written before it was stored.
-    #[serde(default)]
-    pub miden_address: Option<String>,
+    #[serde(default, alias = "midenAddress")]
+    pub leviathan_address: Option<String>,
     pub amount: String,
     /// Absent in records written before fees were stored.
     #[serde(default)]
@@ -516,8 +516,21 @@ mod tests {
         );
         let record: DepositRecord = serde_json::from_str(&json).unwrap();
         assert_eq!(record.fee, None);
-        assert_eq!(record.miden_address, None);
+        assert_eq!(record.leviathan_address, None);
         assert!(record.output_commitments.is_empty());
+    }
+
+    #[test]
+    fn record_with_the_old_recipient_field_keeps_it() {
+        let json = format!(
+            r#"{{"utxoCommitment":"{c}","txId":"{c}","accountId":[1,2],"midenAddress":"mtst1old","amount":"1","createdMs":7,"status":{{"state":"submitted","misses":0}},"relayer":null,"relayerError":null}}"#,
+            c = "ab".repeat(40)
+        );
+        let record: DepositRecord = serde_json::from_str(&json).unwrap();
+        assert_eq!(record.leviathan_address.as_deref(), Some("mtst1old"));
+        assert!(serde_json::to_string(&record)
+            .unwrap()
+            .contains(r#""leviathanAddress":"mtst1old""#));
     }
 
     #[test]
@@ -578,7 +591,7 @@ mod tests {
             utxo_commitment: "ab".repeat(40),
             tx_id: "cd".repeat(40),
             account_id: [1, 2],
-            miden_address: Some("mtst1test".to_string()),
+            leviathan_address: Some("mtst1test".to_string()),
             amount: "1".to_string(),
             fee: Some("0.01".to_string()),
             output_commitments: vec!["ab".repeat(40)],

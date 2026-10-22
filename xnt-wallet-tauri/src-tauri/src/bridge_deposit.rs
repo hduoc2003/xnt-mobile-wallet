@@ -23,7 +23,7 @@ use crate::{rpc_client, rpc_config};
 #[derive(Debug)]
 pub(crate) struct DepositRequest {
     pub account_id: [u64; 2],
-    pub miden_address: String,
+    pub leviathan_address: String,
     pub amount: NativeCurrencyAmount,
     pub fee: NativeCurrencyAmount,
     pub low_memory_proving: bool,
@@ -35,9 +35,9 @@ pub(crate) fn parse_deposit_request(
     payload: &Value,
     network: Network,
 ) -> Result<DepositRequest, String> {
-    let address = payload["midenAddress"]
+    let address = payload["leviathanAddress"]
         .as_str()
-        .ok_or("Missing midenAddress in payload")?;
+        .ok_or("Missing leviathanAddress in payload")?;
     let account_id = parse_leviathan_address(address, network)
         .map_err(|e| format!("Invalid Leviathan address: {e}"))?;
     let amount = parse_coins(payload, "amount")?;
@@ -67,7 +67,7 @@ pub(crate) fn parse_deposit_request(
     }
     Ok(DepositRequest {
         account_id,
-        miden_address: {
+        leviathan_address: {
             let address = address.trim();
             address
                 .strip_prefix("miden:")
@@ -156,7 +156,7 @@ async fn build(app: &AppHandle, payload: &Value) -> Result<String, String> {
             utxo_commitment: utxo_commitment.clone(),
             tx_id: tx_id.clone(),
             account_id: request.account_id,
-            miden_address: Some(request.miden_address.clone()),
+            leviathan_address: Some(request.leviathan_address.clone()),
             amount: request.amount.to_string(),
             fee: Some(request.fee.to_string()),
             output_commitments: transaction
@@ -198,7 +198,7 @@ mod tests {
         json!({
             "spendingKeyHex": "0x00",
             "inputAdditionRecords": vec!["0x00"; inputs],
-            "midenAddress": address,
+            "leviathanAddress": address,
             "amount": amount,
             "fee": "0.01",
             "lowMemoryProving": true,
@@ -230,7 +230,7 @@ mod tests {
         .unwrap();
         let plain = parse_deposit_request(&payload(ADDRESS, "1", 1), Network::Testnet(0)).unwrap();
         assert_eq!(request.account_id, plain.account_id);
-        assert_eq!(request.miden_address, ADDRESS);
+        assert_eq!(request.leviathan_address, ADDRESS);
     }
 
     #[test]

@@ -31,7 +31,7 @@ fn burn_serial_in(announcements: &[Announcement], sender_randomness: Digest) -> 
         .map(|burn| word_hex(&burn.serial))
 }
 
-/// Miden's Word hex: each element's little-endian bytes, in order.
+/// Word hex as Leviathan shows it: each element's little-endian bytes, in order.
 fn word_hex(word: &[BFieldElement; 4]) -> String {
     let bytes: Vec<u8> = word.iter().flat_map(|e| e.value().to_le_bytes()).collect();
     format!("0x{}", hex::encode(bytes))

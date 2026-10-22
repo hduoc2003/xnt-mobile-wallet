@@ -115,7 +115,7 @@ const rows = computed<HistoryRow[]>(() => {
   const bridge: HistoryRow[] = deposits.value.map((d) => ({
     key: `bridge-${d.utxoCommitment}`,
     commitment: d.utxoCommitment,
-    recipient: d.midenAddress ?? undefined,
+    recipient: d.leviathanAddress ?? undefined,
     kind: 'bridge',
     amount: Number(d.amount),
     fee: d.fee === null ? undefined : Number(d.fee),

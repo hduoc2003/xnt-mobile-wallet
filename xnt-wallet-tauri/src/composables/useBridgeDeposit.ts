@@ -5,7 +5,7 @@ import { BRIDGE_POLLING_INTERVAL, toAtomicUnits } from '@/utils'
 import { useNeptuneWallet } from './useNeptuneWallet'
 
 export interface BridgeDepositForm {
-  midenAddress: string
+  leviathanAddress: string
   amount: string
   fee: string
 }
@@ -101,7 +101,7 @@ export const useBridgeDeposit = () => {
       inputAdditionRecords: selection.selectedUtxos.map(
         (utxo: any) => utxo.addition_record_hex || utxo.additionRecord || utxo.addition_record,
       ),
-      midenAddress: form.midenAddress.trim(),
+      leviathanAddress: form.leviathanAddress.trim(),
       amount: form.amount,
       fee: form.fee,
       spendingKeyHex: selection.spendingKeyHex,

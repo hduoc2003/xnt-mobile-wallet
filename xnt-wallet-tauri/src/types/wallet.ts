@@ -46,8 +46,8 @@ export interface Utxo {
 
 export interface PayloadBuildBridgeDeposit {
   inputAdditionRecords: string[]
-  /** Miden address (`mtst1...`, optional `miden:` prefix) or 30-hex account id. */
-  midenAddress: string
+  /** Leviathan address (`mtst1...`, optional `miden:` prefix) or 30-hex account id. */
+  leviathanAddress: string
   amount: string
   fee: string
   spendingKeyHex: string
@@ -81,7 +81,7 @@ export interface BridgeDepositRecord {
   utxoCommitment: string
   txId: string
   /** Recipient as entered; null for deposits recorded before it was stored. */
-  midenAddress: string | null
+  leviathanAddress: string | null
   amount: string
   fee: string | null
   outputCommitments: string[]

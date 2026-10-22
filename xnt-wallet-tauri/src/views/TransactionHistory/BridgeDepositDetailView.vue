@@ -111,9 +111,13 @@ onMounted(async () => {
         <CardContent class="space-y-3 text-sm">
           <div>
             <Label class="text-xs text-muted-foreground">Leviathan recipient</Label>
-            <p v-if="record.midenAddress" class="font-mono text-xs" :title="record.midenAddress">
-              {{ formatAddress(record.midenAddress) }}
-              <CopyButton :value="record.midenAddress" label="Recipient" />
+            <p
+              v-if="record.leviathanAddress"
+              class="font-mono text-xs"
+              :title="record.leviathanAddress"
+            >
+              {{ formatAddress(record.leviathanAddress) }}
+              <CopyButton :value="record.leviathanAddress" label="Recipient" />
             </p>
             <p v-else class="text-xs text-muted-foreground">
               Not recorded (deposit made before recipients were stored)

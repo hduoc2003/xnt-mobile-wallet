@@ -23,7 +23,7 @@ const { formatXnt } = useFormat()
 // Finished deposits are listed in History.
 const inProgress = computed(() => deposits.value.filter(isBridgeDepositInProgress))
 
-const midenAddress = ref('')
+const leviathanAddress = ref('')
 const amount = ref('')
 const fee = ref(DEFAULT_FEE)
 const submitting = ref(false)
@@ -57,7 +57,7 @@ const belowMintFee = computed(() => receivedUnits.value !== undefined && receive
 
 const isFormValid = computed(
   () =>
-    midenAddress.value.trim() !== '' &&
+    leviathanAddress.value.trim() !== '' &&
     amount.value !== '' &&
     fees.value !== undefined &&
     !amountError.value &&
@@ -70,7 +70,7 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     await submitDeposit({
-      midenAddress: midenAddress.value,
+      leviathanAddress: leviathanAddress.value,
       amount: amount.value,
       fee: fee.value,
     })
@@ -121,12 +121,12 @@ onActivated(async () => {
         </CardHeader>
         <CardContent class="space-y-4">
           <div class="space-y-2">
-            <Label for="miden-address">
+            <Label for="leviathan-address">
               Leviathan address <span class="text-destructive">*</span>
             </Label>
             <Textarea
-              id="miden-address"
-              v-model="midenAddress"
+              id="leviathan-address"
+              v-model="leviathanAddress"
               placeholder="mtst1... or 0x account id"
               rows="2"
               class="font-mono text-sm"
