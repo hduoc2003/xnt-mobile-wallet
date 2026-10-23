@@ -1,5 +1,5 @@
 use log::error;
-use neptune_privacy::api::export::Timestamp;
+use neptune_privacy::api::export::{ConsensusRuleSet, Timestamp};
 use neptune_privacy::api::tx_initiation::bridge_deposit::bridge_deposit_tx_details;
 use neptune_privacy::api::tx_initiation::builder::transaction_builder::TransactionBuilder;
 use neptune_privacy::application::config::network::Network;
@@ -101,6 +101,11 @@ async fn build(app: &AppHandle, payload: &Value) -> Result<String, String> {
     let client = transaction::http_client()?;
     let network = transaction::fetch_network(&client, &rpc_url).await?;
     let request = parse_deposit_request(payload, network)?;
+    // Before the bridge era a deposit is mined but never minted: the funds would only be locked.
+    let tip_height = BlockHeight::from(rpc_client::get_chain_height(&client, &rpc_url).await?);
+    if !ConsensusRuleSet::infer_for_next_block(network, tip_height).bav_active() {
+        return Err("The bridge is not open on this network yet".into());
+    }
     let inputs =
         transaction::validate_inputs(&client, &rpc_url, payload, MempoolCheck::Required).await?;
 

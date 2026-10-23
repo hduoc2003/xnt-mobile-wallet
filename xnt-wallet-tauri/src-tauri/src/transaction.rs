@@ -6,7 +6,10 @@ use neptune_privacy::prelude::twenty_first::prelude::Digest;
 use neptune_privacy::protocol::consensus::transaction::primitive_witness::PrimitiveWitness;
 use neptune_privacy::protocol::consensus::transaction::transaction_proof::TransactionProof;
 use neptune_privacy::protocol::consensus::block::block_height::BlockHeight;
-use neptune_privacy::protocol::consensus::transaction::validity::proof_collection::ProofCollection;
+use neptune_privacy::api::export::AnyProofCollection;
+use neptune_privacy::api::tx_initiation::legacy_era::{
+    rule_set_for_new_transaction, DEFAULT_FORK_TX_CUTOFF_MARGIN,
+};
 use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
 use neptune_privacy::protocol::proof_abstractions::timestamp::Timestamp;
 use neptune_privacy::state::wallet::address::SpendingKey;
@@ -124,10 +127,13 @@ pub(crate) async fn prove(
     network: Network,
     tip_height: BlockHeight,
     low_memory: bool,
-) -> Result<ProofCollection, String> {
+) -> Result<AnyProofCollection, String> {
+    // The node refuses a tx this close to an era's end, so fail before minutes of proving.
+    rule_set_for_new_transaction(network, tip_height, DEFAULT_FORK_TX_CUTOFF_MARGIN)
+        .map_err(|e| format!("A network upgrade is a few blocks away; try again after it ({e})"))?;
     let block_height = tip_height.next();
     if !low_memory {
-        return ProofCollection::produce_in_process(&primitive_witness, network, block_height)
+        return AnyProofCollection::produce_in_process(&primitive_witness, network, block_height)
             .await
             .map_err(|e| format!("Failed to generate proof collection: {e}"));
     }
@@ -139,7 +145,7 @@ pub(crate) async fn prove(
             .build()
             .map_err(|e| format!("Failed to start the prover runtime: {e}"))?;
         runtime
-            .block_on(ProofCollection::produce_in_process(
+            .block_on(AnyProofCollection::produce_in_process(
                 &primitive_witness,
                 network,
                 block_height,
