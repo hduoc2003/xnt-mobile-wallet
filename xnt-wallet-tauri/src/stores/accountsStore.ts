@@ -82,6 +82,20 @@ export const useAccountsStore = defineStore('accounts', () => {
     return account
   }
 
+  /** The account among `ids` with `address` as its dCTIDH or Generation address, any case. */
+  const accountWithAddress = (address: string, ids: string[]): string | undefined => {
+    const wanted = address.trim().toLowerCase()
+    return ids.find((id) => {
+      const accountKeys = keys.value.get(id)
+      return (
+        accountKeys !== undefined &&
+        [accountKeys.dctidhAddress, accountKeys.generationAddress].some(
+          (own) => own.toLowerCase() === wanted,
+        )
+      )
+    })
+  }
+
   /** "Main seed" or "Imported N" (N = position among imported seeds). */
   const seedTitle = (seedId: string): string => {
     if (seedId === MAIN_SEED) return 'Main seed'
@@ -92,16 +106,27 @@ export const useAccountsStore = defineStore('accounts', () => {
   }
 
   /** "Account N" (N = position in its seed group, hidden ones included, so names stay put). */
-  const displayName = (id: string): string => {
+  const defaultName = (id: string): string => {
     const account = findAccount(id)
-    if (account.name !== null) return account.name
     const position =
       accounts.value
         .filter((a) => a.seedId === account.seedId)
         .sort((a, b) => a.index - b.index)
         .findIndex((a) => a.id === id) + 1
-    if (account.seedId === MAIN_SEED) return `Account ${position}`
-    return `${seedTitle(account.seedId)} · Account ${position}`
+    return `Account ${position}`
+  }
+
+  /** The name within its seed group. */
+  const shortName = (id: string): string => findAccount(id).name ?? defaultName(id)
+
+  /** shortName with its seed title, for accounts listed outside their seed group. */
+  const qualifiedName = (id: string): string =>
+    `${seedTitle(findAccount(id).seedId)} · ${shortName(id)}`
+
+  const displayName = (id: string): string => {
+    const account = findAccount(id)
+    if (account.name !== null || account.seedId === MAIN_SEED) return shortName(id)
+    return `${seedTitle(account.seedId)} · ${shortName(id)}`
   }
 
   const setRegistry = (next: Registry) => {
@@ -143,7 +168,11 @@ export const useAccountsStore = defineStore('accounts', () => {
     setBalance,
     forgetAccounts,
     findAccount,
+    accountWithAddress,
     displayName,
+    defaultName,
+    shortName,
+    qualifiedName,
     seedTitle,
     setRegistry,
     setKeys,

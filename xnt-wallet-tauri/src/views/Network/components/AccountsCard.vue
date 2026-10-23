@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { Eye, EyeOff, Pencil, Plus, Trash2, Users } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useAccounts } from '@/composables/useAccounts'
@@ -20,6 +20,8 @@ const editing = ref<string>()
 const draftName = ref('')
 /** The title is kept, since the group leaves the registry before the dialog closes. */
 const removing = ref<{ seed: SeedEntry; title: string }>()
+/** Removing a seed that was never backed up needs this second confirmation. */
+const backupConfirmed = ref(false)
 const importOpen = ref(false)
 
 const groups = computed(() =>
@@ -56,19 +58,21 @@ const addAccount = async (seedId: string) => {
   await getBalance()
 }
 
-const startRename = (id: string) => {
+const startRename = async (id: string) => {
   editing.value = id
-  const account = accountsStore.findAccount(id)
-  draftName.value = account.name ?? ''
+  draftName.value = accountsStore.shortName(id)
+  await nextTick()
+  const input = document.getElementById(`rename-${id}`)
+  if (input instanceof HTMLInputElement) input.select()
 }
 
-/** An empty name brings back the default "Account N". */
+/** An empty or default name keeps the default "Account N", which follows the account's position. */
 const saveRename = (id: string) =>
   run(
     id,
     async () => {
       const name = draftName.value.trim()
-      await rename(id, name === '' ? null : name)
+      await rename(id, name === '' || name === accountsStore.defaultName(id) ? null : name)
       editing.value = undefined
     },
     'Could not rename the account',
@@ -76,7 +80,7 @@ const saveRename = (id: string) =>
 
 const confirmRemove = () => {
   const seed = removing.value?.seed
-  if (!seed) return
+  if (!seed || (!seed.backedUp && !backupConfirmed.value)) return
   void run(
     seed.id,
     async () => {
@@ -118,11 +122,13 @@ const confirmRemove = () => {
         >
           <template v-if="editing === account.id">
             <Input
+              :id="`rename-${account.id}`"
               v-model="draftName"
               class="h-8 flex-1"
               :aria-label="`New name for ${accountsStore.displayName(account.id)}`"
-              :placeholder="accountsStore.displayName(account.id)"
+              :placeholder="accountsStore.defaultName(account.id)"
               @keyup.enter="saveRename(account.id)"
+              @keyup.escape="editing = undefined"
             />
             <Button size="sm" :disabled="busy === account.id" @click="saveRename(account.id)">
               Save
@@ -130,7 +136,7 @@ const confirmRemove = () => {
             <Button size="sm" variant="ghost" @click="editing = undefined">Cancel</Button>
           </template>
           <template v-else>
-            <span class="min-w-0 flex-1 truncate">{{ accountsStore.displayName(account.id) }}</span>
+            <span class="min-w-0 flex-1 truncate">{{ accountsStore.shortName(account.id) }}</span>
             <Badge v-if="account.id === accountsStore.activeId" variant="secondary">Active</Badge>
             <Button
               size="icon"
@@ -149,7 +155,9 @@ const confirmRemove = () => {
               :title="
                 account.id === accountsStore.activeId
                   ? 'The active account stays visible'
-                  : undefined
+                  : account.hidden
+                    ? 'Show account'
+                    : 'Hide account'
               "
               :disabled="busy === account.id || account.id === accountsStore.activeId"
               @click="
@@ -160,8 +168,8 @@ const confirmRemove = () => {
                 )
               "
             >
-              <EyeOff v-if="account.hidden" class="size-4" />
-              <Eye v-else class="size-4" />
+              <Eye v-if="account.hidden" class="size-4" />
+              <EyeOff v-else class="size-4" />
             </Button>
           </template>
         </div>
@@ -189,7 +197,12 @@ const confirmRemove = () => {
             variant="outline"
             class="gap-1 text-destructive"
             :disabled="busy === group.seed.id"
-            @click="removing = { seed: group.seed, title: group.title }"
+            @click="
+              () => {
+                backupConfirmed = false
+                removing = { seed: group.seed, title: group.title }
+              }
+            "
           >
             <Trash2 class="size-4" />
             Remove from this device
@@ -215,11 +228,29 @@ const confirmRemove = () => {
           this seed.
         </DialogDescription>
       </DialogHeader>
+      <template v-if="removing && !removing.seed.backedUp">
+        <p class="text-sm font-medium text-destructive">
+          This seed is not backed up. Without its recovery phrase or backup file, its funds are lost
+          for good.
+        </p>
+        <label class="flex items-start gap-2 text-sm">
+          <input
+            v-model="backupConfirmed"
+            type="checkbox"
+            class="mt-0.5 size-4 shrink-0 accent-destructive"
+          />
+          I have this seed's recovery phrase or backup file.
+        </label>
+      </template>
       <DialogFooter>
         <Button variant="outline" @click="removing = undefined">Cancel</Button>
         <Button
           variant="destructive"
-          :disabled="removing !== undefined && busy === removing.seed.id"
+          :disabled="
+            removing === undefined ||
+            busy === removing.seed.id ||
+            (!removing.seed.backedUp && !backupConfirmed)
+          "
           @click="confirmRemove"
         >
           Remove from this device

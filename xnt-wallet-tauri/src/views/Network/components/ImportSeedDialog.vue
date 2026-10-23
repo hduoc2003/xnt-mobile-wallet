@@ -107,7 +107,7 @@ const submit = async () => {
           role="tab"
           :aria-selected="tab === t.id"
           :class="[
-            'flex-1 py-1.5 transition-colors',
+            'flex-1 whitespace-nowrap px-1 py-1.5 text-xs transition-colors',
             tab === t.id
               ? 'bg-primary text-primary-foreground'
               : 'bg-transparent text-muted-foreground hover:bg-muted',
@@ -138,7 +138,13 @@ const submit = async () => {
             <Label for="import-file">
               {{ tab === 'backupFile' ? 'Backup file' : 'Node wallet.dat' }}
             </Label>
-            <Input id="import-file" :key="tab" type="file" @change="pickFile" />
+            <Input
+              id="import-file"
+              :key="tab"
+              type="file"
+              class="cursor-pointer file:mr-3 file:cursor-pointer file:rounded file:bg-primary file:px-2 file:text-primary-foreground"
+              @change="pickFile"
+            />
           </div>
           <div v-if="tab === 'backupFile'" class="space-y-2">
             <Label for="import-file-password">Backup file password</Label>

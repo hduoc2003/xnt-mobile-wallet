@@ -419,7 +419,28 @@ pub fn run() {
         log::info!("[XNT Wallet] Logger initialized for desktop");
     }
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // A second instance would overwrite this one's UTXO cache with its own view.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        use tauri::Manager;
+        match app.get_webview_window("main") {
+            Some(window) => {
+                // A minimized window must be restored first, or focusing it does nothing on Windows.
+                for (step, result) in [
+                    ("unminimize", window.unminimize()),
+                    ("show", window.show()),
+                    ("focus", window.set_focus()),
+                ] {
+                    if let Err(e) = result {
+                        log::warn!("[XNT Wallet] Could not {step} the running window: {e}");
+                    }
+                }
+            }
+            None => log::warn!("[XNT Wallet] Second launch, but no main window to focus"),
+        }
+    }));
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())

@@ -3,12 +3,13 @@ import { CopyButton, ExplorerLink } from '@/components/commons'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import { Send, ArrowLeft } from 'lucide-vue-next'
+import { Send, ArrowLeft, ChevronDown } from 'lucide-vue-next'
 import { useNeptuneWallet, useFormat, useTransaction } from '@/composables'
 import { useAccountsStore, useNeptuneStore, useSettingsStore } from '@/stores'
 import { DEFAULT_FEE, toAtomicUnits } from '@/utils'
 import ConfirmTransactionDrawer from './components/ConfirmTransactionDrawer.vue'
 import ProofGenerationModal from './components/ProofGenerationModal.vue'
+import type { AccountEntry } from '@/types'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 const router = useRouter()
@@ -29,6 +30,7 @@ const availableBalance = ref('0')
 const settingsStore = useSettingsStore()
 const maxInputs = computed(() => settingsStore.maxInputsPerTx)
 const loadedUtxos = ref<any[]>([])
+const utxosLoaded = ref(false)
 const maxSendable = computed(() => computeMaxSendable(loadedUtxos.value, maxInputs.value))
 const pendingBalance = ref('0')
 const loading = ref(false)
@@ -94,16 +96,19 @@ const spendableOnly = (utxos: any[]): any[] =>
   Array.isArray(utxos) ? utxos.filter((u: any) => !(u.is_pending ?? u.isPending)) : []
 
 const loadMaxSendable = async () => {
+  // A load still running for the previous account must not mark this one's Max as known.
+  const accountId = accountsStore.activeId
+  let utxos: any[]
   try {
     const utxosResult = await getUtxos()
-    const utxos = utxosResult?.result?.utxos || utxosResult?.utxos || []
-    loadedUtxos.value = utxos
-    allUtxos.value = spendableOnly(utxos)
+    utxos = utxosResult?.result?.utxos || utxosResult?.utxos || []
   } catch (error) {
-    const cachedUtxos = store.getUtxos || []
-    loadedUtxos.value = cachedUtxos
-    allUtxos.value = spendableOnly(cachedUtxos)
+    utxos = store.getUtxos || []
   }
+  if (accountsStore.activeId !== accountId) return
+  loadedUtxos.value = utxos
+  allUtxos.value = spendableOnly(utxos)
+  utxosLoaded.value = true
 }
 
 // --- Manual UTXO selection helpers (used when manualMode is on) ---
@@ -179,12 +184,33 @@ const ownAccounts = computed(() =>
   ),
 )
 
-/** Fills the recipient with another own account's receiving (dCTIDH) address. */
+/** The own account whose address is in the recipient field; '' selects the placeholder. */
+const recipientAccountId = computed(
+  () =>
+    accountsStore.accountWithAddress(
+      normalizedAddress.value,
+      ownAccounts.value.map((a) => a.id),
+    ) ?? '',
+)
+
+/** Names another seed's accounts with their seed, so "Account 1" can't read as this seed's. */
+const pickerName = (account: AccountEntry): string => {
+  const active = accountsStore.activeId
+  const sameSeed =
+    active !== undefined && accountsStore.findAccount(active).seedId === account.seedId
+  return sameSeed ? accountsStore.shortName(account.id) : accountsStore.qualifiedName(account.id)
+}
+
 const pickOwnAccount = (event: Event) => {
   if (!(event.target instanceof HTMLSelectElement)) return
-  const keys = accountsStore.keys.get(event.target.value)
-  if (keys) outputAddress.value = keys.dctidhAddress
-  event.target.value = ''
+  const id = event.target.value
+  if (id === '') {
+    outputAddress.value = ''
+    return
+  }
+  const keys = accountsStore.keys.get(id)
+  if (keys === undefined) throw new Error(`Account ${id} has no keys`)
+  outputAddress.value = keys.dctidhAddress
 }
 const isAddressValid = computed(() => normalizedAddress.value.length > 0)
 const isAmountValid = computed(() => {
@@ -533,6 +559,7 @@ watch(
   () => accountsStore.activeId,
   async () => {
     manualSelected.value = []
+    utxosLoaded.value = false
     loadedUtxos.value = []
     allUtxos.value = []
     await loadMaxSendable()
@@ -579,23 +606,30 @@ watch(
             <Label for="recipient">
               Recipient Address <span class="text-destructive">*</span>
             </Label>
-            <select
-              v-if="ownAccounts.length > 0"
-              aria-label="To my account"
-              class="h-9 w-full appearance-none rounded-md border border-input bg-transparent px-3 text-sm text-foreground shadow-sm"
-              :disabled="sendLoading"
-              @change="pickOwnAccount"
-            >
-              <option value="" class="bg-background">To my account</option>
-              <option
-                v-for="account in ownAccounts"
-                :key="account.id"
-                :value="account.id"
-                class="bg-background"
+            <div v-if="ownAccounts.length > 0" class="relative">
+              <select
+                aria-label="Recipient account"
+                class="h-9 w-full appearance-none rounded-md border border-input bg-transparent pl-3 pr-9 text-sm text-foreground shadow-sm"
+                :value="recipientAccountId"
+                :disabled="sendLoading"
+                @change="pickOwnAccount"
               >
-                {{ accountsStore.displayName(account.id) }}
-              </option>
-            </select>
+                <option value="" class="bg-background">
+                  {{ normalizedAddress === '' ? 'To my account' : 'Another address' }}
+                </option>
+                <option
+                  v-for="account in ownAccounts"
+                  :key="account.id"
+                  :value="account.id"
+                  class="bg-background"
+                >
+                  {{ pickerName(account) }}
+                </option>
+              </select>
+              <ChevronDown
+                class="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              />
+            </div>
             <Textarea
               id="recipient"
               v-model="outputAddress"
@@ -619,7 +653,7 @@ watch(
                 <Label for="amount"> Amount <span class="text-destructive">*</span> </Label>
                 <div v-if="!manualMode" class="flex items-center gap-2">
                   <Badge variant="outline" class="text-xs">
-                    Max: {{ formatXnt(maxSendable) }} XNT
+                    Max: {{ utxosLoaded ? `${formatXnt(maxSendable)} XNT` : '...' }}
                   </Badge>
                   <button
                     type="button"
@@ -638,7 +672,10 @@ watch(
                 :disabled="sendLoading"
                 @blur="handleAmountBlur"
               />
-              <p v-if="showLimitInfo && !manualMode" class="text-[11px] text-muted-foreground">
+              <p
+                v-if="showLimitInfo && !manualMode && utxosLoaded"
+                class="text-[11px] text-muted-foreground"
+              >
                 You can spend at most {{ formatXnt(maxSendable) }} XNT in a single transaction. This
                 limit is the sum of your {{ maxInputs }} largest UTXOs (Max inputs in Settings).
               </p>
