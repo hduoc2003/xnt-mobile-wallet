@@ -3,7 +3,7 @@ use neptune_privacy::state::wallet::address::SpendingKey;
 use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
 use neptune_privacy::prelude::twenty_first::tip5::digest::Digest;
 use neptune_privacy::application::json_rpc::core::model::common::RpcNativeCurrencyAmount;
-use neptune_privacy::application::json_rpc::core::model::message::RpcIndexedUtxo;
+use neptune_privacy::application::json_rpc::core::model::message::{RpcAoclLeaf, RpcIndexedUtxo};
 use neptune_privacy::protocol::consensus::transaction::utxo::Utxo;
 use neptune_privacy::application::config::network::Network;
 use std::str::FromStr;
@@ -207,6 +207,7 @@ pub struct UtxoInfo {
     pub block_height: u64,
     pub amount: String,
     pub addition_record_hex: String,
+    pub utxo_id: String,
     pub utxo_digest: String,
     pub utxo_hash: String,
     pub is_timelocked: bool,
@@ -244,6 +245,7 @@ fn cached_utxo_to_info(
             "0x{}",
             hex::encode(bincode::serialize(&addition_record).unwrap_or_default())
         ),
+        utxo_id: cached.utxo_id(),
         utxo_digest: addition_record.canonical_commitment.to_hex(),
         utxo_hash: format!("0x{}", utxo_hash.to_hex()),
         is_timelocked,
@@ -269,7 +271,6 @@ pub async fn filter_utxos_spent_in_mempool(
     cached_utxos: &[utxo_cache::CachedUtxo],
 ) -> Result<Vec<utxo_cache::CachedUtxo>, String> {
     use neptune_privacy::util_types::mutator_set::removal_record::absolute_index_set::AbsoluteIndexSet;
-    use neptune_privacy::util_types::mutator_set::commit;
 
     if cached_utxos.is_empty() {
         return Ok(Vec::new());
@@ -283,38 +284,17 @@ pub async fn filter_utxos_spent_in_mempool(
         return Ok(cached_utxos.to_vec());
     }
 
-    // Compute the AOCL commitment for each candidate UTXO so we can look up its
-    // AOCL leaf index, which is needed to reconstruct the AbsoluteIndexSet.
-    let mut commitments: Vec<String> = Vec::new();
-    let mut utxo_data: Vec<(usize, Digest, Digest, Digest)> = Vec::new();
-
-    for (idx, cached_utxo) in cached_utxos.iter().enumerate() {
-        let utxo_ref = &cached_utxo.utxo.utxo;
-        let utxo_hash = Tip5::hash(utxo_ref);
-        let sender_randomness = cached_utxo.utxo.sender_randomness;
-        let receiver_preimage = cached_utxo.utxo.receiver_preimage;
-
-        let addition_record = commit(utxo_hash, sender_randomness, receiver_preimage.hash());
-        commitments.push(addition_record.canonical_commitment.to_hex());
-        utxo_data.push((idx, utxo_hash, sender_randomness, receiver_preimage));
-    }
-
-    let indices = rpc_client::get_aocl_leaf_indices(client, rpc_url, &commitments).await?;
-
     // Identify which UTXOs have a pending mempool spend.
     let mut mempool_spent_indices: HashSet<usize> = HashSet::new();
-    for (i, (utxo_idx, utxo_hash, sender_randomness, receiver_preimage)) in utxo_data.iter().enumerate() {
-        if let Some(Some(aocl_index)) = indices.get(i).cloned() {
-            let abs_indices = AbsoluteIndexSet::compute(
-                *utxo_hash,
-                *sender_randomness,
-                *receiver_preimage,
-                aocl_index,
-            );
-            let abs_hash = Tip5::hash(&abs_indices);
-            if mempool_hashes.contains(&abs_hash.to_hex()) {
-                mempool_spent_indices.insert(*utxo_idx);
-            }
+    for (idx, cached_utxo) in cached_utxos.iter().enumerate() {
+        let abs_indices = AbsoluteIndexSet::compute(
+            Tip5::hash(&cached_utxo.utxo.utxo),
+            cached_utxo.utxo.sender_randomness,
+            cached_utxo.utxo.receiver_preimage,
+            cached_utxo.aocl_leaf_index,
+        );
+        if mempool_hashes.contains(&Tip5::hash(&abs_indices).to_hex()) {
+            mempool_spent_indices.insert(idx);
         }
     }
 
@@ -361,14 +341,18 @@ pub async fn validate_utxos_with_rpc(
         commitments.push(commitment_hex);
         utxo_data.push((idx, utxo_hash, sender_randomness, receiver_preimage));
     }
-    let indices = rpc_client::get_aocl_leaf_indices(client, rpc_url, &commitments).await?;
+    let leaves = rpc_client::get_aocl_leaves(client, rpc_url, &commitments).await?;
     
     let mut absolute_index_set_hashes: Vec<Digest> = Vec::new();
     let mut utxo_to_hash_map: Vec<usize> = Vec::new();
     let mut no_aocl_indices: Vec<usize> = Vec::new();
 
     for (i, (utxo_idx, utxo_hash, sender_randomness, receiver_preimage)) in utxo_data.iter().enumerate() {
-        if let Some(Some(aocl_index)) = indices.get(i).cloned() {
+        let aocl_index = cached_utxos[*utxo_idx].aocl_leaf_index;
+        if leaves[i]
+            .iter()
+            .any(|leaf| leaf.aocl_leaf_index == aocl_index)
+        {
             let abs_indices = AbsoluteIndexSet::compute(
                 *utxo_hash,
                 *sender_randomness,
@@ -521,6 +505,35 @@ pub async fn forget_accounts_utxos(accounts: Vec<AccountKeysRef>) -> Result<(), 
     utxo_cache::replace_cache_and_persist(kept, utxo_cache::get_last_scanned_block().await).await
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum LeafPick {
+    Free(u64),
+    /// Every leaf at that height is already known: the output was found before.
+    AllTaken,
+    NotCanonical,
+}
+
+/// Identical outputs share a commitment, so each takes the next free leaf at its height.
+fn leaf_for_output(
+    leaves: &[RpcAoclLeaf],
+    block_height: u64,
+    is_taken: impl Fn(u64) -> bool,
+) -> LeafPick {
+    let mut at_height: Vec<u64> = leaves
+        .iter()
+        .filter(|leaf| u64::from(leaf.block_height) == block_height)
+        .map(|leaf| leaf.aocl_leaf_index)
+        .collect();
+    if at_height.is_empty() {
+        return LeafPick::NotCanonical;
+    }
+    at_height.sort_unstable();
+    at_height
+        .into_iter()
+        .find(|&leaf| !is_taken(leaf))
+        .map_or(LeafPick::AllTaken, LeafPick::Free)
+}
+
 /// Blocks below the previous scan's end that each scan scans again, to pick up shallow reorgs.
 const RESCAN_OVERLAP: u64 = 10;
 
@@ -550,7 +563,9 @@ pub async fn scan_utxos_client_side(
         return Err("The node is on a different chain than the cache: run a full scan first".into());
     }
     let mut request = request;
-    if chain_reset || chain_changed {
+    // An old-format cache loads empty, and the keystore's min height may be past our UTXOs.
+    let never_scanned = utxo_cache::get_last_scanned_block().await == 0;
+    if chain_reset || chain_changed || (never_scanned && !request.isolated) {
         request.start_block = 0;
     }
 
@@ -636,6 +651,15 @@ pub async fn scan_utxos_client_side(
     }
 
     let mut found_utxos: Vec<utxo_cache::CachedUtxo> = Vec::new();
+    let mut taken: HashSet<(String, u64)> = validated_cached_utxos
+        .iter()
+        .map(|u| {
+            (
+                u.utxo.addition_record().canonical_commitment.to_hex(),
+                u.aocl_leaf_index,
+            )
+        })
+        .collect();
     
     let persisted_last_scanned = if force_rescan { 0 } else { utxo_cache::get_last_scanned_block().await };
     if request.isolated {
@@ -773,22 +797,35 @@ pub async fn scan_utxos_client_side(
                     payment_id: BFieldElement::new(0),
                 };
 
-                // Built from node-supplied fields rather than decrypted, so it must exist on chain.
-                if is_public {
-                    let commitment = incoming_utxo.addition_record().canonical_commitment.to_hex();
-                    let indices = rpc_client::get_aocl_leaf_indices(&client, &rpc_url, &[commitment]).await?;
-                    if !matches!(indices.as_slice(), [Some(_)]) {
+                let commitment = incoming_utxo
+                    .addition_record()
+                    .canonical_commitment
+                    .to_hex();
+                let leaves = rpc_client::get_aocl_leaves(
+                    &client,
+                    &rpc_url,
+                    std::slice::from_ref(&commitment),
+                )
+                .await?;
+                let aocl_leaf_index = match leaf_for_output(&leaves[0], block_height, |leaf| {
+                    taken.contains(&(commitment.clone(), leaf))
+                }) {
+                    LeafPick::Free(leaf) => leaf,
+                    LeafPick::AllTaken => continue,
+                    LeafPick::NotCanonical => {
                         log::warn!(
-                            "[Scan] Bridge payout at block={} has no matching output on chain; skipping",
-                            block_height
+                            "[Scan] Output at block={} (public={}) has no canonical AOCL leaf; skipping",
+                            block_height, is_public
                         );
                         continue;
                     }
-                }
+                };
+                taken.insert((commitment, aocl_leaf_index));
 
                 let temp_cached_utxo = utxo_cache::CachedUtxo {
                     utxo: incoming_utxo.clone(),
                     block_height,
+                    aocl_leaf_index,
                 };
 
                 let validated_utxos = validate_utxos_with_rpc(
@@ -838,6 +875,7 @@ pub async fn scan_utxos_client_side(
 
                     utxo_infos.push(UtxoInfo {
                         block_height,
+                        utxo_id: utxo.utxo_id(),
                         amount: amount_str,
                         addition_record_hex: format!(
                             "0x{}",
@@ -881,23 +919,8 @@ pub async fn scan_utxos_client_side(
         current_block = batch_end + 1;
     }
     
-    let mut seen_hashes: HashSet<String> = HashSet::new();
-    utxo_infos.retain(|u| {
-        let key = if !u.addition_record_hex.is_empty() {
-            u.addition_record_hex.clone()
-        } else {
-            u.utxo_hash.clone()
-        };
-        if key.is_empty() {
-            return false;
-        }
-        if seen_hashes.contains(&key) {
-            false
-        } else {
-            seen_hashes.insert(key);
-            true
-        }
-    });
+    let mut seen_ids: HashSet<String> = HashSet::new();
+    utxo_infos.retain(|u| seen_ids.insert(u.utxo_id.clone()));
 
     log::info!(
         "[Scan] ✓ Scan complete | keys=[{}] | blocks={}-{} | total_utxos={} | last_scanned_block={}",
@@ -946,12 +969,10 @@ pub async fn scan_utxos_client_side(
     // Mark UTXOs that are already referenced by a pending mempool transaction so
     // the frontend can exclude them from coin selection before proof generation.
     if let Ok(non_pending) = filter_utxos_spent_in_mempool(&client, &rpc_url, &to_persist).await {
-        let non_pending_digests: std::collections::HashSet<String> = non_pending
-            .iter()
-            .map(|u| u.utxo.addition_record().canonical_commitment.to_hex())
-            .collect();
+        let non_pending_ids: std::collections::HashSet<String> =
+            non_pending.iter().map(|u| u.utxo_id()).collect();
         for info in &mut utxo_infos {
-            if !non_pending_digests.contains(&info.utxo_digest) {
+            if !non_pending_ids.contains(&info.utxo_id) {
                 info.is_pending = true;
             }
         }
@@ -1177,6 +1198,7 @@ mod tests {
                 payment_id: BFieldElement::new(0),
             },
             block_height: 7,
+            aocl_leaf_index: 0,
         }
     }
 
@@ -1238,6 +1260,7 @@ mod tests {
         let cached = utxo_cache::CachedUtxo {
             utxo: neptune_privacy::state::wallet::incoming_utxo::IncomingUtxo { receiver_preimage: legacy.receiver_preimage, ..cached_for(&contexts[1], "3").utxo },
             block_height: 7,
+            aocl_leaf_index: 0,
         };
         let infos = cached_infos(true, &contexts, &[cached], "");
         assert_eq!(infos.len(), 1);
@@ -1331,5 +1354,30 @@ mod tests {
         let commitment =
             commit(Tip5::hash(&utxo), sender_randomness, burn.privacy_digest).canonical_commitment;
         assert!(kernel.outputs.iter().any(|o| o.canonical_commitment == commitment));
+    }
+
+    fn leaf(aocl_leaf_index: u64, block_height: u64) -> RpcAoclLeaf {
+        RpcAoclLeaf {
+            aocl_leaf_index,
+            block_height: block_height.into(),
+            block_digest: Digest::default(),
+        }
+    }
+
+    #[test]
+    fn identical_payments_take_separate_leaves() {
+        let leaves = [leaf(9, 5), leaf(4, 5), leaf(20, 8)];
+        assert_eq!(leaf_for_output(&leaves, 5, |_| false), LeafPick::Free(4));
+        assert_eq!(leaf_for_output(&leaves, 5, |l| l == 4), LeafPick::Free(9));
+        assert_eq!(
+            leaf_for_output(&leaves, 5, |l| l == 4 || l == 9),
+            LeafPick::AllTaken
+        );
+        assert_eq!(leaf_for_output(&leaves, 8, |_| false), LeafPick::Free(20));
+        assert_eq!(
+            leaf_for_output(&leaves, 6, |_| false),
+            LeafPick::NotCanonical
+        );
+        assert_eq!(leaf_for_output(&[], 5, |_| false), LeafPick::NotCanonical);
     }
 }

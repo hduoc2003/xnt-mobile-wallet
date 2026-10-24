@@ -112,7 +112,7 @@ export const useTransaction = () => {
   ) => {
     const key = historyKey(RECEIVED_STORAGE_KEY, accountId)
     const received = loadReceived(key)
-    const known = new Set(received.map((r) => r.commitment))
+    const known = new Set(received.map((r) => r.utxoId ?? r.commitment))
     const times = new Map<number, string>()
     const errors: string[] = []
     for (const utxo of utxos) {
@@ -120,6 +120,7 @@ export const useTransaction = () => {
       if (
         !commitment ||
         utxo.blockHeight <= 0 ||
+        known.has(utxo.utxoId) ||
         known.has(commitment) ||
         ownOutputs.has(commitment)
       ) {
@@ -132,13 +133,14 @@ export const useTransaction = () => {
           commitment,
         )
         received.push({
+          utxoId: utxo.utxoId,
           commitment,
           amount: utxo.amount,
           blockHeight: utxo.blockHeight,
           time,
           ...(bridgeSerial === null ? {} : { bridgeSerial }),
         })
-        known.add(commitment)
+        known.add(utxo.utxoId)
       } catch (error: unknown) {
         errors.push(error instanceof Error ? error.message : String(error))
       }

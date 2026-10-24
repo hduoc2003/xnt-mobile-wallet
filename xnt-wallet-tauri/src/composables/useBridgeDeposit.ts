@@ -89,9 +89,7 @@ export const useBridgeDeposit = () => {
     }
 
     const payload: PayloadBuildBridgeDeposit = {
-      inputAdditionRecords: selection.selectedUtxos.map(
-        (utxo: any) => utxo.addition_record_hex || utxo.additionRecord || utxo.addition_record,
-      ),
+      inputUtxoIds: selection.selectedUtxos.map((utxo) => utxo.utxoId),
       leviathanAddress: form.leviathanAddress.trim(),
       amount: form.amount,
       fee: form.fee,

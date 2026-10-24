@@ -36,8 +36,7 @@ const isUtxoTimelocked = (utxo: Utxo) => {
   return releaseMs > now
 }
 
-// Use additionRecord as the unique key.
-const utxoKey = (utxo: Utxo) => utxo.additionRecord
+const utxoKey = (utxo: Utxo) => utxo.utxoId
 
 const isSelected = (utxo: Utxo) => selectedUtxos.value.some((u) => utxoKey(u) === utxoKey(utxo))
 
@@ -153,15 +152,12 @@ const handleConfirmMerge = async () => {
       return
     }
 
-    const inputAdditionRecords = selectedUtxos.value.map(
-      (utxo) =>
-        (utxo as any).addition_record_hex || utxo.additionRecord || (utxo as any).addition_record,
-    )
+    const inputUtxoIds = selectedUtxos.value.map((utxo) => utxo.utxoId)
 
     const netStr = netAmount.value.toFixed(8)
 
     const txResult = await buildTransaction({
-      inputAdditionRecords,
+      inputUtxoIds,
       outputAddresses: [address],
       outputAmounts: [netStr],
       fee: fee.value,

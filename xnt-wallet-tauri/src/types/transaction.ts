@@ -21,6 +21,8 @@ export interface TransactionDetail {
 }
 
 export interface ReceivedEntry {
+  /** Absent on entries logged before identical payments were told apart. */
+  utxoId?: string
   commitment: string
   amount: string
   blockHeight: number

@@ -2,6 +2,7 @@ import { toFiniteNumber } from './helpers'
 
 /** Canonical UTXO shape used throughout the wallet UI and coin selection. */
 export interface NormalizedUtxo {
+  utxoId: string
   utxoDigest: string
   amount: string
   blockHeight: number
@@ -22,7 +23,10 @@ export interface NormalizedUtxo {
  * back from the local cache, preferring whichever field is present.
  */
 export function normalizeUtxo(u: any): NormalizedUtxo {
+  const utxoId = u.utxo_id || u.utxoId
+  if (!utxoId) throw new Error(`UTXO ${u.utxo_digest || u.utxoDigest} has no utxo id`)
   return {
+    utxoId,
     utxoDigest: u.utxo_digest || u.utxoDigest || '',
     amount: u.amount?.toString?.() ?? '0',
     blockHeight: toFiniteNumber(u.block_height || u.blockHeight || 0),

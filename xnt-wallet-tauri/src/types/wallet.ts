@@ -9,7 +9,7 @@ export interface SpendingKeyResult {
 }
 
 export interface PayloadBuildTransaction {
-  inputAdditionRecords: string[]
+  inputUtxoIds: string[]
   outputAddresses: string[]
   outputAmounts: string[]
   fee: string
@@ -34,6 +34,7 @@ export interface WalletState {
 }
 
 export interface Utxo {
+  utxoId: string
   additionRecord: string
   utxoDigest?: string
   amount: string
@@ -45,7 +46,7 @@ export interface Utxo {
 }
 
 export interface PayloadBuildBridgeDeposit {
-  inputAdditionRecords: string[]
+  inputUtxoIds: string[]
   /** Leviathan address (`mtst1...`, optional `miden:` prefix) or 30-hex account id. */
   leviathanAddress: string
   amount: string

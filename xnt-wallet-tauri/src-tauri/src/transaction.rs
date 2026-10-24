@@ -13,7 +13,6 @@ use neptune_privacy::api::tx_initiation::legacy_era::{
 use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
 use neptune_privacy::protocol::proof_abstractions::timestamp::Timestamp;
 use neptune_privacy::state::wallet::address::SpendingKey;
-use neptune_privacy::state::wallet::incoming_utxo::IncomingUtxo;
 use neptune_privacy::state::wallet::transaction_input::{TxInput, TxInputList};
 use neptune_privacy::state::wallet::transaction_output::{TxOutput, TxOutputList};
 use neptune_privacy::state::wallet::unlocked_utxo::UnlockedUtxo;
@@ -38,23 +37,13 @@ use crate::utxo_cache;
 use crate::utxo_scanning;
 
 pub(crate) async fn generate_membership_proof_client_side(
-    incoming_utxo: &IncomingUtxo,
+    cached: &utxo_cache::CachedUtxo,
     mutator_set_accumulator: &MutatorSetAccumulator,
     rpc_url: &str,
     client: &Client,
 ) -> Result<MsMembershipProof, String> {
-    let addition_record = incoming_utxo.addition_record();
-    let commitment = addition_record.canonical_commitment;
-    let commitment_hex = commitment.to_hex();
-    
-    let indices = rpc_client::get_aocl_leaf_indices(client, rpc_url, &[commitment_hex]).await?;
-    
-    if indices.is_empty() || indices[0].is_none() {
-        return Err("UTXO not found in AOCL (may not be confirmed yet)".to_string());
-    }
-    
-    let aocl_leaf_index = indices[0]
-        .ok_or_else(|| "UTXO not found in AOCL (may not be confirmed yet)".to_string())?;
+    let incoming_utxo = &cached.utxo;
+    let aocl_leaf_index = cached.aocl_leaf_index;
     
     let item = Tip5::hash(&incoming_utxo.utxo);
     let absolute_index_set = AbsoluteIndexSet::compute(
@@ -111,7 +100,7 @@ pub(crate) enum MempoolCheck {
 /// Inputs per transaction; bounds proving time and memory on phones.
 pub(crate) const MAX_TX_INPUTS: usize = 5;
 
-/// Spendable, unspent inputs named by `inputAdditionRecords`, with the key that unlocks each.
+/// Spendable, unspent inputs named by `inputUtxoIds`, with the key that unlocks each.
 pub(crate) struct ValidatedInputs {
     pub utxos: Vec<utxo_cache::CachedUtxo>,
     pub keys: Vec<SpendingKey>,
@@ -193,15 +182,15 @@ pub(crate) async fn validate_inputs(
         .as_str()
         .ok_or_else(|| "Missing spendingKeyHex in payload".to_string())?;
     
-    let input_addition_records: Vec<String> = payload["inputAdditionRecords"]
+    let input_utxo_ids: Vec<String> = payload["inputUtxoIds"]
         .as_array()
-        .ok_or_else(|| "Missing inputAdditionRecords in payload".to_string())?
+        .ok_or_else(|| "Missing inputUtxoIds in payload".to_string())?
         .iter()
         .filter_map(|v| v.as_str().map(|s| s.to_string()))
         .collect();
 
     // Enforce a hard limit on the number of UTXOs per transaction
-    if input_addition_records.len() > MAX_TX_INPUTS {
+    if input_utxo_ids.len() > MAX_TX_INPUTS {
         return Err(format!("Too many UTXOs selected for a single transaction. Maximum allowed is {MAX_TX_INPUTS}."));
     }
 
@@ -209,7 +198,7 @@ pub(crate) async fn validate_inputs(
 
     // Optional per-input spending keys (for mixed-key transactions, e.g. merging
     // Generation + dCTIDH UTXOs).  Each element corresponds positionally to the
-    // matching entry in inputAdditionRecords.
+    // matching entry in inputUtxoIds.
     let per_input_key_hexes: Option<Vec<String>> = payload["spendingKeyHexes"]
         .as_array()
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect());
@@ -223,16 +212,16 @@ pub(crate) async fn validate_inputs(
         "[BuildTx] Validating inputs | key_type={} | per_input_keys={} | inputs={}",
         key_type_label,
         per_input_key_hexes.as_ref().map(|v| v.len()).unwrap_or(0),
-        input_addition_records.len(),
+        input_utxo_ids.len(),
     );
     // Get UTXOs from cache instead of calling server
-    let matched_utxos = utxo_cache::get_utxos_by_addition_records(&input_addition_records).await;
+    let matched_utxos = utxo_cache::get_utxos_by_ids(&input_utxo_ids).await;
     
-    if matched_utxos.len() != input_addition_records.len() {
+    if matched_utxos.len() != input_utxo_ids.len() {
         return Err(format!(
             "Not all UTXOs found in cache. Found {}/{} UTXOs. Please scan UTXOs first.",
             matched_utxos.len(),
-            input_addition_records.len()
+            input_utxo_ids.len()
         ));
     }
     
@@ -285,7 +274,7 @@ pub(crate) async fn validate_inputs(
         Some(key_hexes) => {
             if key_hexes.len() != validated_utxos.len() {
                 return Err(format!(
-                    "spendingKeyHexes count ({}) must match inputAdditionRecords count ({})",
+                    "spendingKeyHexes count ({}) must match inputUtxoIds count ({})",
                     key_hexes.len(),
                     validated_utxos.len()
                 ));
@@ -317,7 +306,7 @@ pub(crate) async fn unlock_inputs(
     for (incoming_utxo, input_key) in inputs.utxos.iter().zip(inputs.keys.iter()) {
         let lsaw = input_key.lock_script_and_witness();
         let msmp = generate_membership_proof_client_side(
-            &incoming_utxo.utxo,
+            incoming_utxo,
             mutator_set_accumulator,
             rpc_url,
             client,

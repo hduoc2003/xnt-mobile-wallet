@@ -582,7 +582,7 @@ export function useNeptuneWallet() {
 
     const payload: any = {
       spendingKeyHex: args.spendingKeyHex || store.getSpendingKey,
-      inputAdditionRecords: args.inputAdditionRecords,
+      inputUtxoIds: args.inputUtxoIds,
       minBlockHeight: toFiniteNumber(minBlockHeight),
       outputAddresses: args.outputAddresses,
       outputAmounts: args.outputAmounts,

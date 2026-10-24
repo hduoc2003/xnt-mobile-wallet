@@ -1,7 +1,9 @@
 use reqwest::Client;
 use serde_json::Value;
 use neptune_privacy::prelude::twenty_first::tip5::digest::Digest;
-use neptune_privacy::application::json_rpc::core::model::message::GetArchivalMutatorSetResponse;
+use neptune_privacy::application::json_rpc::core::model::message::{
+    GetArchivalMutatorSetResponse, RpcAoclLeaf,
+};
 use neptune_privacy::util_types::mutator_set::mutator_set_accumulator::MutatorSetAccumulator;
 use neptune_privacy::protocol::consensus::transaction::transaction_kernel::TransactionKernel;
 
@@ -123,6 +125,36 @@ pub async fn get_aocl_leaf_indices(
         .collect();
 
     Ok(indices)
+}
+
+/// Every canonical AOCL leaf of each commitment: identical payments share a commitment.
+pub async fn get_aocl_leaves(
+    client: &Client,
+    rpc_url: &str,
+    commitments: &[String],
+) -> Result<Vec<Vec<RpcAoclLeaf>>, String> {
+    let result = call_json_rpc(
+        client,
+        rpc_url,
+        "archival_getAoclLeafIndices",
+        serde_json::json!({ "commitments": commitments }),
+    )
+    .await?;
+    let leaves: Vec<Vec<RpcAoclLeaf>> = serde_json::from_value(
+        result
+            .get("leaves")
+            .cloned()
+            .ok_or("archival_getAoclLeafIndices returned no leaves")?,
+    )
+    .map_err(|e| format!("archival_getAoclLeafIndices: unreadable leaves: {e}"))?;
+    if leaves.len() != commitments.len() {
+        return Err(format!(
+            "archival_getAoclLeafIndices returned {} leaf lists for {} commitments",
+            leaves.len(),
+            commitments.len()
+        ));
+    }
+    Ok(leaves)
 }
 
 pub async fn restore_membership_proof(

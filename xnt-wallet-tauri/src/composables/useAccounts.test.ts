@@ -45,6 +45,7 @@ const keysFor = (phrase: string[], index: number): AccountKeys => ({
 })
 
 const baseUtxo: NormalizedUtxo = {
+  utxoId: 'a:0',
   utxoDigest: 'a',
   amount: '0',
   blockHeight: 5,
@@ -176,6 +177,7 @@ describe('useAccounts', () => {
     await unlockAll('pw')
     api.accountsSetActive.mockResolvedValue({ ...registry, active: 'main:0' })
     const utxo = (accountId: string, amount: string): NormalizedUtxo => ({
+      utxoId: `${accountId}-${amount}:0`,
       utxoDigest: `${accountId}-${amount}`,
       amount,
       blockHeight: 5,
@@ -209,7 +211,7 @@ describe('useAccounts', () => {
       ['main:0', 'main:1', 'imp-1:0'],
       [
         { ...baseUtxo, accountId: 'main:0', amount: '1' },
-        { ...baseUtxo, accountId: 'main:1', amount: '2', utxoDigest: 'b' },
+        { ...baseUtxo, accountId: 'main:1', amount: '2', utxoDigest: 'b', utxoId: 'b:0' },
       ],
     )
     api.getPendingBalance.mockResolvedValue({
@@ -238,7 +240,14 @@ describe('useAccounts', () => {
       ['main:0', 'main:1'],
       [
         { ...baseUtxo, accountId: 'main:1', amount: '2' },
-        { ...baseUtxo, accountId: 'main:1', amount: '7', utxoDigest: 'b', isLegacyDctidh: true },
+        {
+          ...baseUtxo,
+          accountId: 'main:1',
+          amount: '7',
+          utxoDigest: 'b',
+          utxoId: 'b:0',
+          isLegacyDctidh: true,
+        },
       ],
     )
     expect(store.utxosOf('main:1').map((u) => u.amount)).toEqual(['2'])

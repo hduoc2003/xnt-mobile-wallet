@@ -7,6 +7,7 @@ import { Send, ArrowLeft, ChevronDown } from 'lucide-vue-next'
 import { useNeptuneWallet, useFormat, useTransaction } from '@/composables'
 import { useAccountsStore, useNeptuneStore, useSettingsStore } from '@/stores'
 import { DEFAULT_FEE, toAtomicUnits } from '@/utils'
+import type { NormalizedUtxo } from '@/utils'
 import ConfirmTransactionDrawer from './components/ConfirmTransactionDrawer.vue'
 import ProofGenerationModal from './components/ProofGenerationModal.vue'
 import type { AccountEntry } from '@/types'
@@ -112,8 +113,7 @@ const loadMaxSendable = async () => {
 }
 
 // --- Manual UTXO selection helpers (used when manualMode is on) ---
-const utxoKey = (u: any): string =>
-  u.additionRecord || u.addition_record_hex || u.addition_record || u.utxoDigest || ''
+const utxoKey = (u: Pick<NormalizedUtxo, 'utxoId'>): string => u.utxoId
 
 // Minimal digest display: first 4 + last 4 hex chars (drops any 0x prefix).
 const shortDigest = (d: string): string => {
@@ -435,9 +435,7 @@ const handleConfirmSend = async () => {
     }
 
     // Build transaction with the chosen UTXOs only
-    const inputAdditionRecords = chosenUtxos.map(
-      (utxo: any) => utxo.addition_record_hex || utxo.additionRecord || utxo.addition_record,
-    )
+    const inputUtxoIds = chosenUtxos.map((utxo: Pick<NormalizedUtxo, 'utxoId'>) => utxo.utxoId)
 
     let timelockReleaseDate: number | undefined = undefined
     if (enableTimelock.value && timelockDate.value) {
@@ -460,7 +458,7 @@ const handleConfirmSend = async () => {
     }
 
     const txResult = await buildTransaction({
-      inputAdditionRecords,
+      inputUtxoIds,
       outputAddresses: [normalizedAddress.value],
       outputAmounts: [outputAmount.value],
       fee: priorityFee.value,

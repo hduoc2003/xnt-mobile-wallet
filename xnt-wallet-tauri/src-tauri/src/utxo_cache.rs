@@ -1,5 +1,4 @@
 use neptune_privacy::state::wallet::incoming_utxo::IncomingUtxo;
-use neptune_privacy::util_types::mutator_set::addition_record::AdditionRecord;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -7,7 +6,6 @@ use std::path::PathBuf;
 use std::fs;
 use std::io::{self, Read, Write};
 use serde::{Deserialize, Serialize};
-use hex;
 use bincode;
 use tauri::Manager;
 
@@ -15,6 +13,18 @@ use tauri::Manager;
 pub struct CachedUtxo {
     pub utxo: IncomingUtxo,
     pub block_height: u64,
+    /// Identical payments share a commitment; each leaf is a separate UTXO.
+    pub aocl_leaf_index: u64,
+}
+
+impl CachedUtxo {
+    pub fn utxo_id(&self) -> String {
+        format!(
+            "{}:{}",
+            self.utxo.addition_record().canonical_commitment.to_hex(),
+            self.aocl_leaf_index
+        )
+    }
 }
 
 type UtxoCache = Arc<RwLock<HashMap<String, CachedUtxo>>>;
@@ -23,8 +33,12 @@ static UTXO_CACHE: std::sync::OnceLock<UtxoCache> = std::sync::OnceLock::new();
 static LAST_SCANNED: std::sync::OnceLock<Arc<RwLock<u64>>> = std::sync::OnceLock::new();
 static CACHE_PATH: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 
-#[derive(Serialize, Deserialize, Default)]
+/// Leads the cache file; older files (one entry per commitment) lack it and are not loaded.
+const CACHE_FORMAT: u64 = u64::from_le_bytes(*b"XNTUTXO2");
+
+#[derive(Serialize, Deserialize)]
 struct PersistedUtxoCache {
+    format: u64,
     utxos: Vec<PersistedUtxo>,
     last_scanned_block: u64,
 }
@@ -33,11 +47,11 @@ struct PersistedUtxoCache {
 struct PersistedUtxo {
     utxo: IncomingUtxo,
     block_height: u64,
+    aocl_leaf_index: u64,
 }
 
 fn get_utxo_key(utxo: &CachedUtxo) -> String {
-    let ar = utxo.utxo.addition_record();
-    format!("0x{}", hex::encode(bincode::serialize(&ar.canonical_commitment).unwrap()))
+    utxo.utxo_id()
 }
 
 fn deduplicate_utxos(utxos: Vec<CachedUtxo>) -> Vec<CachedUtxo> {
@@ -109,24 +123,6 @@ pub async fn store_utxos(utxos: Vec<CachedUtxo>) {
     }
 }
 
-pub async fn get_utxo_by_addition_record(addition_record_hex: &str) -> Option<CachedUtxo> {
-    let cache = get_cache();
-    let cache_guard = cache.read().await;
-    
-    if let Some(utxo) = cache_guard.get(addition_record_hex) {
-        return Some(utxo.clone());
-    }
-    
-    if let Ok(ar_bytes) = hex::decode(addition_record_hex.trim_start_matches("0x")) {
-        if let Ok(ar) = bincode::deserialize::<AdditionRecord>(&ar_bytes) {
-            let key = format!("0x{}", hex::encode(bincode::serialize(&ar.canonical_commitment).unwrap()));
-            return cache_guard.get(&key).cloned();
-        }
-    }
-    
-    None
-}
-
 pub async fn get_all_utxos() -> Vec<CachedUtxo> {
     let cache = get_cache();
     let cache_guard = cache.read().await;
@@ -175,14 +171,14 @@ pub async fn clear_cache() {
     }
 }
 
-pub async fn get_utxos_by_addition_records(addition_record_hexes: &[String]) -> Vec<CachedUtxo> {
-    let mut result = Vec::new();
-    for ar_hex in addition_record_hexes {
-        if let Some(utxo) = get_utxo_by_addition_record(ar_hex).await {
-            result.push(utxo);
-        }
-    }
-    result
+/// Unknown ids are left out.
+pub async fn get_utxos_by_ids(utxo_ids: &[String]) -> Vec<CachedUtxo> {
+    let cache = get_cache();
+    let cache_guard = cache.read().await;
+    utxo_ids
+        .iter()
+        .filter_map(|id| cache_guard.get(id).cloned())
+        .collect()
 }
 
 pub fn init_cache_path(app: &tauri::AppHandle) {
@@ -229,12 +225,16 @@ fn load_persisted_cache() -> (HashMap<String, CachedUtxo>, u64) {
             return (map, last_scanned_block);
         }
         match bincode::deserialize::<PersistedUtxoCache>(&buf) {
-            Ok(persisted) => {
+            Ok(persisted) if persisted.format == CACHE_FORMAT => {
                 last_scanned_block = persisted.last_scanned_block;
                 // Deduplicate UTXOs when loading from disk
                 let cached_utxos: Vec<CachedUtxo> = persisted.utxos
                     .into_iter()
-                    .map(|pu| CachedUtxo { utxo: pu.utxo, block_height: pu.block_height })
+                    .map(|pu| CachedUtxo {
+                        utxo: pu.utxo,
+                        block_height: pu.block_height,
+                        aocl_leaf_index: pu.aocl_leaf_index,
+                    })
                     .collect();
                 let unique_utxos = deduplicate_utxos(cached_utxos);
                 for utxo in unique_utxos {
@@ -243,8 +243,13 @@ fn load_persisted_cache() -> (HashMap<String, CachedUtxo>, u64) {
                 }
                 log::info!("[UTXO Cache] Loaded {} cached UTXOs from disk", map.len());
             }
+            Ok(_) => {
+                log::warn!(
+                    "[UTXO Cache] Cache file has an older format; the next scan starts at block 0"
+                );
+            }
             Err(e) => {
-                log::warn!("[UTXO Cache] Failed to deserialize cache file: {}", e);
+                log::warn!("[UTXO Cache] Failed to deserialize cache file: {}; the next scan starts at block 0", e);
             }
         }
     }
@@ -257,11 +262,13 @@ fn persist_cache_to_disk(utxos: Vec<CachedUtxo>, last_scanned_block: u64) -> io:
     // Deduplicate before persisting to ensure no duplicates on disk
     let unique_utxos = deduplicate_utxos(utxos);
     let payload = PersistedUtxoCache {
+        format: CACHE_FORMAT,
         utxos: unique_utxos
             .into_iter()
             .map(|u| PersistedUtxo {
                 utxo: u.utxo,
                 block_height: u.block_height,
+                aocl_leaf_index: u.aocl_leaf_index,
             })
             .collect(),
         last_scanned_block,
@@ -272,3 +279,67 @@ fn persist_cache_to_disk(utxos: Vec<CachedUtxo>, last_scanned_block: u64) -> io:
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use neptune_privacy::prelude::twenty_first::prelude::BFieldElement;
+    use neptune_privacy::prelude::twenty_first::tip5::digest::Digest;
+    use neptune_privacy::protocol::consensus::transaction::utxo::Utxo;
+    use neptune_privacy::protocol::consensus::type_scripts::native_currency_amount::NativeCurrencyAmount;
+
+    fn cached(aocl_leaf_index: u64) -> CachedUtxo {
+        CachedUtxo {
+            utxo: IncomingUtxo {
+                utxo: Utxo::new_native_currency(
+                    Digest::default(),
+                    NativeCurrencyAmount::coins_from_str("1").unwrap(),
+                ),
+                sender_randomness: Digest::default(),
+                receiver_preimage: Digest::default(),
+                is_guesser_fee: false,
+                payment_id: BFieldElement::new(0),
+            },
+            block_height: 7,
+            aocl_leaf_index,
+        }
+    }
+
+    #[test]
+    fn identical_payments_stay_separate() {
+        let unique = deduplicate_utxos(vec![cached(3), cached(4), cached(3)]);
+        let leaves: Vec<u64> = unique.iter().map(|u| u.aocl_leaf_index).collect();
+        assert_eq!(leaves, [3, 4]);
+        assert_ne!(unique[0].utxo_id(), unique[1].utxo_id());
+    }
+
+    #[test]
+    fn older_cache_format_is_not_loaded() {
+        #[derive(Serialize)]
+        struct OldUtxo {
+            utxo: IncomingUtxo,
+            block_height: u64,
+        }
+        #[derive(Serialize)]
+        struct OldCache {
+            utxos: Vec<OldUtxo>,
+            last_scanned_block: u64,
+        }
+        for count in [0, 1, 2] {
+            let old = OldCache {
+                utxos: (0..count)
+                    .map(|_| OldUtxo {
+                        utxo: cached(0).utxo,
+                        block_height: 7,
+                    })
+                    .collect(),
+                last_scanned_block: 900,
+            };
+            let buf = bincode::serialize(&old).unwrap();
+            let loads = matches!(
+                bincode::deserialize::<PersistedUtxoCache>(&buf),
+                Ok(persisted) if persisted.format == CACHE_FORMAT
+            );
+            assert!(!loads);
+        }
+    }
+}

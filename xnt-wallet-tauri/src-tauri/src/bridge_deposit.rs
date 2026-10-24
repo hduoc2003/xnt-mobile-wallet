@@ -56,9 +56,9 @@ pub(crate) fn parse_deposit_request(
         .filter(|id| !id.is_empty())
         .ok_or("Missing walletAccount in payload")?
         .to_string();
-    let input_count = payload["inputAdditionRecords"]
+    let input_count = payload["inputUtxoIds"]
         .as_array()
-        .ok_or("Missing inputAdditionRecords in payload")?
+        .ok_or("Missing inputUtxoIds in payload")?
         .len();
     if !(1..=MAX_TX_INPUTS).contains(&input_count) {
         return Err(format!(
@@ -206,7 +206,7 @@ mod tests {
     fn payload(address: &str, amount: &str, inputs: usize) -> serde_json::Value {
         json!({
             "spendingKeyHex": "0x00",
-            "inputAdditionRecords": vec!["0x00"; inputs],
+            "inputUtxoIds": vec!["0x00:0"; inputs],
             "leviathanAddress": address,
             "amount": amount,
             "fee": "0.01",

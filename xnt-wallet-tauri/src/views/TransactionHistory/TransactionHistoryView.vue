@@ -103,7 +103,7 @@ const rows = computed<HistoryRow[]>(() => {
     ...sentStatus(tx),
   }))
   const incoming: HistoryRow[] = received.value.map((r) => ({
-    key: `received-${r.commitment}`,
+    key: `received-${r.utxoId ?? r.commitment}`,
     commitment: r.commitment,
     kind: r.bridgeSerial === undefined ? 'received' : 'bridgeIn',
     burnSerial: r.bridgeSerial,
