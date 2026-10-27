@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { ArrowLeft, ArrowRightLeft } from 'lucide-vue-next'
 import { useBridgeDeposit, useBridgeFees, useFormat } from '@/composables'
-import { useSettingsStore } from '@/stores'
+import { useNeptuneStore, useSettingsStore } from '@/stores'
 import {
   DEFAULT_FEE,
   MIN_BRIDGE_AMOUNT,
@@ -17,6 +17,7 @@ import BridgeDepositList from './components/BridgeDepositList.vue'
 
 const router = useRouter()
 const settingsStore = useSettingsStore()
+const neptuneStore = useNeptuneStore()
 const { deposits, refreshError, load, refresh, submitDeposit } = useBridgeDeposit()
 const { fees, feesError, loadFees } = useBridgeFees()
 const { formatXnt } = useFormat()
@@ -24,6 +25,7 @@ const { formatXnt } = useFormat()
 const inProgress = computed(() => deposits.value.filter(isBridgeDepositInProgress))
 
 const leviathanAddress = ref('')
+const addressPlaceholder = neptuneStore.getNetwork === 'mainnet' ? 'mm1...' : 'mtst1...'
 const amount = ref('')
 const fee = ref(DEFAULT_FEE)
 const submitting = ref(false)
@@ -127,7 +129,7 @@ onActivated(async () => {
             <Textarea
               id="leviathan-address"
               v-model="leviathanAddress"
-              placeholder="mtst1... or 0x account id"
+              :placeholder="addressPlaceholder"
               rows="2"
               class="font-mono text-sm"
               autocapitalize="none"

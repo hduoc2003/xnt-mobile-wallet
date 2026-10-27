@@ -20,6 +20,15 @@ use crate::bridge_status::{self, DepositRecord, DepositStatus};
 use crate::transaction::{self, MempoolCheck, MAX_TX_INPUTS};
 use crate::{rpc_client, rpc_config};
 
+/// A raw account id has no checksum, so a typo still parses and the deposit is minted to nobody.
+fn is_raw_account_id(address: &str) -> bool {
+    let hex = address
+        .strip_prefix("0x")
+        .or_else(|| address.strip_prefix("0X"))
+        .unwrap_or(address);
+    !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit())
+}
+
 #[derive(Debug)]
 pub(crate) struct DepositRequest {
     pub account_id: [u64; 2],
@@ -37,7 +46,12 @@ pub(crate) fn parse_deposit_request(
 ) -> Result<DepositRequest, String> {
     let address = payload["leviathanAddress"]
         .as_str()
-        .ok_or("Missing leviathanAddress in payload")?;
+        .ok_or("Missing leviathanAddress in payload")?
+        .trim();
+    let address = address.strip_prefix("miden:").unwrap_or(address).trim();
+    if is_raw_account_id(address) {
+        return Err("Enter the Leviathan address (bech32), not a raw account id".to_string());
+    }
     let account_id = parse_leviathan_address(address, network)
         .map_err(|e| format!("Invalid Leviathan address: {e}"))?;
     let amount = parse_coins(payload, "amount")?;
@@ -67,13 +81,7 @@ pub(crate) fn parse_deposit_request(
     }
     Ok(DepositRequest {
         account_id,
-        leviathan_address: {
-            let address = address.trim();
-            address
-                .strip_prefix("miden:")
-                .unwrap_or(address)
-                .to_string()
-        },
+        leviathan_address: address.to_string(),
         amount,
         fee,
         low_memory_proving,
@@ -283,6 +291,20 @@ mod tests {
             "4db6bac78b8882d7854bf9b4857a34adc6839e3fd4b95dd7fab703c27de1b3734f68e32f7e428624",
             preimage.to_hex()
         );
+    }
+
+    #[test]
+    fn rejects_raw_account_ids() {
+        for raw in [
+            "0x7db0664f500c4c1069429324acfdec",
+            "7db0664f500c4c1069429324acfdec",
+            " miden:0X7db0664f500c4c1069429324acfdec",
+            "miden: 0x7db0664f500c4c1069429324acfdec",
+        ] {
+            let err =
+                parse_deposit_request(&payload(raw, "1", 1), Network::Testnet(0)).unwrap_err();
+            assert!(err.contains("not a raw account id"), "{err}");
+        }
     }
 
     #[test]
