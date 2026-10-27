@@ -3419,7 +3419,7 @@ dependencies = [
 [[package]]
 name = "neptune-privacy"
 version = "0.3.0"
-source = "git+https://git.softly.com/leviathan/xnt-core?rev=8838597c9c9fbbcb1b0f28ac70142e093c790707#8838597c9c9fbbcb1b0f28ac70142e093c790707"
+source = "git+https://git.softly.com/leviathan/xnt-core?rev=f47c0d39bd93c28cca2a5d6ec48db2c542941b43#f47c0d39bd93c28cca2a5d6ec48db2c542941b43"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -8292,7 +8292,7 @@ dependencies = [
 [[package]]
 name = "xnt-rpc-macros"
 version = "0.3.0"
-source = "git+https://git.softly.com/leviathan/xnt-core?rev=8838597c9c9fbbcb1b0f28ac70142e093c790707#8838597c9c9fbbcb1b0f28ac70142e093c790707"
+source = "git+https://git.softly.com/leviathan/xnt-core?rev=f47c0d39bd93c28cca2a5d6ec48db2c542941b43#f47c0d39bd93c28cca2a5d6ec48db2c542941b43"
 dependencies = [
  "convert_case 0.8.0",
  "quote",

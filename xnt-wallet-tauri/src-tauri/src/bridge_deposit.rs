@@ -199,6 +199,8 @@ async fn build(app: &AppHandle, payload: &Value) -> Result<String, String> {
 mod tests {
     use super::parse_deposit_request;
     use neptune_privacy::application::config::network::Network;
+    use neptune_privacy::prelude::twenty_first::prelude::{BFieldElement, Digest};
+    use neptune_privacy::protocol::consensus::bridge::deposit_announcement::deposit_receiver_preimage;
     use serde_json::json;
 
     const ADDRESS: &str = "mtst1ap85fypkz32ju5g9kjadv4ux05jn5qfz";
@@ -267,6 +269,19 @@ mod tests {
     #[test]
     fn rejects_testnet_address_on_mainnet() {
         assert!(parse_deposit_request(&payload(ADDRESS, "1", 1), Network::Main).is_err());
+    }
+
+    /// xnt-core's `receiver_preimage_derivation_is_pinned` vector.
+    #[test]
+    fn receiver_preimage_matches_core() {
+        let preimage = deposit_receiver_preimage(
+            [BFieldElement::new(10), BFieldElement::new(20)],
+            Digest::new([BFieldElement::new(7); 5]),
+        );
+        assert_eq!(
+            "4db6bac78b8882d7854bf9b4857a34adc6839e3fd4b95dd7fab703c27de1b3734f68e32f7e428624",
+            preimage.to_hex()
+        );
     }
 
     #[test]
