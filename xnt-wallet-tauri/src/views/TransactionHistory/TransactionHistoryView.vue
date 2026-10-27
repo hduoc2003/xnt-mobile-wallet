@@ -85,6 +85,7 @@ const BRIDGE_TONE = {
   submitted: 'pending',
   confirmed: 'pending',
   minted: 'confirmed',
+  mintedUnverified: 'neutral',
   dropped: 'dropped',
 } as const
 
@@ -123,7 +124,9 @@ const rows = computed<HistoryRow[]>(() => {
     status: bridgeDepositBadge(d).label,
     tone: BRIDGE_TONE[d.status.state],
     detail: bridgeDepositDetail(d),
-    ...(d.status.state === 'confirmed' || d.status.state === 'minted'
+    ...(d.status.state === 'confirmed' ||
+    d.status.state === 'minted' ||
+    d.status.state === 'mintedUnverified'
       ? { blockHeight: d.status.blockHeight ?? undefined }
       : { txId: d.txId }),
     mintTxId: d.relayer?.mintTxId ?? undefined,

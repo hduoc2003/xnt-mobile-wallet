@@ -36,6 +36,8 @@ export const bridgeDepositBadge = (
       return { label: 'Confirmed', variant: 'secondary' }
     case 'minted':
       return { label: 'WXNT minted', variant: 'default' }
+    case 'mintedUnverified':
+      return { label: 'Minted, recipient unverified', variant: 'secondary' }
     case 'dropped':
       return { label: 'Dropped', variant: 'destructive' }
   }
@@ -52,6 +54,8 @@ export const bridgeDepositDetail = (record: BridgeDepositRecord): string => {
       return status.blockHeight === null
         ? 'Minted on Leviathan'
         : `Locked in XNT block ${status.blockHeight}, minted on Leviathan`
+    case 'mintedUnverified':
+      return "Minted on Leviathan; this deposit doesn't bind its account, so the wallet can't confirm the WXNT went to it"
     case 'confirmed': {
       const block = status.blockHeight === null ? 'Confirmed' : `In XNT block ${status.blockHeight}`
       if (relayerError) return `${block}; can't check mint status right now`
@@ -76,6 +80,7 @@ export const bridgeDepositDetail = (record: BridgeDepositRecord): string => {
 
 /** Not minted, not dropped, and not refused for good (an invalid deposit never mints). */
 export const isBridgeDepositInProgress = (record: BridgeDepositRecord): boolean => {
-  if (record.status.state === 'minted' || record.status.state === 'dropped') return false
+  const { state } = record.status
+  if (state === 'minted' || state === 'mintedUnverified' || state === 'dropped') return false
   return !(record.relayer?.status === 'refused' && record.relayer.reason === 'invalid')
 }

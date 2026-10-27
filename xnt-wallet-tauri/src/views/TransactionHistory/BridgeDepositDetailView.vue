@@ -33,7 +33,12 @@ const record = computed(() => deposits.value.find((d) => d.utxoCommitment === co
 
 const mined = computed(() => {
   const status = record.value?.status
-  return status && (status.state === 'confirmed' || status.state === 'minted') ? status : undefined
+  return status &&
+    (status.state === 'confirmed' ||
+      status.state === 'minted' ||
+      status.state === 'mintedUnverified')
+    ? status
+    : undefined
 })
 
 const relayerStatus = computed(() => {

@@ -22,6 +22,7 @@ pub enum DepositStatus {
     Submitted { misses: u8 },
     Confirmed { block_height: Option<u64> },
     Minted { block_height: Option<u64> },
+    MintedUnverified { block_height: Option<u64> },
     Dropped,
 }
 
@@ -85,6 +86,9 @@ pub struct DepositRecord {
     /// The wallet account that made the deposit; records from before accounts belong to Account 1.
     #[serde(default = "account_1")]
     pub wallet_account: String,
+    /// Its receiver preimage binds `account_id`, so a mint of the commitment went to that account.
+    #[serde(default)]
+    pub bound_to_account: bool,
 }
 
 fn account_1() -> String {
@@ -96,6 +100,7 @@ pub struct Observation {
     pub in_aocl: bool,
     pub block_height: Option<u64>,
     pub minted: bool,
+    pub bound_to_account: bool,
 }
 
 pub fn next_status(current: &DepositStatus, obs: &Observation) -> DepositStatus {
@@ -113,9 +118,16 @@ pub fn next_status(current: &DepositStatus, obs: &Observation) -> DepositStatus 
                 DepositStatus::Submitted { misses: misses + 1 }
             }
         }
-        DepositStatus::Confirmed { block_height } if obs.minted => DepositStatus::Minted {
-            block_height: *block_height,
-        },
+        DepositStatus::Confirmed { block_height } if obs.minted && obs.bound_to_account => {
+            DepositStatus::Minted {
+                block_height: *block_height,
+            }
+        }
+        DepositStatus::Confirmed { block_height } if obs.minted => {
+            DepositStatus::MintedUnverified {
+                block_height: *block_height,
+            }
+        }
         // A mined deposit can outlive a false drop, so dropped ones keep watching the AOCL.
         DepositStatus::Dropped if obs.in_aocl => DepositStatus::Confirmed {
             block_height: obs.block_height,
@@ -144,7 +156,14 @@ pub async fn load_records_from(path: &Path) -> Result<Vec<DepositRecord>, String
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => return Err(format!("Failed to read {}: {e}", path.display())),
     };
-    serde_json::from_str(&text).map_err(|e| format!("Corrupt {}: {e}", path.display()))
+    let mut records: Vec<DepositRecord> =
+        serde_json::from_str(&text).map_err(|e| format!("Corrupt {}: {e}", path.display()))?;
+    for record in records.iter_mut().filter(|r| !r.bound_to_account) {
+        if let DepositStatus::Minted { block_height } = record.status {
+            record.status = DepositStatus::MintedUnverified { block_height };
+        }
+    }
+    Ok(records)
 }
 
 pub async fn save_records_to(path: &Path, records: &[DepositRecord]) -> Result<(), String> {
@@ -268,6 +287,7 @@ async fn observe(
         in_aocl,
         block_height,
         minted,
+        bound_to_account: record.bound_to_account,
     };
     updated.status = next_status(&record.status, &obs);
     updated
@@ -283,7 +303,12 @@ pub async fn refresh(app: &AppHandle) -> Result<Vec<DepositRecord>, String> {
     };
     let to_check: Vec<&DepositRecord> = snapshot
         .iter()
-        .filter(|r| !matches!(r.status, DepositStatus::Minted { .. }))
+        .filter(|r| {
+            !matches!(
+                r.status,
+                DepositStatus::Minted { .. } | DepositStatus::MintedUnverified { .. }
+            )
+        })
         .collect();
     if to_check.is_empty() {
         return Ok(snapshot);
@@ -350,6 +375,7 @@ mod tests {
             in_aocl,
             block_height,
             minted,
+            bound_to_account: true,
         }
     }
 
@@ -448,6 +474,35 @@ mod tests {
                 block_height: Some(180)
             }
         );
+    }
+
+    #[test]
+    fn unbound_deposit_is_not_shown_as_minted() {
+        let unbound = Observation {
+            bound_to_account: false,
+            ..obs(false, true, None, true)
+        };
+        let next = next_status(
+            &DepositStatus::Confirmed {
+                block_height: Some(180),
+            },
+            &unbound,
+        );
+        assert_eq!(
+            next,
+            DepositStatus::MintedUnverified {
+                block_height: Some(180)
+            }
+        );
+    }
+
+    #[test]
+    fn records_without_the_binding_flag_load_as_unbound() {
+        let record: DepositRecord = serde_json::from_str(
+            r#"{"utxoCommitment":"ab","txId":"cd","accountId":[1,2],"amount":"1","createdMs":7,"status":{"state":"confirmed","blockHeight":9},"relayer":null,"relayerError":null}"#,
+        )
+        .unwrap();
+        assert!(!record.bound_to_account);
     }
 
     #[test]
@@ -582,6 +637,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unbound_minted_records_load_as_unverified() {
+        let dir = std::env::temp_dir().join(format!("bridge-unbound-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(RECORDS_FILE);
+        std::fs::write(
+            &path,
+            r#"[{"utxoCommitment":"ab","txId":"cd","accountId":[1,2],"amount":"1","createdMs":7,"status":{"state":"minted","blockHeight":9},"relayer":null,"relayerError":null}]"#,
+        )
+        .unwrap();
+        let records = load_records_from(&path).await.unwrap();
+        assert_eq!(
+            records[0].status,
+            DepositStatus::MintedUnverified {
+                block_height: Some(9)
+            }
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test]
     async fn records_round_trip_on_disk() {
         let dir = std::env::temp_dir().join(format!("bridge-status-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -602,6 +677,7 @@ mod tests {
             relayer: None,
             relayer_error: Some("down".to_string()),
             wallet_account: "imp-5:2".to_string(),
+            bound_to_account: true,
         };
         save_records_to(&path, &[record.clone(), record.clone()])
             .await

@@ -96,6 +96,8 @@ export type BridgeDepositStatus =
   | { state: 'submitted'; misses: number }
   | { state: 'confirmed'; blockHeight: number | null }
   | { state: 'minted'; blockHeight: number | null }
+  /** Minted, but the deposit doesn't bind its account, so the mint may have gone to a copier. */
+  | { state: 'mintedUnverified'; blockHeight: number | null }
   | { state: 'dropped' }
 
 export interface BridgeDepositRecord {

@@ -179,6 +179,7 @@ async fn build(app: &AppHandle, payload: &Value) -> Result<String, String> {
             relayer: None,
             relayer_error: None,
             wallet_account: request.wallet_account.clone(),
+            bound_to_account: deposit.binds_account(),
         },
     )
     .await?;
