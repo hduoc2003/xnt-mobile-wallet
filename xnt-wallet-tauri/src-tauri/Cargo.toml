@@ -24,7 +24,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Leviathan fork of xnt-core (v0.3 + bridge)
-neptune-privacy = { git = "https://git.softly.com/leviathan/xnt-core", rev = "936d6d54c2e1f222aa2e9d5513f96166964b98fd", default-features = false }
+neptune-privacy = { git = "https://git.softly.com/leviathan/xnt-core", rev = "15339d4b215da66d28d676fd60b3f592f7364a49", default-features = false }
 
 # Utilities
 hex = "0.4"
